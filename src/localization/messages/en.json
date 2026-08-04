@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "Replace current share?",
     "replaceShareDialogDescription": "Files are already being shared over the network. The current share will be stopped and replaced with the new one.",
     "replaceShareDialogConfirm": "Replace"
+  },
+  "mediaPlayer": {
+    "play": "Play",
+    "pause": "Pause",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "volume": "Volume",
+    "seek": "Seek",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

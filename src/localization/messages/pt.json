@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "Substituir o compartilhamento atual?",
     "replaceShareDialogDescription": "Já existem arquivos sendo compartilhados na rede. O compartilhamento atual será interrompido e substituído pelo novo.",
     "replaceShareDialogConfirm": "Substituir"
+  },
+  "mediaPlayer": {
+    "play": "Reproduzir",
+    "pause": "Pausar",
+    "mute": "Silenciar",
+    "unmute": "Ativar som",
+    "volume": "Volume",
+    "seek": "Posição de reprodução",
+    "fullscreen": "Entrar em tela cheia",
+    "exitFullscreen": "Sair da tela cheia"
   }
 }

@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "Заменить текущий доступ?",
     "replaceShareDialogDescription": "Файлы уже доступны по сети. Текущий доступ будет остановлен и заменён новым.",
     "replaceShareDialogConfirm": "Заменить"
+  },
+  "mediaPlayer": {
+    "play": "Воспроизвести",
+    "pause": "Пауза",
+    "mute": "Отключить звук",
+    "unmute": "Включить звук",
+    "volume": "Громкость",
+    "seek": "Позиция воспроизведения",
+    "fullscreen": "Полноэкранный режим",
+    "exitFullscreen": "Выйти из полноэкранного режима"
   }
 }

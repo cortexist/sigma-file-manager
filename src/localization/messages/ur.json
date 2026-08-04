@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "موجودہ شیئر بدلیں؟",
     "replaceShareDialogDescription": "فائلیں پہلے سے نیٹ ورک پر ہیں۔ موجودہ شیئر بند ہو کر نئے سے بدل جائے گا۔",
     "replaceShareDialogConfirm": "بدل دیں"
+  },
+  "mediaPlayer": {
+    "play": "چلائیں",
+    "pause": "وقفہ",
+    "mute": "خاموش کریں",
+    "unmute": "آواز چالو کریں",
+    "volume": "آواز",
+    "seek": "پلے بیک پوزیشن",
+    "fullscreen": "مکمل اسکرین میں جائیں",
+    "exitFullscreen": "مکمل اسکرین سے باہر نکلیں"
   }
 }

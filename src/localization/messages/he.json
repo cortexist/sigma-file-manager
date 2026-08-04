@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "להחליף את השיתוף הנוכחי?",
     "replaceShareDialogDescription": "קבצים כבר משותפים ברשת. השיתוף הנוכחי ייעצר ויוחלף בחדש.",
     "replaceShareDialogConfirm": "החלף"
+  },
+  "mediaPlayer": {
+    "play": "הפעלה",
+    "pause": "השהיה",
+    "mute": "השתקה",
+    "unmute": "ביטול השתקה",
+    "volume": "עוצמת קול",
+    "seek": "מיקום הניגון",
+    "fullscreen": "מעבר למסך מלא",
+    "exitFullscreen": "יציאה ממסך מלא"
   }
 }

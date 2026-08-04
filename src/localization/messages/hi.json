@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "वर्तमान शेयर बदलें?",
     "replaceShareDialogDescription": "फ़ाइलें पहले से ही नेटवर्क पर साझा की जा रही हैं. वर्तमान शेयर बंद कर दिया जाएगा और उसके स्थान पर नया शेयर ले लिया जाएगा।",
     "replaceShareDialogConfirm": "प्रतिस्थापित करें"
+  },
+  "mediaPlayer": {
+    "play": "चलाएँ",
+    "pause": "रोकें",
+    "mute": "म्यूट करें",
+    "unmute": "अनम्यूट करें",
+    "volume": "आवाज़",
+    "seek": "प्लेबैक स्थिति",
+    "fullscreen": "पूर्ण स्क्रीन में जाएँ",
+    "exitFullscreen": "पूर्ण स्क्रीन से बाहर निकलें"
   }
 }

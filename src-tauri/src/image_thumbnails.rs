@@ -444,7 +444,33 @@ fn cache_video_thumbnail_file(
     height: u32,
     thumbnail_data_url: String,
 ) -> Result<String, String> {
+    let thumbnail = decode_video_thumbnail_data_url(&thumbnail_data_url)?;
+
+    store_video_thumbnail_bytes(cache_dir, path, modified_time, size, width, height, thumbnail)
+}
+
+/// Writes an already-encoded JPEG into the thumbnail cache.
+///
+/// Shared by the webview path, which decodes a data URL, and the Linux path, which decodes
+/// the frame natively, so both get the same validation, cache limits and atomic rename.
+fn store_video_thumbnail_bytes(
+    cache_dir: PathBuf,
+    path: String,
+    modified_time: u64,
+    size: u64,
+    width: u32,
+    height: u32,
+    thumbnail: Vec<u8>,
+) -> Result<String, String> {
     validate_video_thumbnail_size(width, height)?;
+
+    if thumbnail.is_empty() {
+        return Err("Video thumbnail is empty".to_string());
+    }
+
+    if thumbnail.len() > MAX_VIDEO_THUMBNAIL_CACHE_BYTES {
+        return Err("Video thumbnail is too large".to_string());
+    }
 
     let source_metadata = fs::metadata(Path::new(&path))
         .map_err(|error| format!("Failed to read video metadata: {error}"))?;
@@ -473,7 +499,6 @@ fn cache_video_thumbnail_file(
         }
     }
 
-    let thumbnail = decode_video_thumbnail_data_url(&thumbnail_data_url)?;
     let temporary_path = temporary_thumbnail_path(&thumbnail_path);
 
     if let Err(error) = fs::write(&temporary_path, thumbnail) {
@@ -625,6 +650,62 @@ pub async fn get_cached_video_thumbnail(
     })
     .await
     .map_err(|error| format!("Failed to get cached video thumbnail: {error}"))?
+}
+
+/// Decodes a video thumbnail natively instead of in the webview.
+///
+/// Only Linux needs this: WebKitGTK cannot hand decoded frames back to JavaScript while
+/// the accelerated video path is active. See `crate::video_thumbnails`.
+#[tauri::command]
+pub async fn generate_video_thumbnail(
+    app: tauri::AppHandle,
+    path: String,
+    modified_time: u64,
+    size: u64,
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let cache_dir = thumbnail_cache_dir(&app)?;
+
+        tauri::async_runtime::spawn_blocking(move || {
+            validate_video_thumbnail_size(width, height)?;
+
+            // Another pane may have generated the same thumbnail while this one queued.
+            if let Some(cached) = get_cached_video_thumbnail_file(
+                cache_dir.clone(),
+                path.clone(),
+                modified_time,
+                size,
+                width,
+                height,
+            )? {
+                return Ok(cached);
+            }
+
+            let thumbnail =
+                crate::video_thumbnails::generate_video_thumbnail_jpeg(&path, width, height)?;
+
+            store_video_thumbnail_bytes(
+                cache_dir,
+                path,
+                modified_time,
+                size,
+                width,
+                height,
+                thumbnail,
+            )
+        })
+        .await
+        .map_err(|error| format!("Failed to generate video thumbnail: {error}"))?
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app, path, modified_time, size, width, height);
+        Err("Native video thumbnails are only used on Linux".to_string())
+    }
 }
 
 #[tauri::command]

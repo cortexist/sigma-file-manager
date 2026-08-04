@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "Zamenjaj trenutno deljenje?",
     "replaceShareDialogDescription": "Datoteke se že delijo po omrežju. Trenutno deljenje bo ustavljeno in zamenjano z novim.",
     "replaceShareDialogConfirm": "Zamenjaj"
+  },
+  "mediaPlayer": {
+    "play": "Predvajaj",
+    "pause": "Premor",
+    "mute": "Izklopi zvok",
+    "unmute": "Vklopi zvok",
+    "volume": "Glasnost",
+    "seek": "Položaj predvajanja",
+    "fullscreen": "Vklopi celozaslonski način",
+    "exitFullscreen": "Izhod iz celozaslonskega načina"
   }
 }

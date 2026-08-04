@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "替换当前共享？",
     "replaceShareDialogDescription": "文件已在网络上共享。当前共享将被停止并替换为新的共享。",
     "replaceShareDialogConfirm": "替换"
+  },
+  "mediaPlayer": {
+    "play": "播放",
+    "pause": "暂停",
+    "mute": "静音",
+    "unmute": "取消静音",
+    "volume": "音量",
+    "seek": "播放进度",
+    "fullscreen": "进入全屏",
+    "exitFullscreen": "退出全屏"
   }
 }

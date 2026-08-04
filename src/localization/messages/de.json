@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "Aktuelle Freigabe ersetzen?",
     "replaceShareDialogDescription": "Es werden bereits Dateien im Netzwerk freigegeben. Die aktuelle Freigabe wird gestoppt und durch eine neue ersetzt.",
     "replaceShareDialogConfirm": "Ersetzen"
+  },
+  "mediaPlayer": {
+    "play": "Wiedergabe",
+    "pause": "Pause",
+    "mute": "Stummschalten",
+    "unmute": "Stummschaltung aufheben",
+    "volume": "Lautstärke",
+    "seek": "Wiedergabeposition",
+    "fullscreen": "Vollbild aktivieren",
+    "exitFullscreen": "Vollbild beenden"
   }
 }

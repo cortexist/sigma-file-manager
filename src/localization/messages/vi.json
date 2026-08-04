@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "Thay thế chia sẻ hiện tại?",
     "replaceShareDialogDescription": "Các tập tin đang được chia sẻ qua mạng. Chia sẻ hiện tại sẽ bị dừng và thay thế bằng chia sẻ mới.",
     "replaceShareDialogConfirm": "Thay thế"
+  },
+  "mediaPlayer": {
+    "play": "Phát",
+    "pause": "Tạm dừng",
+    "mute": "Tắt tiếng",
+    "unmute": "Bật tiếng",
+    "volume": "Âm lượng",
+    "seek": "Vị trí phát",
+    "fullscreen": "Bật toàn màn hình",
+    "exitFullscreen": "Thoát toàn màn hình"
   }
 }

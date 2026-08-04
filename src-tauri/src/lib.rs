@@ -32,6 +32,8 @@ mod terminal;
 mod url_drop;
 mod user_storage_files_config;
 pub mod utils;
+#[cfg(target_os = "linux")]
+mod video_thumbnails;
 mod windows_installation;
 #[cfg(windows)]
 mod windows_print_view_webview;
@@ -335,6 +337,7 @@ pub fn run() {
             global_search::global_search_query,
             global_search::global_search_query_paths,
             image_thumbnails::cache_video_thumbnail,
+            image_thumbnails::generate_video_thumbnail,
             image_thumbnails::generate_image_thumbnail,
             image_thumbnails::get_cached_video_thumbnail,
             open_with::get_associated_programs,

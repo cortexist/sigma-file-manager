@@ -5,7 +5,7 @@
 import { ref } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { DirEntry } from '@/types/dir-entry';
-import { convertMediaSrc, initMediaServer } from '@/utils/media-src';
+import { convertMediaSrc } from '@/utils/media-src';
 import { ensurePlatformInfo } from '@/utils/platform-info';
 
 const MAX_CONCURRENT_THUMBNAILS = 3;
@@ -83,22 +83,10 @@ export function useVideoThumbnails() {
   const failedThumbnails = new Set<string>();
   let thumbnailGeneration = 0;
 
-  async function createVideoThumbnailDataUrl(request: VideoThumbnailRequest): Promise<string> {
-    // WebKitGTK decodes video into a GPU buffer JavaScript cannot sample: drawImage,
-    // createImageBitmap and WebGL texImage2D all hand back uninitialized memory, so a
-    // frame grabbed here would be noise. Only disabling the webview's accelerated video
-    // path makes it readable, which costs accelerated playback and breaks fullscreen, so
-    // Linux falls back to the file type icon until frames are decoded outside the
-    // webview. Thumbnails already in the cache are still served, and other platforms are
-    // unaffected.
-    const platformInfo = await ensurePlatformInfo();
-
-    if (platformInfo.isLinux) {
-      return '';
-    }
-
-    await initMediaServer();
-
+  /// Grabs the frame in the webview. Linux never reaches this: WebKitGTK decodes video
+  /// into a GPU buffer JavaScript cannot sample, so the frame would be uninitialized
+  /// memory. That platform uses generateVideoThumbnailNatively instead.
+  function createVideoThumbnailDataUrl(request: VideoThumbnailRequest): Promise<string> {
     return new Promise((resolve) => {
       const processingKey = getProcessingVideoThumbnailKey(request.thumbnailKey, request.generation);
       const video = document.createElement('video');
@@ -195,6 +183,18 @@ export function useVideoThumbnails() {
     return convertFileSrc(thumbnailPath);
   }
 
+  async function generateVideoThumbnailNatively(request: VideoThumbnailRequest): Promise<string> {
+    const thumbnailPath = await invoke<string>('generate_video_thumbnail', {
+      path: request.entry.path,
+      modifiedTime: request.entry.modified_time,
+      size: request.entry.size,
+      width: request.targetSize.width,
+      height: request.targetSize.height,
+    });
+
+    return convertFileSrc(thumbnailPath);
+  }
+
   async function processVideoThumbnail(request: VideoThumbnailRequest): Promise<void> {
     const processingKey = getProcessingVideoThumbnailKey(request.thumbnailKey, request.generation);
 
@@ -220,6 +220,20 @@ export function useVideoThumbnails() {
       }
 
       if (request.generation !== thumbnailGeneration || cancelledThumbnails.has(processingKey)) {
+        return;
+      }
+
+      // Linux decodes the frame natively; the command caches it and hands back a path.
+      if ((await ensurePlatformInfo()).isLinux) {
+        const nativeThumbnail = await generateVideoThumbnailNatively(request);
+
+        if (request.generation === thumbnailGeneration && !cancelledThumbnails.has(processingKey)) {
+          videoThumbnails.value = {
+            ...videoThumbnails.value,
+            [request.thumbnailKey]: nativeThumbnail,
+          };
+        }
+
         return;
       }
 

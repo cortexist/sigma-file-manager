@@ -1232,5 +1232,15 @@
     "replaceShareDialogTitle": "Mevcut paylaşım değiştirilsin mi?",
     "replaceShareDialogDescription": "Ağ üzerinden zaten dosyalar paylaşılıyor. Mevcut paylaşım durdurulup yenisiyle değiştirilecek.",
     "replaceShareDialogConfirm": "Değiştir"
+  },
+  "mediaPlayer": {
+    "play": "Oynat",
+    "pause": "Duraklat",
+    "mute": "Sessize al",
+    "unmute": "Sesi aç",
+    "volume": "Ses düzeyi",
+    "seek": "Oynatma konumu",
+    "fullscreen": "Tam ekrana geç",
+    "exitFullscreen": "Tam ekrandan çık"
   }
 }

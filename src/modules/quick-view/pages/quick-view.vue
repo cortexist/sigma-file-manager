@@ -37,6 +37,7 @@ import {
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
 import { convertMediaSrc } from '@/utils/media-src';
+import { MediaPlayer } from '@/components/ui/media-player';
 import {
   decodeTextFileBytesWithEncoding,
   encodeTextFileBytes,
@@ -1136,7 +1137,10 @@ onUnmounted(() => {
     <template v-else-if="currentFilePath">
       <div
         class="quick-view__body"
-        :class="{ 'quick-view__body--stretch': fileType === 'text' }"
+        :class="{
+          'quick-view__body--stretch': fileType === 'text',
+          'quick-view__body--media': fileType === 'video',
+        }"
       >
         <img
           v-if="fileType === 'image'"
@@ -1146,21 +1150,21 @@ onUnmounted(() => {
           class="quick-view__image"
         >
 
-        <video
+        <MediaPlayer
           v-else-if="fileType === 'video'"
           :key="`${currentFilePath}-video`"
           :src="fileMediaUrl"
+          kind="video"
           class="quick-view__video"
-          controls
           autoplay
         />
 
-        <audio
+        <MediaPlayer
           v-else-if="fileType === 'audio'"
           :key="`${currentFilePath}-audio`"
           :src="fileMediaUrl"
+          kind="audio"
           class="quick-view__audio"
-          controls
           autoplay
         />
 
@@ -1447,6 +1451,13 @@ onUnmounted(() => {
   padding: 8px;
 }
 
+/* Video already letterboxes itself against black, so the pane padding only costs height
+   that a portrait video in a narrow window cannot spare. */
+
+.quick-view__body--media {
+  padding: 0;
+}
+
 .quick-view__body--stretch {
   width: 100%;
   align-items: stretch;
@@ -1459,10 +1470,14 @@ onUnmounted(() => {
   object-fit: contain;
 }
 
+/* The player fills the pane and letterboxes the video inside it, so the control bar spans
+   the viewing area instead of tracking the video's own edges. */
+
 .quick-view__video {
-  max-width: 100%;
-  max-height: 100%;
-  background: black;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
 }
 
 .quick-view__audio {
