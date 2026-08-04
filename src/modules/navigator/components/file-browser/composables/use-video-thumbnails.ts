@@ -5,6 +5,7 @@
 import { ref } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { DirEntry } from '@/types/dir-entry';
+import { convertMediaSrc, initMediaServer } from '@/utils/media-src';
 
 const MAX_CONCURRENT_THUMBNAILS = 3;
 const VIDEO_THUMBNAIL_SIZE = {
@@ -81,7 +82,11 @@ export function useVideoThumbnails() {
   const failedThumbnails = new Set<string>();
   let thumbnailGeneration = 0;
 
-  function createVideoThumbnailDataUrl(request: VideoThumbnailRequest): Promise<string> {
+  async function createVideoThumbnailDataUrl(request: VideoThumbnailRequest): Promise<string> {
+    // On Linux the frame is decoded from the loopback media server, so make sure it is
+    // listening before the element starts loading. No-op on other platforms.
+    await initMediaServer();
+
     return new Promise((resolve) => {
       const processingKey = getProcessingVideoThumbnailKey(request.thumbnailKey, request.generation);
       const video = document.createElement('video');
@@ -149,7 +154,7 @@ export function useVideoThumbnails() {
         resolveThumbnail('');
       };
 
-      video.src = convertFileSrc(request.entry.path);
+      video.src = convertMediaSrc(request.entry.path);
     });
   }
 

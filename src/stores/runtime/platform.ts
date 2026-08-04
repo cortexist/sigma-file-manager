@@ -7,6 +7,7 @@ import { ref, computed } from 'vue';
 import type { Platform } from '@tauri-apps/plugin-os';
 import { invoke } from '@tauri-apps/api/core';
 import { initPlatformInfo as initSharedPlatformInfo } from '@/utils/platform-info';
+import { initMediaServer } from '@/utils/media-src';
 
 export function canUseDefaultFileManager(
   platform: Platform | null,
@@ -31,6 +32,9 @@ export const usePlatformStore = defineStore('platform', () => {
   async function init() {
     const platformInfo = await initSharedPlatformInfo();
     currentPlatform.value = platformInfo.os;
+
+    // Linux needs the loopback media server before any video or audio element renders.
+    void initMediaServer();
 
     try {
       appUpdatesManagedExternally.value = await invoke<boolean>('app_updates_managed_externally');

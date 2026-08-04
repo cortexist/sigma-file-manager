@@ -9,6 +9,7 @@ import {
   type MaybeRefOrGetter,
 } from 'vue';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertMediaSrc } from '@/utils/media-src';
 import { isImageFile as checkIsImage } from '@/modules/navigator/components/file-browser/utils';
 import { useDevicePixelPreviewSize } from '@/modules/navigator/composables/use-device-pixel-preview-size';
 import { useNavigatorImageThumbnails } from '@/modules/navigator/composables/use-navigator-image-thumbnails';
@@ -70,6 +71,18 @@ export function useInfoPanelImagePreview(selectedEntry: MaybeRefOrGetter<DirEntr
     return convertFileSrc(entry.path);
   });
 
+  // Video and audio need the loopback media server on Linux; images and PDFs stay on the
+  // asset protocol, which serves them fine. See @/utils/media-src.
+  const playableMediaSrc = computed(() => {
+    const entry = toValue(selectedEntry);
+
+    if (!entry?.path) {
+      return '';
+    }
+
+    return convertMediaSrc(entry.path);
+  });
+
   const imageThumbnailMaxDimension = computed(
     () => Math.max(previewSize.value.width, previewSize.value.height),
   );
@@ -94,6 +107,7 @@ export function useInfoPanelImagePreview(selectedEntry: MaybeRefOrGetter<DirEntr
     previewRef,
     isImageFile,
     mediaSrc,
+    playableMediaSrc,
     imagePreviewSrc,
     usesThumbnailImagePreview,
   };

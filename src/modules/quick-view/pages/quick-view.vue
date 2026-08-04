@@ -36,6 +36,7 @@ import {
   QUICK_VIEW_LOAD_FILE_EVENT,
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
+import { convertMediaSrc } from '@/utils/media-src';
 import {
   decodeTextFileBytesWithEncoding,
   encodeTextFileBytes,
@@ -51,6 +52,7 @@ import {
   releaseAuxiliaryWindow,
 } from '@/utils/auxiliary-windows';
 import { useImageThumbnails } from '@/modules/navigator/components/file-browser/composables/use-image-thumbnails';
+import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/composables/use-video-thumbnails';
 import { useHorizontalFixedVirtualList } from '@/composables/use-horizontal-fixed-virtual-list';
 
 const { t } = useI18n();
@@ -62,6 +64,7 @@ const resolvedSiblingPaths = ref<string[]>([]);
 const siblingPathsProvidedByMain = ref(false);
 
 const stripThumbnails = useImageThumbnails();
+const stripVideoThumbnails = useVideoThumbnails();
 const stripDirEntryByPath = ref<Record<string, DirEntry>>({});
 let stripEntryLoadToken = 0;
 let stripThumbnailParentKey: string | null = null;
@@ -116,6 +119,7 @@ watch(
       stripDirEntryByPath.value = {};
       stripThumbnailParentKey = null;
       stripThumbnails.clearThumbnails();
+      stripVideoThumbnails.clearThumbnails();
       return;
     }
 
@@ -131,6 +135,7 @@ watch(
     if (nextParentKey !== stripThumbnailParentKey) {
       stripThumbnailParentKey = nextParentKey;
       stripThumbnails.clearThumbnails();
+      stripVideoThumbnails.clearThumbnails();
       stripVirtualThumbRangePrevious = {
         start: 0,
         end: 0,
@@ -163,6 +168,7 @@ watch(
       stripDirEntryByPath.value = {};
       stripThumbnailParentKey = null;
       stripThumbnails.clearThumbnails();
+      stripVideoThumbnails.clearThumbnails();
       stripVirtualThumbRangePrevious = {
         start: 0,
         end: 0,
@@ -219,6 +225,14 @@ const fileName = computed((): string => {
 const fileAssetUrl = computed((): string => {
   if (!currentFilePath.value) return '';
   return getQuickViewDisplayUrl(currentFilePath.value);
+});
+
+// Video and audio go through the loopback media server on Linux, where the asset
+// protocol cannot feed WebKitGTK's media backend. See @/utils/media-src.
+const fileMediaUrl = computed((): string => {
+  if (!currentFilePath.value) return '';
+  if (isHttpOrHttpsUrl(currentFilePath.value)) return currentFilePath.value;
+  return convertMediaSrc(currentFilePath.value);
 });
 
 const textIsDirty = computed(() => {
@@ -339,6 +353,22 @@ function quickViewStripImageSrc(path: string): string | undefined {
   return stripThumbnails.getImageThumbnail(entry);
 }
 
+function quickViewStripVideoSrc(path: string): string | undefined {
+  if (determineFileType(path) !== 'video' || isHttpOrHttpsUrl(path)) {
+    return undefined;
+  }
+
+  void stripVideoThumbnails.videoThumbnails.value;
+
+  const entry = stripDirEntryByPath.value[path];
+
+  if (!entry) {
+    return undefined;
+  }
+
+  return stripVideoThumbnails.getVideoThumbnail(entry);
+}
+
 function quickViewStripImageShowsSpinner(path: string): boolean {
   if (determineFileType(path) !== 'image') {
     return false;
@@ -376,23 +406,27 @@ function cancelQuickViewStripThumbnailForSiblingIndex(entryIndex: number) {
 }
 
 function cancelQuickViewStripThumbnailForPath(path: string | undefined) {
-  if (!path) {
+  if (!path || isHttpOrHttpsUrl(path)) {
     return;
   }
 
-  if (determineFileType(path) !== 'image' || isHttpOrHttpsUrl(path)) {
-    return;
-  }
-
-  if (getFileExtension(path) === 'svg') {
-    return;
-  }
-
+  const fileType = determineFileType(path);
   const entry = stripDirEntryByPath.value[path];
 
-  if (entry) {
-    stripThumbnails.cancelImageThumbnail(entry);
+  if (!entry) {
+    return;
   }
+
+  if (fileType === 'video') {
+    stripVideoThumbnails.cancelVideoThumbnail(entry);
+    return;
+  }
+
+  if (fileType !== 'image' || getFileExtension(path) === 'svg') {
+    return;
+  }
+
+  stripThumbnails.cancelImageThumbnail(entry);
 }
 
 const QUICK_VIEW_STRIP_THUMB_WIDTH = 64;
@@ -1075,6 +1109,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown, true);
   teardownMarkdownScrollSync();
   stripThumbnails.clearThumbnails();
+  stripVideoThumbnails.clearThumbnails();
 
   if (unlistenLoadFile) {
     unlistenLoadFile();
@@ -1114,7 +1149,7 @@ onUnmounted(() => {
         <video
           v-else-if="fileType === 'video'"
           :key="`${currentFilePath}-video`"
-          :src="fileAssetUrl"
+          :src="fileMediaUrl"
           class="quick-view__video"
           controls
           autoplay
@@ -1123,7 +1158,7 @@ onUnmounted(() => {
         <audio
           v-else-if="fileType === 'audio'"
           :key="`${currentFilePath}-audio`"
-          :src="fileAssetUrl"
+          :src="fileMediaUrl"
           class="quick-view__audio"
           controls
           autoplay
@@ -1320,6 +1355,12 @@ onUnmounted(() => {
                   :size="28"
                   aria-hidden="true"
                 />
+                <img
+                  v-else-if="thumb.kind === 'video' && quickViewStripVideoSrc(thumb.path)"
+                  class="quick-view__thumb-image"
+                  :src="quickViewStripVideoSrc(thumb.path)"
+                  alt=""
+                >
                 <VideoIcon
                   v-else-if="thumb.kind === 'video'"
                   class="quick-view__thumb-icon"

@@ -41,6 +41,7 @@ const {
   previewRef,
   isImageFile,
   mediaSrc,
+  playableMediaSrc,
   imagePreviewSrc,
 } = useInfoPanelImagePreview(() => props.selectedEntry);
 
@@ -176,7 +177,7 @@ watch(
     >
       <video
         ref="videoPreviewRef"
-        :src="mediaSrc"
+        :src="playableMediaSrc"
         class="info-panel-preview__video animate-fade-in-x2"
         controls
         preload="metadata"
@@ -188,7 +189,7 @@ watch(
       class="info-panel-preview__media-container info-panel-preview__media-container--audio"
     >
       <audio
-        :src="mediaSrc"
+        :src="playableMediaSrc"
         class="info-panel-preview__audio animate-fade-in-x2"
         controls
         preload="metadata"
