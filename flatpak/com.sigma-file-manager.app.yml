@@ -5,6 +5,17 @@ sdk: org.gnome.Sdk
 command: sigma-file-manager
 appstream-compose: false
 
+# The GNOME runtime ships GStreamer but only the codecs it can license freely, so
+# H.264/AAC video (the common case for user media) will not decode. This extension adds
+# the full ffmpeg build that gst-libav links against. The version tracks the freedesktop
+# base of the GNOME runtime above, not the GNOME version.
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    add-ld-path: .
+    version: '24.08'
+    autodelete: false
+
 finish-args:
   - --socket=wayland
   - --socket=fallback-x11
@@ -31,6 +42,9 @@ modules:
         path: com.sigma-file-manager.app.metainfo.xml
     build-commands:
       - set -e
+      # Mount point for the ffmpeg-full extension declared above; it must exist in the
+      # build or there is nothing for the extension to be mounted onto at runtime.
+      - mkdir -p /app/lib/ffmpeg
       - mkdir deb-extract
       - ar -x sigma-file-manager.deb --output deb-extract
       - tar -C deb-extract -xf deb-extract/data.tar.*

@@ -83,6 +83,24 @@
         "installerIcon": "icons/icon.ico"
       }
     },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libayatana-appindicator3-1",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-libav"
+        ],
+        "recommends": [
+          "gstreamer1.0-plugins-ugly",
+          "gstreamer1.0-pipewire"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

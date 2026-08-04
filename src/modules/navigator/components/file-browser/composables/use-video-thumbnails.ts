@@ -6,6 +6,7 @@ import { ref } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { DirEntry } from '@/types/dir-entry';
 import { convertMediaSrc, initMediaServer } from '@/utils/media-src';
+import { ensurePlatformInfo } from '@/utils/platform-info';
 
 const MAX_CONCURRENT_THUMBNAILS = 3;
 const VIDEO_THUMBNAIL_SIZE = {
@@ -83,8 +84,19 @@ export function useVideoThumbnails() {
   let thumbnailGeneration = 0;
 
   async function createVideoThumbnailDataUrl(request: VideoThumbnailRequest): Promise<string> {
-    // On Linux the frame is decoded from the loopback media server, so make sure it is
-    // listening before the element starts loading. No-op on other platforms.
+    // WebKitGTK decodes video into a GPU buffer JavaScript cannot sample: drawImage,
+    // createImageBitmap and WebGL texImage2D all hand back uninitialized memory, so a
+    // frame grabbed here would be noise. Only disabling the webview's accelerated video
+    // path makes it readable, which costs accelerated playback and breaks fullscreen, so
+    // Linux falls back to the file type icon until frames are decoded outside the
+    // webview. Thumbnails already in the cache are still served, and other platforms are
+    // unaffected.
+    const platformInfo = await ensurePlatformInfo();
+
+    if (platformInfo.isLinux) {
+      return '';
+    }
+
     await initMediaServer();
 
     return new Promise((resolve) => {

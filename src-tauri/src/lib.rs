@@ -218,25 +218,7 @@ fn get_launch_context() -> LaunchContext {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// Makes decoded video frames readable from the webview on Linux.
-///
-/// WebKitGTK decodes video straight into a GPU buffer that JavaScript cannot sample:
-/// `drawImage(video)`, `createImageBitmap(video)` and WebGL `texImage2D(video)` all hand
-/// back uninitialized memory, so canvas-generated video thumbnails come out as noise.
-/// Disabling the DMABUF renderer routes frames through a buffer the canvas can read.
-///
-/// Set before any webview exists, and only when the user has not chosen a value already.
-#[cfg(target_os = "linux")]
-fn configure_linux_webkit_video() {
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
-}
-
 pub fn run() {
-    #[cfg(target_os = "linux")]
-    configure_linux_webkit_video();
-
     tauri::Builder::default()
         .manage(startup_storage_bootstrap::StartupStorageBootstrapState::default())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
