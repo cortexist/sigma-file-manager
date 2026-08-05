@@ -1241,6 +1241,8 @@
     "volume": "Âm lượng",
     "seek": "Vị trí phát",
     "fullscreen": "Bật toàn màn hình",
-    "exitFullscreen": "Thoát toàn màn hình"
+    "exitFullscreen": "Thoát toàn màn hình",
+    "loop": "Lặp lại tệp hiện tại",
+    "loopOff": "Tắt lặp lại"
   }
 }

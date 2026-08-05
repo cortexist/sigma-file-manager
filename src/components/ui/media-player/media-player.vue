@@ -23,6 +23,7 @@ import {
   VolumeXIcon,
   MaximizeIcon,
   MinimizeIcon,
+  Repeat1Icon,
   Loader2Icon,
 } from '@lucide/vue';
 import { Slider } from '@/components/ui/slider';
@@ -57,8 +58,15 @@ const volume = ref(1);
 const isMuted = ref(false);
 const isPointerActive = ref(false);
 const isFocusWithin = ref(false);
+/**
+ * Repeat-one for now. When play-all and shuffle arrive this becomes the "repeat" leg of a
+ * playback mode, so the button lives in its own lower-left group rather than beside the
+ * transport controls.
+ */
+const isLooping = ref(false);
 
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
+let lastProgressAt = -1;
 
 const isVideo = computed(() => props.kind === 'video');
 
@@ -185,6 +193,10 @@ function seekBy(deltaSeconds: number) {
   currentTime.value = target;
 }
 
+function toggleLoop() {
+  isLooping.value = !isLooping.value;
+}
+
 function toggleMute() {
   const media = mediaRef.value;
   if (!media) return;
@@ -231,8 +243,63 @@ function onLoadedMetadata() {
   media.muted = isMuted.value;
 }
 
+function clearWaiting() {
+  isWaiting.value = false;
+}
+
+/**
+ * Playback progress is the only trustworthy "not stalled" signal on this stack. WebKitGTK
+ * reports `readyState` 2 for the whole of a fully buffered file, so it can never be compared
+ * against HAVE_FUTURE_DATA, and a seek fires `waiting` without a matching `playing` afterwards.
+ * `timeupdate` only fires when the clock actually moves, so treating it as proof of life clears
+ * the spinner no matter which event the pipeline decided to skip.
+ */
+function markProgress() {
+  const media = mediaRef.value;
+  if (!media || media.currentTime === lastProgressAt) return;
+
+  lastProgressAt = media.currentTime;
+  clearWaiting();
+}
+
+function onPlaybackActive() {
+  isPlaying.value = true;
+  clearWaiting();
+}
+
+function onPause() {
+  isPlaying.value = false;
+  clearWaiting();
+}
+
+function onEnded() {
+  const media = mediaRef.value;
+
+  /**
+   * Looping is driven here rather than by the element's `loop` attribute. WebKitGTK's own
+   * loop re-reads the stream and then wraps every later round several seconds early, always
+   * at the same point, while a straight play-through reaches the true end and fires `ended`.
+   * Restarting by hand keeps every round a normal play-through.
+   */
+  if (isLooping.value && media) {
+    media.currentTime = 0;
+    void media.play();
+    return;
+  }
+
+  isPlaying.value = false;
+  clearWaiting();
+}
+
+function onError() {
+  hasError.value = true;
+  isWaiting.value = false;
+}
+
 function onTimeUpdate() {
   const media = mediaRef.value;
+  markProgress();
+
   // Ignore element updates mid-drag so the thumb does not fight the pointer.
   if (!media || isScrubbing.value) return;
   currentTime.value = media.currentTime;
@@ -296,6 +363,7 @@ watch(() => props.src, () => {
   currentTime.value = 0;
   duration.value = 0;
   bufferedTo.value = 0;
+  lastProgressAt = -1;
 });
 
 if (typeof document !== 'undefined') {
@@ -343,12 +411,16 @@ onBeforeUnmount(() => {
       @loadedmetadata="onLoadedMetadata"
       @timeupdate="onTimeUpdate"
       @progress="onProgress"
-      @playing="isPlaying = true; isWaiting = false"
-      @play="isPlaying = true"
-      @pause="isPlaying = false"
+      @playing="onPlaybackActive"
+      @play="onPlaybackActive"
+      @pause="onPause"
       @waiting="isWaiting = true"
-      @ended="isPlaying = false"
-      @error="hasError = true"
+      @seeked="clearWaiting"
+      @canplay="clearWaiting"
+      @canplaythrough="clearWaiting"
+      @loadeddata="clearWaiting"
+      @ended="onEnded"
+      @error="onError"
     />
     <audio
       v-else
@@ -359,12 +431,16 @@ onBeforeUnmount(() => {
       @loadedmetadata="onLoadedMetadata"
       @timeupdate="onTimeUpdate"
       @progress="onProgress"
-      @playing="isPlaying = true; isWaiting = false"
-      @play="isPlaying = true"
-      @pause="isPlaying = false"
+      @playing="onPlaybackActive"
+      @play="onPlaybackActive"
+      @pause="onPause"
       @waiting="isWaiting = true"
-      @ended="isPlaying = false"
-      @error="hasError = true"
+      @seeked="clearWaiting"
+      @canplay="clearWaiting"
+      @canplaythrough="clearWaiting"
+      @loadeddata="clearWaiting"
+      @ended="onEnded"
+      @error="onError"
     />
 
     <div
@@ -373,6 +449,24 @@ onBeforeUnmount(() => {
       aria-hidden="true"
     >
       <Loader2Icon :size="32" />
+    </div>
+
+    <div
+      v-if="isVideo"
+      class="media-player__top-controls"
+    >
+      <button
+        type="button"
+        class="media-player__button"
+        :aria-label="isFullscreen ? t('mediaPlayer.exitFullscreen') : t('mediaPlayer.fullscreen')"
+        :title="isFullscreen ? t('mediaPlayer.exitFullscreen') : t('mediaPlayer.fullscreen')"
+        @click="toggleFullscreen"
+      >
+        <component
+          :is="isFullscreen ? MinimizeIcon : MaximizeIcon"
+          :size="18"
+        />
+      </button>
     </div>
 
     <div
@@ -413,19 +507,20 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <div class="media-player__row">
-        <button
-          v-if="isVideo"
-          type="button"
-          class="media-player__button"
-          :aria-label="isFullscreen ? t('mediaPlayer.exitFullscreen') : t('mediaPlayer.fullscreen')"
-          :title="isFullscreen ? t('mediaPlayer.exitFullscreen') : t('mediaPlayer.fullscreen')"
-          @click="toggleFullscreen"
-        >
-          <component
-            :is="isFullscreen ? MinimizeIcon : MaximizeIcon"
-            :size="18"
-          />
-        </button>
+        <!-- Playback modes. Play-all and shuffle will join the loop toggle here. -->
+        <div class="media-player__modes">
+          <button
+            type="button"
+            class="media-player__button"
+            :class="{ 'media-player__button--active': isLooping }"
+            :aria-pressed="isLooping"
+            :aria-label="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
+            :title="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
+            @click="toggleLoop"
+          >
+            <Repeat1Icon :size="18" />
+          </button>
+        </div>
         <div class="media-player__volume media-player__button--end">
           <button
             type="button"
@@ -527,6 +622,28 @@ onBeforeUnmount(() => {
   background: linear-gradient(to top, rgb(0 0 0 / 78%), transparent);
 }
 
+/* Fullscreen sits over the picture rather than in the bottom bar, so it needs the same
+   scrim the bottom bar gets to stay legible against a bright frame. */
+
+.media-player__top-controls {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 78%), transparent);
+  opacity: 0.8;
+  transition: opacity 150ms ease;
+}
+
+.media-player--controls-hidden .media-player__top-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .media-player--audio .media-player__controls {
   position: relative;
   background: none;
@@ -569,9 +686,9 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: var(--radius-sm);
   background: hsl(var(--background-2));
-  opacity: 0.8;
   color: var(--foreground);
   cursor: pointer;
+  opacity: 0.8;
 }
 
 .media-player--video .media-player__button {
@@ -589,6 +706,19 @@ onBeforeUnmount(() => {
 
 .media-player__button--end {
   margin-left: auto;
+}
+
+.media-player--video .media-player__button--active,
+.media-player__button--active {
+  background: hsl(var(--secondary));
+  color: hsl(var(--primary));
+  opacity: 1;
+}
+
+.media-player__modes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .media-player__volume {

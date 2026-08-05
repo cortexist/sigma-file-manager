@@ -1241,6 +1241,8 @@
     "volume": "音量",
     "seek": "再生位置",
     "fullscreen": "全画面表示にする",
-    "exitFullscreen": "全画面表示を終了"
+    "exitFullscreen": "全画面表示を終了",
+    "loop": "現在のファイルを繰り返す",
+    "loopOff": "繰り返しをオフにする"
   }
 }

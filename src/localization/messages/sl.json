@@ -1241,6 +1241,8 @@
     "volume": "Glasnost",
     "seek": "Položaj predvajanja",
     "fullscreen": "Vklopi celozaslonski način",
-    "exitFullscreen": "Izhod iz celozaslonskega načina"
+    "exitFullscreen": "Izhod iz celozaslonskega načina",
+    "loop": "Ponavljaj trenutno datoteko",
+    "loopOff": "Izklopi ponavljanje"
   }
 }

@@ -1241,6 +1241,8 @@
     "volume": "音量",
     "seek": "播放进度",
     "fullscreen": "进入全屏",
-    "exitFullscreen": "退出全屏"
+    "exitFullscreen": "退出全屏",
+    "loop": "重复播放当前文件",
+    "loopOff": "关闭重复播放"
   }
 }

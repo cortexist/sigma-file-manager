@@ -1241,6 +1241,8 @@
     "volume": "Ses düzeyi",
     "seek": "Oynatma konumu",
     "fullscreen": "Tam ekrana geç",
-    "exitFullscreen": "Tam ekrandan çık"
+    "exitFullscreen": "Tam ekrandan çık",
+    "loop": "Geçerli dosyayı tekrarla",
+    "loopOff": "Tekrarı kapat"
   }
 }

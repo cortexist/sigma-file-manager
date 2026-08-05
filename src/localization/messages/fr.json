@@ -1241,6 +1241,8 @@
     "volume": "Volume",
     "seek": "Position de lecture",
     "fullscreen": "Passer en plein écran",
-    "exitFullscreen": "Quitter le plein écran"
+    "exitFullscreen": "Quitter le plein écran",
+    "loop": "Répéter le fichier actuel",
+    "loopOff": "Désactiver la répétition"
   }
 }

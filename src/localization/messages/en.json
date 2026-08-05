@@ -1241,6 +1241,8 @@
     "volume": "Volume",
     "seek": "Seek",
     "fullscreen": "Enter fullscreen",
-    "exitFullscreen": "Exit fullscreen"
+    "exitFullscreen": "Exit fullscreen",
+    "loop": "Repeat current file",
+    "loopOff": "Turn off repeat"
   }
 }

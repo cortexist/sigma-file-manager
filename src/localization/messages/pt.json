@@ -1241,6 +1241,8 @@
     "volume": "Volume",
     "seek": "Posição de reprodução",
     "fullscreen": "Entrar em tela cheia",
-    "exitFullscreen": "Sair da tela cheia"
+    "exitFullscreen": "Sair da tela cheia",
+    "loop": "Repetir o arquivo atual",
+    "loopOff": "Desativar a repetição"
   }
 }

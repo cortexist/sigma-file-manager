@@ -1241,6 +1241,8 @@
     "volume": "Lautstärke",
     "seek": "Wiedergabeposition",
     "fullscreen": "Vollbild aktivieren",
-    "exitFullscreen": "Vollbild beenden"
+    "exitFullscreen": "Vollbild beenden",
+    "loop": "Aktuelle Datei wiederholen",
+    "loopOff": "Wiederholung ausschalten"
   }
 }
