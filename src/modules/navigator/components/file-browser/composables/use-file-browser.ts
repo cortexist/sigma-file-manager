@@ -8,7 +8,7 @@ import {
 import type { Ref, ComputedRef, ComponentPublicInstance } from 'vue';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import { useDismissalLayerStore } from '@/stores/runtime/dismissal-layer';
-import { useQuickViewStore } from '@/stores/runtime/quick-view';
+import { quickViewSupportedPathsFromVisibleEntries, useQuickViewStore } from '@/stores/runtime/quick-view';
 import { useGlobalSearchStore } from '@/stores/runtime/global-search';
 import { useWorkspacesStore } from '@/stores/storage/workspaces';
 import {
@@ -515,6 +515,18 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
     }
 
     applyFilteredFirstEntrySelection(entries, () => isCancelled);
+  });
+
+  /**
+   * The directory watcher refreshes this listing when files appear or disappear on disk, so
+   * this is also the moment Quick View's filmstrip goes stale. The store ignores the call
+   * unless the listing is the one Quick View was opened from.
+   */
+  watch(visualEntries, (entries) => {
+    void quickViewStore.syncSiblingPaths(
+      dataSource.currentPath.value,
+      quickViewSupportedPathsFromVisibleEntries(entries),
+    );
   });
 
   if (!isExternalMode) {

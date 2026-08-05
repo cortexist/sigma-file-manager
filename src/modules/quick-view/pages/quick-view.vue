@@ -34,6 +34,7 @@ import {
   fetchQuickViewSiblingPathsFromDisk,
   QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
   QUICK_VIEW_LOAD_FILE_EVENT,
+  QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
 import { convertMediaSrc } from '@/utils/media-src';
@@ -111,6 +112,7 @@ let textPreviewRequestId = 0;
 let markdownPreviewRequestId = 0;
 let unlistenLoadFile: UnlistenFn | null = null;
 let unlistenCloseRequested: UnlistenFn | null = null;
+let unlistenSiblingPathsChanged: UnlistenFn | null = null;
 
 watch(
   resolvedSiblingPaths,
@@ -706,6 +708,74 @@ async function closeWindow() {
   await releaseAuxiliaryWindow('quick-view');
 }
 
+/**
+ * Drops the open file without touching the filmstrip, leaving the window on its empty state
+ * with the surviving files still one click away. Used when the file on screen is deleted:
+ * carrying on with a pane playing something that no longer exists is worse than showing
+ * nothing, and there is no way to know whether any neighbour is worth advancing to.
+ */
+function clearDisplayedFile() {
+  const removedPath = currentFilePath.value;
+
+  if (removedPath) {
+    const remainingEdits = { ...pendingTextEdits.value };
+    delete remainingEdits[removedPath];
+    pendingTextEdits.value = remainingEdits;
+  }
+
+  // Retire any in-flight read so a late reply cannot repopulate the pane.
+  textPreviewRequestId += 1;
+  markdownPreviewRequestId += 1;
+
+  currentFilePath.value = null;
+  textEditorValue.value = '';
+  textSavedBaseline.value = '';
+  textPreviewError.value = null;
+  textPreviewLoading.value = false;
+  textWasTruncated.value = false;
+  textSaveRoundTripSafe.value = true;
+
+  void getCurrentWindow().setTitle('Sigma File Manager | Quick View');
+  void emitTo(
+    {
+      kind: 'WebviewWindow',
+      label: 'main',
+    },
+    QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
+    { path: null },
+  );
+}
+
+/**
+ * A listing that no longer mentions the open file is not proof the file went away — the
+ * browser may just be filtered, which would hide it while it sits happily on disk. Only the
+ * filesystem can settle that, so confirm before clearing anything.
+ */
+async function discardDisplayedFileIfDeleted(paths: string[]) {
+  const displayedPath = currentFilePath.value;
+
+  if (!displayedPath || isHttpOrHttpsUrl(displayedPath) || paths.includes(displayedPath)) {
+    return;
+  }
+
+  try {
+    if (await invoke<boolean>('path_exists', { path: displayedPath })) {
+      return;
+    }
+  }
+  catch {
+    // Unconfirmed is not deleted; leave what is on screen alone.
+    return;
+  }
+
+  // A new file may have loaded while the check was in flight.
+  if (currentFilePath.value !== displayedPath) {
+    return;
+  }
+
+  clearDisplayedFile();
+}
+
 async function setQuickViewWindowTitle(path: string) {
   const quickWindow = getCurrentWindow();
   await quickWindow.setTitle(`Sigma File Manager | Quick View - ${getFileName(path)}`);
@@ -1033,6 +1103,26 @@ async function setupEventListeners() {
     },
   );
 
+  /**
+   * The browser this window was opened from re-sends its file list whenever the directory
+   * watcher sees the folder change, so the strip follows files being created and deleted.
+   * The main window has already checked the list belongs to this window's directory.
+   */
+  unlistenSiblingPathsChanged = await listen<{ paths: string[] }>(
+    QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
+    async (event) => {
+      const paths = uniqueSiblingPaths(event.payload.paths);
+
+      resolvedSiblingPaths.value = paths;
+      siblingPathsProvidedByMain.value = true;
+
+      await discardDisplayedFileIfDeleted(paths);
+
+      await nextTick();
+      scrollActiveThumbIntoView();
+    },
+  );
+
   unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
     event.preventDefault();
     await closeWindow();
@@ -1119,6 +1209,10 @@ onUnmounted(() => {
 
   if (unlistenCloseRequested) {
     unlistenCloseRequested();
+  }
+
+  if (unlistenSiblingPathsChanged) {
+    unlistenSiblingPathsChanged();
   }
 });
 </script>
@@ -1318,95 +1412,6 @@ onUnmounted(() => {
           </p>
         </div>
       </div>
-
-      <div
-        v-if="resolvedSiblingPaths.length > 0"
-        class="quick-view__strip"
-      >
-        <ScrollArea
-          ref="stripScrollAreaRef"
-          orientation="horizontal"
-          class="quick-view__strip-scroll"
-        >
-          <div
-            class="quick-view__strip-virtual-spacer"
-            :style="{
-              width: `${stripVirtualTotalWidthPx}px`,
-              minHeight: `${QUICK_VIEW_STRIP_THUMB_WIDTH}px`,
-            }"
-          >
-            <div
-              class="quick-view__strip-row quick-view__strip-row--virtual"
-              role="tablist"
-              :aria-label="t('quickView.thumbnailStripLabel')"
-              :style="{ left: `${stripVirtualRowLeftPx}px` }"
-            >
-              <button
-                v-for="thumb in stripVirtualVisibleThumbs"
-                :key="thumb.path"
-                type="button"
-                role="tab"
-                class="quick-view__thumb"
-                :class="{ 'quick-view__thumb--active': thumb.path === currentFilePath }"
-                :aria-selected="thumb.path === currentFilePath"
-                :aria-setsize="resolvedSiblingPaths.length"
-                :aria-posinset="resolvedSiblingPaths.indexOf(thumb.path) + 1"
-                :data-quick-view-thumb="thumb.path"
-                :title="thumb.hasUnsavedBadge ? t('quickView.thumbnailUnsavedHint') : undefined"
-                @click="void selectPath(thumb.path)"
-              >
-                <img
-                  v-if="thumb.kind === 'image' && quickViewStripImageSrc(thumb.path)"
-                  class="quick-view__thumb-image"
-                  :src="quickViewStripImageSrc(thumb.path)"
-                  alt=""
-                >
-                <Loader2Icon
-                  v-else-if="thumb.kind === 'image' && quickViewStripImageShowsSpinner(thumb.path)"
-                  :size="28"
-                  class="quick-view__thumb-loading-icon"
-                  aria-hidden="true"
-                />
-                <FileImageIcon
-                  v-else-if="thumb.kind === 'image'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <img
-                  v-else-if="thumb.kind === 'video' && quickViewStripVideoSrc(thumb.path)"
-                  class="quick-view__thumb-image"
-                  :src="quickViewStripVideoSrc(thumb.path)"
-                  alt=""
-                >
-                <VideoIcon
-                  v-else-if="thumb.kind === 'video'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <Music2Icon
-                  v-else-if="thumb.kind === 'audio'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <FileTextIcon
-                  v-else-if="thumb.kind === 'document'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <span
-                  v-if="thumb.hasUnsavedBadge"
-                  class="quick-view__thumb-unsaved-badge"
-                  aria-hidden="true"
-                />
-              </button>
-            </div>
-          </div>
-        </ScrollArea>
-      </div>
     </template>
 
     <div
@@ -1414,6 +1419,95 @@ onUnmounted(() => {
       class="quick-view__empty"
     >
       <p>{{ t('quickView.noFileSelected') }}</p>
+    </div>
+
+    <div
+      v-if="resolvedSiblingPaths.length > 0"
+      class="quick-view__strip"
+    >
+      <ScrollArea
+        ref="stripScrollAreaRef"
+        orientation="horizontal"
+        class="quick-view__strip-scroll"
+      >
+        <div
+          class="quick-view__strip-virtual-spacer"
+          :style="{
+            width: `${stripVirtualTotalWidthPx}px`,
+            minHeight: `${QUICK_VIEW_STRIP_THUMB_WIDTH}px`,
+          }"
+        >
+          <div
+            class="quick-view__strip-row quick-view__strip-row--virtual"
+            role="tablist"
+            :aria-label="t('quickView.thumbnailStripLabel')"
+            :style="{ left: `${stripVirtualRowLeftPx}px` }"
+          >
+            <button
+              v-for="thumb in stripVirtualVisibleThumbs"
+              :key="thumb.path"
+              type="button"
+              role="tab"
+              class="quick-view__thumb"
+              :class="{ 'quick-view__thumb--active': thumb.path === currentFilePath }"
+              :aria-selected="thumb.path === currentFilePath"
+              :aria-setsize="resolvedSiblingPaths.length"
+              :aria-posinset="resolvedSiblingPaths.indexOf(thumb.path) + 1"
+              :data-quick-view-thumb="thumb.path"
+              :title="thumb.hasUnsavedBadge ? t('quickView.thumbnailUnsavedHint') : undefined"
+              @click="void selectPath(thumb.path)"
+            >
+              <img
+                v-if="thumb.kind === 'image' && quickViewStripImageSrc(thumb.path)"
+                class="quick-view__thumb-image"
+                :src="quickViewStripImageSrc(thumb.path)"
+                alt=""
+              >
+              <Loader2Icon
+                v-else-if="thumb.kind === 'image' && quickViewStripImageShowsSpinner(thumb.path)"
+                :size="28"
+                class="quick-view__thumb-loading-icon"
+                aria-hidden="true"
+              />
+              <FileImageIcon
+                v-else-if="thumb.kind === 'image'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <img
+                v-else-if="thumb.kind === 'video' && quickViewStripVideoSrc(thumb.path)"
+                class="quick-view__thumb-image"
+                :src="quickViewStripVideoSrc(thumb.path)"
+                alt=""
+              >
+              <VideoIcon
+                v-else-if="thumb.kind === 'video'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <Music2Icon
+                v-else-if="thumb.kind === 'audio'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <FileTextIcon
+                v-else-if="thumb.kind === 'document'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <span
+                v-if="thumb.hasUnsavedBadge"
+                class="quick-view__thumb-unsaved-badge"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </div>
+      </ScrollArea>
     </div>
 
     <div class="quick-view__hint">

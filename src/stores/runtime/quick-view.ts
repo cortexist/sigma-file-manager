@@ -10,7 +10,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { toast, ToastStatic } from '@/components/ui/toaster';
 import { i18n } from '@/localization';
 import type { DirContents } from '@/types/dir-entry';
-import { getParentDirectory } from '@/utils/normalize-path';
+import { canonicalizePath, getParentDirectory } from '@/utils/normalize-path';
 import {
   emitAuxiliaryWindowEvent,
   findAuxiliaryWindow,
@@ -150,6 +150,7 @@ export function getQuickViewDisplayUrl(pathOrUrl: string): string {
 
 export const QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT = 'quick-view:displayed-path-changed';
 export const QUICK_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file';
+export const QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT = 'quick-view:sibling-paths-changed';
 export const PRINT_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file:print-view';
 
 async function runAuxiliaryWindowSteps(
@@ -175,6 +176,8 @@ export const useQuickViewStore = defineStore('quickView', () => {
   const currentFilePath = ref<string | null>(null);
   const isLoading = ref(false);
   const lastOpenedPath = ref<string | null>(null);
+  /** Folder Quick View is bound to; outlives the displayed file being deleted. */
+  const lastOpenedDirectory = ref<string | null>(null);
   const displayedPathEventUnlisteners = shallowRef<UnlistenFn[]>([]);
 
   const fileType = computed((): QuickViewFileType => {
@@ -249,6 +252,7 @@ export const useQuickViewStore = defineStore('quickView', () => {
 
     if (opened) {
       lastOpenedPath.value = path;
+      lastOpenedDirectory.value = canonicalizePath(getParentDirectory(path));
     }
 
     return opened ?? false;
@@ -290,6 +294,36 @@ export const useQuickViewStore = defineStore('quickView', () => {
   async function closeWindow(): Promise<void> {
     await releaseAuxiliaryWindow('quick-view');
     lastOpenedPath.value = null;
+    lastOpenedDirectory.value = null;
+  }
+
+  /**
+   * Keeps the Quick View filmstrip in step with the browser listing it was opened from, so a
+   * file created or deleted on disk appears or disappears there too.
+   *
+   * The directory guard matters because every open tab and split pane runs its own listing:
+   * without it, a refresh in some unrelated folder would replace the strip with that folder's
+   * files. It is tracked separately from `lastOpenedPath` because deleting the open file
+   * leaves Quick View showing nothing while still bound to that folder — deriving the folder
+   * from the displayed file would stop the updates exactly when they are still wanted.
+   */
+  async function syncSiblingPaths(directory: string, paths: string[]): Promise<boolean> {
+    if (getCurrentWebviewWindow().label !== 'main') {
+      return false;
+    }
+
+    const boundDirectory = lastOpenedDirectory.value;
+
+    if (!boundDirectory || boundDirectory !== canonicalizePath(directory)) {
+      return false;
+    }
+
+    // Resolves false on its own when the window is gone or unresponsive.
+    return await emitAuxiliaryWindowEvent(
+      'quick-view',
+      QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
+      { paths },
+    );
   }
 
   async function isWindowVisible(): Promise<boolean> {
@@ -329,6 +363,12 @@ export const useQuickViewStore = defineStore('quickView', () => {
       QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
       (event) => {
         lastOpenedPath.value = event.payload.path;
+
+        // A null path means the open file was deleted, not that the window moved on from the
+        // folder, so the binding stays put and the strip keeps receiving updates.
+        if (event.payload.path) {
+          lastOpenedDirectory.value = canonicalizePath(getParentDirectory(event.payload.path));
+        }
       },
     );
 
@@ -342,11 +382,13 @@ export const useQuickViewStore = defineStore('quickView', () => {
     fileName,
     fileAssetUrl,
     lastOpenedPath,
+    lastOpenedDirectory,
     loadFile,
     openFileFromMainWindow,
     openPrintViewFromMainWindow,
     closeWindow,
     isWindowVisible,
+    syncSiblingPaths,
     toggleQuickView,
     getQuickViewWindow,
     getPrintViewWindow,
