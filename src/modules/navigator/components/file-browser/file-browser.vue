@@ -145,6 +145,7 @@ provideFileBrowserContext({
   shouldShowImageThumbnailFallback: fb.shouldShowImageThumbnailFallback,
   cancelImageThumbnail: fb.cancelImageThumbnail,
   getVideoThumbnail: fb.getVideoThumbnail,
+  getAudioCover: fb.getAudioCover,
   cancelVideoThumbnail: fb.cancelVideoThumbnail,
   setEntriesContainerRef: fb.setEntriesContainerRef,
   setScrollViewportRef: fb.setScrollViewportRef,

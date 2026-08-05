@@ -31,6 +31,7 @@ export interface FileBrowserContext {
   shouldShowImageThumbnailFallback: (entry: DirEntry, maxDimension?: number) => boolean;
   cancelImageThumbnail: (entry: DirEntry, maxDimension?: number) => void;
   getVideoThumbnail: (entry: DirEntry) => string | undefined;
+  getAudioCover: (entry: DirEntry) => string | undefined;
   cancelVideoThumbnail: (entry: DirEntry) => void;
   setEntriesContainerRef: (element: Element | ComponentPublicInstance | null) => void;
   setScrollViewportRef: (element: Element | ComponentPublicInstance | null) => void;

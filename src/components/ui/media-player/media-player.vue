@@ -252,7 +252,7 @@ function toggleMute() {
 }
 
 async function toggleFullscreen() {
-  if (!isVideo.value) return;
+  // if (!isVideo.value) return;
 
   try {
     if (document.fullscreenElement) {
@@ -453,11 +453,8 @@ function onKeydown(event: KeyboardEvent) {
       toggleMute();
       break;
     case 'f':
-      if (isVideo.value) {
-        event.preventDefault();
-        void toggleFullscreen();
-      }
-
+      event.preventDefault();
+      void toggleFullscreen();
       break;
     default:
       break;
@@ -591,7 +588,6 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      v-if="isVideo"
       class="media-player__top-controls"
     >
       <button

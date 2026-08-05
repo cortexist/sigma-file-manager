@@ -17,6 +17,7 @@ import {
 import { useInfoPanelImagePreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-image-preview';
 import { useInfoPanelVideoPreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-video-preview';
 import { MediaPlayer } from '@/components/ui/media-player';
+import { useAudioCovers } from '@/composables/use-audio-covers';
 import UbuntuWslIcon from '@/components/icons/ubuntu-wsl-icon.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isWslPath } from '@/utils/normalize-path';
@@ -54,6 +55,8 @@ const {
   autoplayVideoPreview,
 } = useInfoPanelVideoPreview(() => props.selectedEntry);
 
+const audioCovers = useAudioCovers();
+
 const textPreviewContent = ref('');
 const textPreviewLoading = ref(false);
 const textPreviewFailed = ref(false);
@@ -67,6 +70,29 @@ const infoPanelPreviewKind = computed(() => {
   }
 
   return determineFileType(entry.path);
+});
+
+/**
+ * Same order Quick View uses: the picture embedded in the track, then a cover file beside
+ * it. Nothing here means the player falls back to its music glyph.
+ */
+const audioArtworkSrc = computed((): string | undefined => {
+  const entry = props.selectedEntry;
+
+  if (!entry?.path || infoPanelPreviewKind.value !== 'audio') {
+    return undefined;
+  }
+
+  void audioCovers.embeddedCovers.value;
+  void audioCovers.siblingCovers.value;
+
+  const embedded = audioCovers.getEmbeddedCover(entry);
+
+  if (embedded) {
+    return embedded;
+  }
+
+  return audioCovers.getSiblingCover(entry.path);
 });
 
 const showWslDirectoryIcon = computed(() => {
@@ -197,13 +223,14 @@ watch(
     </div>
     <div
       v-else-if="infoPanelPreviewKind === 'audio'"
-      class="info-panel-preview__media-container info-panel-preview__media-container--audio"
+      class="info-panel-preview__media-container"
     >
-      <audio
+      <MediaPlayer
+        :key="selectedEntry.path"
         :src="playableMediaSrc"
+        kind="audio"
+        :poster="audioArtworkSrc"
         class="info-panel-preview__audio animate-fade-in-x2"
-        controls
-        preload="metadata"
       />
     </div>
     <div
@@ -314,12 +341,9 @@ watch(
   border-radius: var(--radius-sm);
 }
 
-.info-panel-preview__media-container--audio {
-  padding: 8px 12px;
-}
-
 .info-panel-preview__audio {
   width: 100%;
+  height: 100%;
 }
 
 .info-panel-preview__pdf {

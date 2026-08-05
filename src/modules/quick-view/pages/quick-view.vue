@@ -1833,14 +1833,14 @@ onUnmounted(() => {
 .quick-view__strip {
   width: 100%;
   flex: 0 0 auto;
-  padding: 10px 12px 6px;
+  padding: 6px 12px 0 12px;
   border-top: 1px solid hsl(var(--border, 0 0% 90%));
   background: hsl(var(--background, 0 0% 100%) / 95%);
 }
 
 .quick-view__strip-scroll {
   width: 100%;
-  height: 92px;
+  height: 85px;
 }
 
 .quick-view__strip-scroll :deep(.sigma-ui-scroll-area__viewport > div) {
@@ -1926,7 +1926,7 @@ onUnmounted(() => {
 
 .quick-view__hint {
   flex: 0 0 auto;
-  padding: 8px;
+  padding: 0 8px 8px 8px;
   background: hsl(var(--background, 0 0% 100%) / 90%);
   color: hsl(var(--muted-foreground, 0 0% 45%));
   font-size: 12px;

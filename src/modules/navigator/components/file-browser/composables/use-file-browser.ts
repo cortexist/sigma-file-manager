@@ -45,6 +45,7 @@ import { useFileBrowserVirtualLayout } from './use-file-browser-virtual-layout';
 import { useFileBrowserBoxSelection } from './use-file-browser-box-selection';
 import { useNavigatorImageThumbnails } from '@/modules/navigator/composables/use-navigator-image-thumbnails';
 import { useVideoThumbnails } from './use-video-thumbnails';
+import { useAudioCovers } from '@/composables/use-audio-covers';
 import { getNavigatorSortSettingsForLayout } from '@/modules/navigator/components/file-browser/utils/file-browser-sort-columns';
 
 function createNavigatorSortSettingsComputed(
@@ -355,6 +356,13 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
         cancelVideoThumbnail: () => undefined,
         clearThumbnails: () => undefined,
       };
+  const audioCovers = !isExternalMode
+    ? useAudioCovers()
+    : {
+        embeddedCovers: ref<Record<string, string>>({}),
+        getEmbeddedCover: () => undefined,
+        clearAudioCovers: () => undefined,
+      };
   const imageThumbnails = !isExternalMode
     ? useNavigatorImageThumbnails()
     : {
@@ -626,6 +634,8 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
     getImageThumbnailPlaceholder: imageThumbnails.getImageThumbnailPlaceholder,
     shouldShowImageThumbnailFallback: imageThumbnails.shouldShowImageThumbnailFallback,
     cancelImageThumbnail: imageThumbnails.cancelImageThumbnail,
+    embeddedAudioCovers: audioCovers.embeddedCovers,
+    getAudioCover: audioCovers.getEmbeddedCover,
     getVideoThumbnail: videoThumbnails.getVideoThumbnail,
     cancelVideoThumbnail: videoThumbnails.cancelVideoThumbnail,
     entriesContainerRef,
