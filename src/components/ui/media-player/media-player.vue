@@ -24,6 +24,7 @@ import {
   MaximizeIcon,
   MinimizeIcon,
   Repeat1Icon,
+  RepeatOffIcon,
   Loader2Icon,
 } from '@lucide/vue';
 import { Slider } from '@/components/ui/slider';
@@ -518,7 +519,11 @@ onBeforeUnmount(() => {
             :title="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
             @click="toggleLoop"
           >
-            <Repeat1Icon :size="18" />
+            <!-- Glyph carries the state, so the toggle does not read on colour alone. -->
+            <component
+              :is="isLooping ? Repeat1Icon : RepeatOffIcon"
+              :size="18"
+            />
           </button>
         </div>
         <div class="media-player__volume media-player__button--end">
@@ -614,7 +619,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   padding: 8px 12px 10px;
   gap: 4px;
-  opacity: 0.8;
+  opacity: 0.9;
   transition: opacity 150ms ease;
 }
 
@@ -635,7 +640,7 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   padding: 8px 12px;
   background: linear-gradient(to bottom, rgb(0 0 0 / 78%), transparent);
-  opacity: 0.8;
+  opacity: 0.9;
   transition: opacity 150ms ease;
 }
 
