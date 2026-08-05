@@ -33,9 +33,12 @@ const props = withDefaults(defineProps<{
   src: string;
   kind?: 'video' | 'audio';
   autoplay?: boolean;
+  /** Start silent. Also what lets an autoplaying preview begin without being blocked. */
+  muted?: boolean;
 }>(), {
   kind: 'video',
   autoplay: false,
+  muted: false,
 });
 
 const { t } = useI18n();
@@ -43,6 +46,8 @@ const { t } = useI18n();
 const SEEK_STEP_SECONDS = 5;
 const VOLUME_STEP = 0.05;
 const CONTROLS_IDLE_MS = 2500;
+const LOOP_WRAP_LEAD_SECONDS = 0.2;
+const LOOP_WATCH_INTERVAL_MS = 100;
 
 const containerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLMediaElement | null>(null);
@@ -56,7 +61,7 @@ const currentTime = ref(0);
 const duration = ref(0);
 const bufferedTo = ref(0);
 const volume = ref(1);
-const isMuted = ref(false);
+const isMuted = ref(props.muted);
 const isPointerActive = ref(false);
 const isFocusWithin = ref(false);
 /**
@@ -67,6 +72,7 @@ const isFocusWithin = ref(false);
 const isLooping = ref(false);
 
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
+let loopWatchTimer: ReturnType<typeof setInterval> | undefined;
 let lastProgressAt = -1;
 
 const isVideo = computed(() => props.kind === 'video');
@@ -138,6 +144,35 @@ function markPointerActive() {
 function markPointerIdle() {
   clearIdleTimer();
   isPointerActive.value = false;
+}
+
+/**
+ * Only keyboard focus holds the controls open.
+ *
+ * Focus is how someone navigating without a pointer keeps the controls reachable, but a plain
+ * `focusin` also fires when a button is clicked, and focus then stays on that button. In
+ * fullscreen that is fatal: you got there by clicking the fullscreen button, nothing else is
+ * around to take focus away, so the bar would stay up for good over the picture.
+ *
+ * `:focus-visible` is exactly the distinction wanted — the engine sets it for keyboard focus
+ * and withholds it for a click on a button.
+ */
+function onFocusIn(event: FocusEvent) {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    isFocusWithin.value = false;
+    return;
+  }
+
+  try {
+    isFocusWithin.value = target.matches(':focus-visible');
+  }
+  catch {
+    // An engine without `:focus-visible` keeps the old behaviour rather than stranding
+    // keyboard users with controls they cannot hold open.
+    isFocusWithin.value = true;
+  }
 }
 
 function formatTime(totalSeconds: number): string {
@@ -273,6 +308,76 @@ function onPause() {
   clearWaiting();
 }
 
+function stopLoopWatch() {
+  if (loopWatchTimer === undefined) return;
+  clearInterval(loopWatchTimer);
+  loopWatchTimer = undefined;
+}
+
+/**
+ * While looping, wrap fractionally before the end rather than letting the file finish.
+ *
+ * Reaching the end and seeking back works windowed but not in fullscreen: WebKitGTK leaves
+ * the element reporting `paused === false` on a frozen first frame — no buffering, no error,
+ * just a clock that never advances, so the button showed pause and two clicks were needed to
+ * get moving. Never entering the ended state avoids that path, and playback carries straight
+ * through the seek. `timeupdate` is too coarse to catch the last fraction reliably, hence the
+ * short interval.
+ */
+function startLoopWatch() {
+  stopLoopWatch();
+
+  loopWatchTimer = setInterval(() => {
+    const media = mediaRef.value;
+
+    if (!media || media.paused || !isLooping.value) return;
+
+    const remaining = media.duration - media.currentTime;
+
+    if (Number.isFinite(remaining) && remaining > 0 && remaining <= LOOP_WRAP_LEAD_SECONDS) {
+      media.currentTime = 0;
+    }
+  }, LOOP_WATCH_INTERVAL_MS);
+}
+
+/**
+ * Rewind and resume, in that order, waiting for the seek to actually land.
+ *
+ * Asking to play in the same tick as the rewind works windowed but not in fullscreen, where
+ * WebKitGTK takes the seek and drops the play: the element then reports `paused === false`
+ * while nothing advances, so the button claimed to be playing and the next click merely
+ * paused it — two clicks to get moving again.
+ *
+ * `isPlaying` is reconciled from the element at the end rather than assumed, so the button
+ * always describes what the pipeline is really doing.
+ */
+function restartForLoop(media: HTMLMediaElement) {
+  let resumed = false;
+
+  function resume() {
+    if (resumed) return;
+    resumed = true;
+
+    clearTimeout(seekFallbackTimer);
+    media.removeEventListener('seeked', resume);
+
+    void media.play()
+      .catch(() => {
+        // Refused outright: leave it genuinely paused so a single click resumes.
+        media.pause();
+      })
+      .finally(() => {
+        isPlaying.value = !media.paused;
+      });
+  }
+
+  media.addEventListener('seeked', resume);
+  // Should the engine never report the seek, start anyway rather than stopping the loop dead.
+  const seekFallbackTimer = setTimeout(resume, 400);
+
+  media.currentTime = 0;
+}
+
 function onEnded() {
   const media = mediaRef.value;
 
@@ -283,8 +388,7 @@ function onEnded() {
    * Restarting by hand keeps every round a normal play-through.
    */
   if (isLooping.value && media) {
-    media.currentTime = 0;
-    void media.play();
+    restartForLoop(media);
     return;
   }
 
@@ -356,6 +460,16 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
+// The pre-end wrap only needs watching while a loop is actually running.
+watch([isLooping, isPlaying], ([looping, playing]) => {
+  if (looping && playing) {
+    startLoopWatch();
+    return;
+  }
+
+  stopLoopWatch();
+});
+
 // A new source is a different file: reset everything derived from the old one.
 watch(() => props.src, () => {
   hasError.value = false;
@@ -375,6 +489,7 @@ if (typeof document !== 'undefined') {
 
 onBeforeUnmount(() => {
   clearIdleTimer();
+  stopLoopWatch();
 
   if (typeof document !== 'undefined') {
     document.removeEventListener('fullscreenchange', syncFullscreenState);
@@ -398,7 +513,7 @@ onBeforeUnmount(() => {
     @pointermove="markPointerActive"
     @pointerdown="markPointerActive"
     @pointerleave="markPointerIdle"
-    @focusin="isFocusWithin = true"
+    @focusin="onFocusIn"
     @focusout="isFocusWithin = false"
   >
     <video
@@ -470,22 +585,8 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <div
-      class="media-player__controls"
-    >
+    <div class="media-player__controls">
       <div class="media-player__row">
-        <button
-          type="button"
-          class="media-player__button"
-          :aria-label="isPlaying ? t('mediaPlayer.pause') : t('mediaPlayer.play')"
-          :title="isPlaying ? t('mediaPlayer.pause') : t('mediaPlayer.play')"
-          @click="togglePlay"
-        >
-          <component
-            :is="isPlaying ? PauseIcon : PlayIcon"
-            :size="18"
-          />
-        </button>
         <div class="media-player__seek">
           <div
             class="media-player__buffered"
@@ -503,30 +604,24 @@ onBeforeUnmount(() => {
             @value-commit="isScrubbing = false"
           />
         </div>
-        <span class="media-player__time">
-          {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
-        </span>
       </div>
       <div class="media-player__row">
-        <!-- Playback modes. Play-all and shuffle will join the loop toggle here. -->
-        <div class="media-player__modes">
-          <button
-            type="button"
-            class="media-player__button"
-            :class="{ 'media-player__button--active': isLooping }"
-            :aria-pressed="isLooping"
-            :aria-label="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
-            :title="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
-            @click="toggleLoop"
-          >
-            <!-- Glyph carries the state, so the toggle does not read on colour alone. -->
-            <component
-              :is="isLooping ? Repeat1Icon : RepeatOffIcon"
-              :size="18"
-            />
-          </button>
-        </div>
-        <div class="media-player__volume media-player__button--end">
+        <button
+          type="button"
+          class="media-player__button"
+          :aria-label="isPlaying ? t('mediaPlayer.pause') : t('mediaPlayer.play')"
+          :title="isPlaying ? t('mediaPlayer.pause') : t('mediaPlayer.play')"
+          @click="togglePlay"
+        >
+          <component
+            :is="isPlaying ? PauseIcon : PlayIcon"
+            :size="18"
+          />
+        </button>
+        <span class="media-player__time">
+          {{ formatTime(currentTime) }}/{{ formatTime(duration) }}
+        </span>
+        <div class="media-player__volume">
           <button
             type="button"
             class="media-player__button"
@@ -546,6 +641,24 @@ onBeforeUnmount(() => {
             :aria-label="t('mediaPlayer.volume')"
             class="media-player__volume-slider"
           />
+        </div>
+        <!-- Playback modes. Play-all and shuffle will join the loop toggle here. -->
+        <div class="media-player__modes media-player__controls-end">
+          <button
+            type="button"
+            class="media-player__button"
+            :class="{ 'media-player__button--active': isLooping }"
+            :aria-pressed="isLooping"
+            :aria-label="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
+            :title="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
+            @click="toggleLoop"
+          >
+            <!-- Glyph carries the state, so the toggle does not read on colour alone. -->
+            <component
+              :is="isLooping ? Repeat1Icon : RepeatOffIcon"
+              :size="18"
+            />
+          </button>
         </div>
       </div>
     </div>
@@ -659,6 +772,13 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+/* Fullscreen only: with the bar gone, a pointer left floating over the picture is the last
+   thing on screen that is not the film. Any movement brings both straight back. */
+
+.media-player--fullscreen.media-player--controls-hidden {
+  cursor: none;
+}
+
 .media-player__seek {
   position: relative;
   display: flex;
@@ -685,15 +805,19 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.media-player__row:has(button){
+  padding: 4px 8px;
+  border-radius: var(--radius-lg);
+  background: hsl(var(--background) / 85%);
+}
+
 .media-player__button {
   display: flex;
   padding: 4px;
   border: none;
   border-radius: var(--radius-sm);
-  background: hsl(var(--background-2));
   color: var(--foreground);
   cursor: pointer;
-  opacity: 0.8;
 }
 
 .media-player--video .media-player__button {
@@ -724,6 +848,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.media-player__controls-end {
+  margin-left: auto;
 }
 
 .media-player__volume {

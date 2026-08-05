@@ -26,7 +26,11 @@ const DEFAULT_INFO_PANEL_THUMBNAIL_SIZE = {
 };
 
 export function useInfoPanelImagePreview(selectedEntry: MaybeRefOrGetter<DirEntry | null>) {
-  const { getImageThumbnail } = useNavigatorImageThumbnails();
+  const {
+    getImageThumbnail,
+    getImageThumbnailPlaceholder,
+    shouldShowImageThumbnailFallback,
+  } = useNavigatorImageThumbnails();
   const userSettingsStore = useUserSettingsStore();
 
   const isImageFile = computed(() => {
@@ -103,12 +107,41 @@ export function useInfoPanelImagePreview(selectedEntry: MaybeRefOrGetter<DirEntr
     }) ?? '';
   });
 
+  /**
+   * The same 20px stand-in the grid cards use. Generating the real thumbnail takes long
+   * enough to read as a stall here, because unlike the grid this pane had nothing to show
+   * in the meantime — and its request can be queued behind the grid's own thumbnails.
+   */
+  const imagePreviewPlaceholderSrc = computed(() => {
+    const entry = toValue(selectedEntry);
+
+    if (!entry?.path || !isImageFile.value) {
+      return '';
+    }
+
+    return getImageThumbnailPlaceholder(entry, imageThumbnailMaxDimension.value) ?? '';
+  });
+
+  // Only for a thumbnail that cannot be produced at all, never for one still being made.
+  const shouldShowImageFallback = computed(() => {
+    const entry = toValue(selectedEntry);
+
+    if (!entry?.path || !isImageFile.value) {
+      return false;
+    }
+
+    return !imagePreviewSrc.value
+      && shouldShowImageThumbnailFallback(entry, imageThumbnailMaxDimension.value);
+  });
+
   return {
     previewRef,
     isImageFile,
     mediaSrc,
     playableMediaSrc,
     imagePreviewSrc,
+    imagePreviewPlaceholderSrc,
+    shouldShowImageFallback,
     usesThumbnailImagePreview,
   };
 }

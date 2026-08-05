@@ -16,6 +16,7 @@ import {
 } from '@lucide/vue';
 import { useInfoPanelImagePreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-image-preview';
 import { useInfoPanelVideoPreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-video-preview';
+import { MediaPlayer } from '@/components/ui/media-player';
 import UbuntuWslIcon from '@/components/icons/ubuntu-wsl-icon.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isWslPath } from '@/utils/normalize-path';
@@ -43,12 +44,14 @@ const {
   mediaSrc,
   playableMediaSrc,
   imagePreviewSrc,
+  imagePreviewPlaceholderSrc,
+  shouldShowImageFallback,
 } = useInfoPanelImagePreview(() => props.selectedEntry);
 
 const {
-  videoPreviewRef,
   isVideoFile,
   muteVideoPreviewByDefault,
+  autoplayVideoPreview,
 } = useInfoPanelVideoPreview(() => props.selectedEntry);
 
 const textPreviewContent = ref('');
@@ -160,13 +163,19 @@ watch(
       class="info-panel-preview__media-container"
     >
       <img
+        v-if="imagePreviewPlaceholderSrc && !shouldShowImageFallback"
+        :src="imagePreviewPlaceholderSrc"
+        :alt="selectedEntry.name"
+        class="info-panel-preview__image info-panel-preview__image--placeholder"
+      >
+      <img
         v-if="imagePreviewSrc"
         :src="imagePreviewSrc"
         :alt="selectedEntry.name"
-        class="info-panel-preview__image animate-fade-in-x2"
+        class="info-panel-preview__image info-panel-preview__image--final animate-fade-in-x2"
       >
       <FileImageIcon
-        v-else
+        v-if="shouldShowImageFallback"
         :size="48"
         class="info-panel-preview__image-placeholder animate-fade-in-x2"
       />
@@ -175,13 +184,15 @@ watch(
       v-else-if="isVideoFile"
       class="info-panel-preview__media-container"
     >
-      <video
-        ref="videoPreviewRef"
+      <!-- Keyed on the autoplay setting as well as the file: `autoplay` only takes effect at
+           load, so switching the setting on has to remount to start the preview playing. -->
+      <MediaPlayer
+        :key="`${selectedEntry.path}|${autoplayVideoPreview}`"
         :src="playableMediaSrc"
-        class="info-panel-preview__video animate-fade-in-x2"
-        controls
-        preload="metadata"
+        kind="video"
+        :autoplay="autoplayVideoPreview"
         :muted="muteVideoPreviewByDefault"
+        class="info-panel-preview__video animate-fade-in-x2"
       />
     </div>
     <div
@@ -267,6 +278,7 @@ watch(
 }
 
 .info-panel-preview__media-container {
+  position: relative;
   display: flex;
   overflow: hidden;
   width: 100%;
@@ -280,6 +292,22 @@ watch(
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Sits behind the real thumbnail and is blurred hard: it is a 20px image stretched over the
+   whole pane, so it reads as the picture's colours rather than as a broken preview. */
+
+.info-panel-preview__image--placeholder {
+  position: absolute;
+  z-index: 1;
+  filter: blur(12px);
+  inset: 0;
+  opacity: 0.5;
+}
+
+.info-panel-preview__image--final {
+  position: relative;
+  z-index: 2;
 }
 
 .info-panel-preview__video {

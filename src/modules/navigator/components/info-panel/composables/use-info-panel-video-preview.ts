@@ -4,10 +4,7 @@
 
 import {
   computed,
-  nextTick,
-  ref,
   toValue,
-  watch,
   type MaybeRefOrGetter,
 } from 'vue';
 import { isVideoFile as checkIsVideo } from '@/modules/navigator/components/file-browser/utils';
@@ -16,8 +13,6 @@ import type { DirEntry } from '@/types/dir-entry';
 
 export function useInfoPanelVideoPreview(selectedEntry: MaybeRefOrGetter<DirEntry | null>) {
   const userSettingsStore = useUserSettingsStore();
-
-  const videoPreviewRef = ref<HTMLVideoElement | null>(null);
 
   const isVideoFile = computed(() => {
     const entry = toValue(selectedEntry);
@@ -37,37 +32,7 @@ export function useInfoPanelVideoPreview(selectedEntry: MaybeRefOrGetter<DirEntr
     () => userSettingsStore.userSettings.navigator.infoPanel.autoplayVideoPreview,
   );
 
-  async function tryAutoplayVideoPreview() {
-    if (!autoplayVideoPreview.value) {
-      return;
-    }
-
-    const entry = toValue(selectedEntry);
-
-    if (!entry?.path || !checkIsVideo(entry)) {
-      return;
-    }
-
-    await nextTick();
-
-    const videoElement = videoPreviewRef.value;
-
-    if (!videoElement) {
-      return;
-    }
-
-    void videoElement.play().catch(() => {});
-  }
-
-  watch(
-    [() => toValue(selectedEntry)?.path, autoplayVideoPreview],
-    () => {
-      void tryAutoplayVideoPreview();
-    },
-  );
-
   return {
-    videoPreviewRef,
     isVideoFile,
     muteVideoPreviewByDefault,
     autoplayVideoPreview,
