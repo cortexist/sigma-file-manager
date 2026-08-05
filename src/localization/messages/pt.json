@@ -1243,6 +1243,7 @@
     "fullscreen": "Entrar em tela cheia",
     "exitFullscreen": "Sair da tela cheia",
     "loop": "Repetir o arquivo atual",
-    "loopOff": "Desativar a repetição"
+    "loopOff": "Desativar a repetição",
+    "artwork": "Capa do álbum"
   }
 }

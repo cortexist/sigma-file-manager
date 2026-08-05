@@ -25,6 +25,7 @@ import {
   MinimizeIcon,
   Repeat1Icon,
   RepeatOffIcon,
+  Music2Icon,
   Loader2Icon,
 } from '@lucide/vue';
 import { Slider } from '@/components/ui/slider';
@@ -35,10 +36,13 @@ const props = withDefaults(defineProps<{
   autoplay?: boolean;
   /** Start silent. Also what lets an autoplaying preview begin without being blocked. */
   muted?: boolean;
+  /** Artwork for audio, resolved by the caller. Falls back to a music icon when absent. */
+  poster?: string;
 }>(), {
   kind: 'video',
   autoplay: false,
   muted: false,
+  poster: undefined,
 });
 
 const { t } = useI18n();
@@ -559,6 +563,25 @@ onBeforeUnmount(() => {
       @error="onError"
     />
 
+    <!-- Audio borrows the video layout so the controls sit over a picture either way. The
+         caller resolves the artwork, since only it knows the file path behind `src`. -->
+    <div
+      v-if="!isVideo"
+      class="media-player__artwork"
+    >
+      <img
+        v-if="poster"
+        :src="poster"
+        :alt="t('mediaPlayer.artwork')"
+        class="media-player__artwork-image"
+      >
+      <Music2Icon
+        v-else
+        :size="64"
+        class="media-player__artwork-fallback"
+      />
+    </div>
+
     <div
       v-if="isWaiting && !hasError"
       class="media-player__spinner"
@@ -682,10 +705,25 @@ onBeforeUnmount(() => {
 }
 
 .media-player--audio {
-  width: 80%;
-  max-width: 500px;
-  border-radius: var(--radius-sm);
-  background: hsl(var(--background-2));
+  width: 100%;
+  height: 100%;
+  background: black;
+}
+
+/* Sized to the pane and scaled evenly, matching how video is presented. */
+.media-player__artwork {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--foreground) / 40%);
+  inset: 0;
+}
+
+.media-player__artwork-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .media-player--fullscreen {
@@ -731,13 +769,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   padding: 8px 12px 10px;
+  background: linear-gradient(to top, rgb(0 0 0 / 78%), transparent);
   gap: 4px;
   opacity: 0.9;
   transition: opacity 150ms ease;
-}
-
-.media-player--video .media-player__controls {
-  background: linear-gradient(to top, rgb(0 0 0 / 78%), transparent);
 }
 
 /* Fullscreen sits over the picture rather than in the bottom bar, so it needs the same
@@ -760,11 +795,6 @@ onBeforeUnmount(() => {
 .media-player--controls-hidden .media-player__top-controls {
   opacity: 0;
   pointer-events: none;
-}
-
-.media-player--audio .media-player__controls {
-  position: relative;
-  background: none;
 }
 
 .media-player--controls-hidden .media-player__controls {
@@ -816,12 +846,8 @@ onBeforeUnmount(() => {
   padding: 4px;
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--foreground);
-  cursor: pointer;
-}
-
-.media-player--video .media-player__button {
   color: white;
+  cursor: pointer;
 }
 
 .media-player__button:hover {
@@ -866,17 +892,9 @@ onBeforeUnmount(() => {
 }
 
 .media-player__time {
+  color: white;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.media-player--video .media-player__time {
-  color: white;
-}
-
-.media-player--audio .media-player__time {
-  margin-left: auto;
-  color: hsl(var(--foreground));
 }
 </style>

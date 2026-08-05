@@ -1243,6 +1243,7 @@
     "fullscreen": "Attiva schermo intero",
     "exitFullscreen": "Esci da schermo intero",
     "loop": "Ripeti il file corrente",
-    "loopOff": "Disattiva la ripetizione"
+    "loopOff": "Disattiva la ripetizione",
+    "artwork": "Copertina dell'album"
   }
 }

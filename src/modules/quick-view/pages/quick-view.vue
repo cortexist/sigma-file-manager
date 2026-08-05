@@ -57,6 +57,7 @@ import {
 import { useImageThumbnails } from '@/modules/navigator/components/file-browser/composables/use-image-thumbnails';
 import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/composables/use-video-thumbnails';
 import { useHorizontalFixedVirtualList } from '@/composables/use-horizontal-fixed-virtual-list';
+import { useAudioCovers } from '@/composables/use-audio-covers';
 
 const { t } = useI18n();
 
@@ -67,6 +68,7 @@ const resolvedSiblingPaths = ref<string[]>([]);
 const siblingPathsProvidedByMain = ref(false);
 
 const stripThumbnails = useImageThumbnails();
+const stripAudioCovers = useAudioCovers();
 const stripVideoThumbnails = useVideoThumbnails();
 const stripDirEntryByPath = ref<Record<string, DirEntry>>({});
 let stripEntryLoadToken = 0;
@@ -226,6 +228,30 @@ const fileName = computed((): string => {
   return getFileName(currentFilePath.value);
 });
 
+/**
+ * Artwork for the open track: the picture embedded in the file, else a cover image sitting
+ * beside it. Returning nothing leaves the player on its music-glyph fallback.
+ */
+const audioArtworkSrc = computed((): string | undefined => {
+  const path = currentFilePath.value;
+
+  if (!path || fileType.value !== 'audio' || isHttpOrHttpsUrl(path)) {
+    return undefined;
+  }
+
+  void stripAudioCovers.embeddedCovers.value;
+  void stripAudioCovers.siblingCovers.value;
+
+  const entry = stripDirEntryByPath.value[path];
+  const embedded = entry ? stripAudioCovers.getEmbeddedCover(entry) : undefined;
+
+  if (embedded) {
+    return embedded;
+  }
+
+  return stripAudioCovers.getSiblingCover(path);
+});
+
 const fileAssetUrl = computed((): string => {
   if (!currentFilePath.value) return '';
   return getQuickViewDisplayUrl(currentFilePath.value);
@@ -371,6 +397,26 @@ function quickViewStripVideoSrc(path: string): string | undefined {
   }
 
   return stripVideoThumbnails.getVideoThumbnail(entry);
+}
+
+/**
+ * Audio has no frame to sample, so the strip shows the picture embedded in the file. Falls
+ * back to the music glyph, which is what the template does when this returns nothing.
+ */
+function quickViewStripAudioSrc(path: string): string | undefined {
+  if (determineFileType(path) !== 'audio' || isHttpOrHttpsUrl(path)) {
+    return undefined;
+  }
+
+  void stripAudioCovers.embeddedCovers.value;
+
+  const entry = stripDirEntryByPath.value[path];
+
+  if (!entry) {
+    return undefined;
+  }
+
+  return stripAudioCovers.getEmbeddedCover(entry);
 }
 
 function quickViewStripImageShowsSpinner(path: string): boolean {
@@ -1247,7 +1293,7 @@ onUnmounted(() => {
         class="quick-view__body"
         :class="{
           'quick-view__body--stretch': fileType === 'text',
-          'quick-view__body--media': fileType === 'video',
+          'quick-view__body--media': fileType === 'video' || fileType === 'audio',
         }"
       >
         <img
@@ -1272,6 +1318,7 @@ onUnmounted(() => {
           :key="`${currentFilePath}-audio`"
           :src="fileMediaUrl"
           kind="audio"
+          :poster="audioArtworkSrc"
           class="quick-view__audio"
           autoplay
         />
@@ -1487,6 +1534,12 @@ onUnmounted(() => {
                 :size="28"
                 aria-hidden="true"
               />
+              <img
+                v-else-if="thumb.kind === 'audio' && quickViewStripAudioSrc(thumb.path)"
+                class="quick-view__thumb-image"
+                :src="quickViewStripAudioSrc(thumb.path)"
+                alt=""
+              >
               <Music2Icon
                 v-else-if="thumb.kind === 'audio'"
                 class="quick-view__thumb-icon"
@@ -1607,8 +1660,10 @@ onUnmounted(() => {
 }
 
 .quick-view__audio {
-  width: 80%;
-  max-width: 500px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
 }
 
 .quick-view__pdf {

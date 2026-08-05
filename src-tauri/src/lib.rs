@@ -4,6 +4,7 @@
 
 mod app_updater;
 mod archive;
+mod audio_covers;
 mod background_sources;
 mod clipboard_source;
 mod clipboard_watcher;
@@ -341,6 +342,7 @@ pub fn run() {
             image_thumbnails::cache_video_thumbnail,
             image_thumbnails::generate_video_thumbnail,
             image_thumbnails::generate_image_thumbnail,
+            image_thumbnails::extract_audio_cover,
             image_thumbnails::get_cached_video_thumbnail,
             open_with::get_associated_programs,
             open_with::open_with_program,

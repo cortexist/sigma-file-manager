@@ -616,6 +616,94 @@ fn generate_image_thumbnail_file(
     Ok(thumbnail_path.to_string_lossy().to_string())
 }
 
+/// Writes an audio file's embedded artwork into the thumbnail cache and returns its path, or
+/// `None` when the file carries none.
+///
+/// The picture is stored exactly as it was embedded rather than resized here, so it can serve
+/// both the small filmstrip thumbnail and the full-size player artwork. Callers wanting a
+/// scaled version feed the returned path back through `generate_image_thumbnail`, which
+/// already caches by size.
+fn extract_audio_cover_file(
+    cache_dir: PathBuf,
+    path: String,
+    modified_time: u64,
+    size: u64,
+) -> Result<Option<String>, String> {
+    fs::create_dir_all(&cache_dir)
+        .map_err(|error| format!("Failed to create thumbnail cache directory: {error}"))?;
+
+    // `max_dimension` is meaningless for an untouched copy; 0 keeps this key clear of the
+    // resized-image keys for the same file.
+    // PNG because that is what `write_image_thumbnail` encodes, and the asset protocol picks
+    // the served content type from this extension.
+    let cover_path = cache_dir.join(format!(
+        "{}.png",
+        thumbnail_cache_key(&path, modified_time, size, 0)
+    ));
+
+    {
+        let _cache_file_lock = IMAGE_THUMBNAIL_CACHE_FILE_LOCK
+            .lock()
+            .map_err(|error| format!("Failed to lock thumbnail cache files: {error}"))?;
+
+        if cover_path.exists() {
+            return Ok(Some(cover_path.to_string_lossy().to_string()));
+        }
+    }
+
+    let Some(cover) = crate::audio_covers::extract_embedded_cover(&path)? else {
+        return Ok(None);
+    };
+
+    // Decoding proves it is a real image before it is handed to the webview, and gives the
+    // extension the asset protocol needs to serve it with a sensible type.
+    let decoded = image::load_from_memory(&cover)
+        .map_err(|error| format!("Embedded cover is not a readable image: {error}"))?;
+
+    let temporary_path = temporary_thumbnail_path(&cover_path);
+
+    if let Err(error) = write_image_thumbnail(&decoded, &temporary_path) {
+        let _ = fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+
+    {
+        let _cache_file_lock = IMAGE_THUMBNAIL_CACHE_FILE_LOCK
+            .lock()
+            .map_err(|error| format!("Failed to lock thumbnail cache files: {error}"))?;
+
+        if cover_path.exists() {
+            let _ = fs::remove_file(&temporary_path);
+            return Ok(Some(cover_path.to_string_lossy().to_string()));
+        }
+
+        if let Err(error) = fs::rename(&temporary_path, &cover_path) {
+            let _ = fs::remove_file(&temporary_path);
+            return Err(format!("Failed to finalize embedded cover: {error}"));
+        }
+
+        record_generated_thumbnail()?;
+    }
+
+    Ok(Some(cover_path.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub async fn extract_audio_cover(
+    app: tauri::AppHandle,
+    path: String,
+    modified_time: u64,
+    size: u64,
+) -> Result<Option<String>, String> {
+    let cache_dir = thumbnail_cache_dir(&app)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        extract_audio_cover_file(cache_dir, path, modified_time, size)
+    })
+    .await
+    .map_err(|error| format!("Failed to extract embedded cover: {error}"))?
+}
+
 #[tauri::command]
 pub async fn generate_image_thumbnail(
     app: tauri::AppHandle,

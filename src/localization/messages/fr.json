@@ -1243,6 +1243,7 @@
     "fullscreen": "Passer en plein écran",
     "exitFullscreen": "Quitter le plein écran",
     "loop": "Répéter le fichier actuel",
-    "loopOff": "Désactiver la répétition"
+    "loopOff": "Désactiver la répétition",
+    "artwork": "Pochette de l'album"
   }
 }

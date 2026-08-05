@@ -1243,6 +1243,7 @@
     "fullscreen": "Vollbild aktivieren",
     "exitFullscreen": "Vollbild beenden",
     "loop": "Aktuelle Datei wiederholen",
-    "loopOff": "Wiederholung ausschalten"
+    "loopOff": "Wiederholung ausschalten",
+    "artwork": "Albumcover"
   }
 }

@@ -1243,6 +1243,7 @@
     "fullscreen": "Bật toàn màn hình",
     "exitFullscreen": "Thoát toàn màn hình",
     "loop": "Lặp lại tệp hiện tại",
-    "loopOff": "Tắt lặp lại"
+    "loopOff": "Tắt lặp lại",
+    "artwork": "Ảnh bìa album"
   }
 }

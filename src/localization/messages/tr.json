@@ -1243,6 +1243,7 @@
     "fullscreen": "Tam ekrana geç",
     "exitFullscreen": "Tam ekrandan çık",
     "loop": "Geçerli dosyayı tekrarla",
-    "loopOff": "Tekrarı kapat"
+    "loopOff": "Tekrarı kapat",
+    "artwork": "Albüm kapağı"
   }
 }

@@ -1243,6 +1243,7 @@
     "fullscreen": "Vklopi celozaslonski način",
     "exitFullscreen": "Izhod iz celozaslonskega načina",
     "loop": "Ponavljaj trenutno datoteko",
-    "loopOff": "Izklopi ponavljanje"
+    "loopOff": "Izklopi ponavljanje",
+    "artwork": "Naslovnica albuma"
   }
 }

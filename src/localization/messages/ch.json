@@ -1243,6 +1243,7 @@
     "fullscreen": "进入全屏",
     "exitFullscreen": "退出全屏",
     "loop": "重复播放当前文件",
-    "loopOff": "关闭重复播放"
+    "loopOff": "关闭重复播放",
+    "artwork": "专辑封面"
   }
 }

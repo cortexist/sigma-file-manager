@@ -1243,6 +1243,7 @@
     "fullscreen": "全画面表示にする",
     "exitFullscreen": "全画面表示を終了",
     "loop": "現在のファイルを繰り返す",
-    "loopOff": "繰り返しをオフにする"
+    "loopOff": "繰り返しをオフにする",
+    "artwork": "アルバムアート"
   }
 }

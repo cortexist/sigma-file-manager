@@ -1243,6 +1243,7 @@
     "fullscreen": "Activar pantalla completa",
     "exitFullscreen": "Salir de pantalla completa",
     "loop": "Repetir el archivo actual",
-    "loopOff": "Desactivar la repetición"
+    "loopOff": "Desactivar la repetición",
+    "artwork": "Portada del álbum"
   }
 }
