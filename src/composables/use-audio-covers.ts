@@ -78,7 +78,7 @@ export function useAudioCovers() {
         if (!entry.is_file) return false;
 
         const name = entry.name.toLowerCase();
-        return SIBLING_COVER_EXTENSIONS.some(extension => name === `${stem}.${extension}`);
+        return SIBLING_COVER_EXTENSIONS.some(extension => name === `.${stem}.${extension}` || name === `${stem}.${extension}`);
       });
 
       if (match) {

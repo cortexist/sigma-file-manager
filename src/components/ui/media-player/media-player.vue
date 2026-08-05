@@ -842,7 +842,7 @@ onBeforeUnmount(() => {
   padding: 4px;
   border: none;
   border-radius: var(--radius-sm);
-  color: white;
+  color: var(--foreground);
   cursor: pointer;
 }
 
