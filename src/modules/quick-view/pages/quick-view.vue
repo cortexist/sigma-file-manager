@@ -38,6 +38,7 @@ import {
 } from '@/stores/runtime/quick-view';
 import { convertMediaSrc } from '@/utils/media-src';
 import { MediaPlayer } from '@/components/ui/media-player';
+import WindowActions from '@/modules/window-toolbar/window-actions.vue';
 import {
   decodeTextFileBytesWithEncoding,
   encodeTextFileBytes,
@@ -1124,6 +1125,19 @@ onUnmounted(() => {
 
 <template>
   <div class="quick-view">
+    <!-- App-drawn titlebar so this window matches the frameless main window rather than
+         wearing the desktop's own decorations. -->
+    <div
+      class="quick-view__titlebar"
+      data-tauri-drag-region
+    >
+      <span
+        class="quick-view__titlebar-title"
+        data-tauri-drag-region
+      >{{ fileName }}</span>
+      <WindowActions :close-handler="closeWindow" />
+    </div>
+
     <div
       v-if="isLoading"
       class="quick-view__loading"
@@ -1439,6 +1453,24 @@ onUnmounted(() => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.quick-view__titlebar {
+  display: flex;
+  height: var(--window-toolbar-height);
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 12px;
+  gap: 8px;
+}
+
+.quick-view__titlebar-title {
+  overflow: hidden;
+  color: hsl(var(--foreground) / 70%);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-view__body {

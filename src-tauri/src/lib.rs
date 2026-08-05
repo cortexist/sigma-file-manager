@@ -34,6 +34,7 @@ mod user_storage_files_config;
 pub mod utils;
 #[cfg(target_os = "linux")]
 mod video_thumbnails;
+mod window_manager;
 mod windows_installation;
 #[cfg(windows)]
 mod windows_print_view_webview;
@@ -266,6 +267,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(window_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_system_fonts::init())

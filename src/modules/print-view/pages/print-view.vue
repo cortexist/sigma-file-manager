@@ -12,6 +12,7 @@ import { listen, emitTo, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { FileWarningIcon } from '@lucide/vue';
+import WindowActions from '@/modules/window-toolbar/window-actions.vue';
 import {
   determineFileType,
   getFileName,
@@ -480,6 +481,12 @@ async function handleNativeCloseRequested() {
   await resetPrintWindowState();
 }
 
+// The titlebar button replaces the decoration the window no longer has, so it takes the same
+// path as Escape rather than hiding the window behind the page's own teardown.
+function handleTitlebarClose() {
+  void closePrintWindow({ userInitiated: true });
+}
+
 async function setupEventListeners() {
   unlistenLoadFile = await listen<{ path: string }>(
     PRINT_VIEW_LOAD_FILE_EVENT,
@@ -536,6 +543,19 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- App-drawn titlebar so this window matches the frameless main window. It is chrome, not
+       content, so `@media print` drops it and lets the mount reclaim the full page. -->
+  <div
+    class="print-view__titlebar"
+    data-tauri-drag-region
+  >
+    <span
+      class="print-view__titlebar-title"
+      data-tauri-drag-region
+    >{{ fileName }}</span>
+    <WindowActions :close-handler="handleTitlebarClose" />
+  </div>
+
   <div
     class="print-view-mount"
     :key="printSurfaceEpoch"
@@ -610,6 +630,32 @@ html.sfm-print-view-active #app {
 </style>
 
 <style scoped>
+/* `#app` is forced white for the paper surface, so the titlebar carries its own chrome
+   background instead of inheriting it the way the main window's toolbar does. */
+
+.print-view__titlebar {
+  position: fixed;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: var(--window-toolbar-height);
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 12px;
+  background: hsl(var(--background));
+  gap: 8px;
+}
+
+.print-view__titlebar-title {
+  overflow: hidden;
+  color: hsl(var(--foreground) / 70%);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .print-view-mount {
   position: fixed;
   z-index: 1;
@@ -619,7 +665,7 @@ html.sfm-print-view-active #app {
   margin: 0;
   background: #ffffff;
   color: hsl(0deg 0% 9%);
-  inset: 0;
+  inset: var(--window-toolbar-height) 0 0;
 }
 
 .print-view-mount__image,
@@ -681,6 +727,11 @@ html.sfm-print-view-active #app {
 }
 
 @media print {
+  /* Window chrome must never reach the paper. */
+  .print-view__titlebar {
+    display: none;
+  }
+
   .print-view-mount {
     position: static;
     overflow: visible;

@@ -36,7 +36,7 @@
         "minHeight": 200,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true,
+        "decorations": false,
         "shadow": true,
         "visible": false,
         "url": "/quick-view"
@@ -51,7 +51,7 @@
         "minHeight": 200,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true,
+        "decorations": false,
         "shadow": true,
         "visible": false,
         "url": "/print-view"
