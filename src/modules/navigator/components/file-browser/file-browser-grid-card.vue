@@ -677,7 +677,7 @@ watch(imagePreviewPlaceholderSrc, () => {
 }
 
 .file-browser-grid-card__overlay--selected {
-  background-color: hsl(var(--primary) / 20%);
+  background-color: hsl(var(--secondary) / 20%);
   box-shadow: inset 0 0 0 2px hsl(var(--primary) / 60%);
   opacity: 0;
 }
@@ -691,7 +691,7 @@ watch(imagePreviewPlaceholderSrc, () => {
 }
 
 .file-browser-grid-card--image[data-selected] .file-browser-grid-card__overlay--selected {
-  background-color: hsl(var(--primary) / 50%);
+  background-color: hsl(var(--secondary) / 50%);
 }
 
 .file-browser-grid-card__overlay--clipboard {

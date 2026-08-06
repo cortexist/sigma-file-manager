@@ -30,6 +30,7 @@ export function useTheme(
   themeSettingRef: Ref<Theme> | ComputedRef<Theme>,
   transitionOriginRef?: Ref<ThemeTransitionOrigin | null> | ComputedRef<ThemeTransitionOrigin | null>,
   transitionsEnabledRef?: Ref<boolean> | ComputedRef<boolean>,
+  accentColorRef?: Ref<string> | ComputedRef<string>,
 ) {
   const extensionsStorageStore = useExtensionsStorageStore();
   const currentTheme = ref<'light' | 'dark'>('dark');
@@ -177,6 +178,26 @@ export function useTheme(
     }
   }
 
+  /**
+   * Written as an inline custom property on the root, which outranks both the `.dark` and
+   * light blocks in the stylesheet, so one value covers every theme. Applied after the theme
+   * so a theme that also defines `--primary` does not overwrite the user's choice.
+   */
+  function applyAccentColor() {
+    if (typeof document === 'undefined' || !document.documentElement) {
+      return;
+    }
+
+    const accentColor = accentColorRef?.value?.trim();
+
+    if (!accentColor) {
+      document.documentElement.style.removeProperty('--primary');
+      return;
+    }
+
+    document.documentElement.style.setProperty('--primary', accentColor);
+  }
+
   function setTheme(theme: Theme) {
     if ((transitionsEnabledRef?.value ?? true) && hasAppliedTheme && theme !== appliedTheme) {
       runThemeTransition(() => applyTheme(theme));
@@ -186,6 +207,7 @@ export function useTheme(
     }
 
     hasAppliedTheme = true;
+    applyAccentColor();
     appliedTheme = theme;
   }
 
@@ -214,6 +236,11 @@ export function useTheme(
 
   watchEffect(() => {
     setTheme(themeSettingRef.value);
+  });
+
+  watchEffect(() => {
+    void accentColorRef?.value;
+    applyAccentColor();
   });
 
   init();

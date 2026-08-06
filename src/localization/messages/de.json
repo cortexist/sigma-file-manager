@@ -428,6 +428,20 @@
         "description": "Diese Option ändert die Systemregistrierung und kann unerwartete Nebenwirkungen auf Ihrem Gerät haben. Fahren Sie auf eigenes Risiko fort.",
         "unavailableInMicrosoftStore": "In der Microsoft Store-Version nicht verfügbar"
       }
+    },
+    "accentColor": {
+      "title": "Akzentfarbe",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Zitrone",
+        "matcha": "Matcha",
+        "lime": "Limette",
+        "default": "Standard",
+        "strongBlue": "Kräftiges Blau",
+        "violet": "Violett",
+        "zune": "Zune",
+        "red": "Rot"
+      }
     }
   },
   "projectGithubButtons": {

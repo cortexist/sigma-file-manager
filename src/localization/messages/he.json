@@ -457,6 +457,20 @@
         "description": "אפשרות זו משנה את רישום המערכת ועלולה לגרום לתופעות לוואי בלתי צפויות במכשירך. המשך על אחריותך.",
         "unavailableInMicrosoftStore": "לא זמין בגרסת Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "צבע הדגשה",
+      "colors": {
+        "mango": "מנגו",
+        "lemon": "לימון",
+        "matcha": "מאצ'ה",
+        "lime": "ליים",
+        "default": "ברירת מחדל",
+        "strongBlue": "כחול עז",
+        "violet": "סגול",
+        "zune": "Zune",
+        "red": "אדום"
+      }
     }
   },
   "projectGithubButtons": {

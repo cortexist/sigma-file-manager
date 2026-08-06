@@ -457,6 +457,20 @@
         "description": "Ta možnost spremeni sistemski register in lahko povzroči nepričakovane stranske učinke na vaši napravi. Nadaljujte na lastno odgovornost.",
         "unavailableInMicrosoftStore": "Ni na voljo v različici iz trgovine Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Poudarna barva",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Limona",
+        "matcha": "Matcha",
+        "lime": "Limeta",
+        "default": "Privzeto",
+        "strongBlue": "Močno modra",
+        "violet": "Vijolična",
+        "zune": "Zune",
+        "red": "Rdeča"
+      }
     }
   },
   "projectGithubButtons": {

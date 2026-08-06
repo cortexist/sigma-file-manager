@@ -424,6 +424,20 @@
         "description": "این گزینه رجیستری سیستم را تغییر می دهد و ممکن است عوارض جانبی غیرمنتظره ای روی دستگاه شما داشته باشد. با مسئولیت خود ادامه دهید.",
         "unavailableInMicrosoftStore": "در نسخه Microsoft Store در دسترس نیست"
       }
+    },
+    "accentColor": {
+      "title": "رنگ تأکید",
+      "colors": {
+        "mango": "انبه",
+        "lemon": "لیمو",
+        "matcha": "ماچا",
+        "lime": "لیموترش",
+        "default": "پیش‌فرض",
+        "strongBlue": "آبی پررنگ",
+        "violet": "بنفش",
+        "zune": "Zune",
+        "red": "قرمز"
+      }
     }
   },
   "projectGithubButtons": {

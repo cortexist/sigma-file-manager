@@ -47,6 +47,8 @@ import { BUILTIN_NAVIGATOR_ICON_THEME_IDS } from '@/types/icon-theme';
 
 export const USER_SETTINGS_THEME_CHANGED_EVENT = 'user-settings:theme-changed';
 
+export const DEFAULT_ACCENT_COLOR = '198 19% 38%';
+
 type ThemeChangedEventPayload = {
   theme: Theme;
 };
@@ -69,6 +71,7 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       isRtl: false,
     },
     theme: 'dark',
+    accentColor: DEFAULT_ACCENT_COLOR,
     text: {
       font: 'system-ui',
     },
@@ -306,7 +309,13 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       extensionsStorageStore.extensionsData.installedExtensions,
     );
   });
-  const { setTheme } = useTheme(themeSettingRef, themeTransitionOrigin, themeTransitionsEnabled);
+  const accentColorRef = computed(() => userSettings.value.accentColor ?? DEFAULT_ACCENT_COLOR);
+  const { setTheme } = useTheme(
+    themeSettingRef,
+    themeTransitionOrigin,
+    themeTransitionsEnabled,
+    accentColorRef,
+  );
 
   watch(
     () => [

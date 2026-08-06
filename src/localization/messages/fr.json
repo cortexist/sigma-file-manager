@@ -428,6 +428,20 @@
         "description": "Cette option modifie le registre système et peut avoir des effets secondaires inattendus sur votre appareil. Continuez à vos propres risques.",
         "unavailableInMicrosoftStore": "Indisponible dans la version Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Couleur d'accent",
+      "colors": {
+        "mango": "Mangue",
+        "lemon": "Citron",
+        "matcha": "Matcha",
+        "lime": "Citron vert",
+        "default": "Par défaut",
+        "strongBlue": "Bleu soutenu",
+        "violet": "Violet",
+        "zune": "Zune",
+        "red": "Rouge"
+      }
     }
   },
   "projectGithubButtons": {

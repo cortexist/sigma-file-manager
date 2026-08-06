@@ -175,6 +175,8 @@ export type ClipboardSettings = {
 export type UserSettings = {
   language: LocalizationLanguage;
   theme: Theme;
+  /** Bare HSL channels, e.g. `198 19% 38%`, assigned straight to `--primary`. */
+  accentColor: string;
   text: TextSettings;
   transparentToolbars: boolean;
   dateTime: DateTime;

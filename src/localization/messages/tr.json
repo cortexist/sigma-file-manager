@@ -428,6 +428,20 @@
         "description": "Bu seçenek sistem kaydını değiştirir ve cihazınızda beklenmedik yan etkilere neden olabilir. Riski kabul ederek devam edin.",
         "unavailableInMicrosoftStore": "Microsoft Store sürümünde kullanılamaz"
       }
+    },
+    "accentColor": {
+      "title": "Vurgu rengi",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Limon",
+        "matcha": "Matcha",
+        "lime": "Misket limonu",
+        "default": "Varsayılan",
+        "strongBlue": "Koyu mavi",
+        "violet": "Menekşe",
+        "zune": "Zune",
+        "red": "Kırmızı"
+      }
     }
   },
   "projectGithubButtons": {

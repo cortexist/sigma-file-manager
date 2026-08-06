@@ -457,6 +457,20 @@
         "description": "یہ اختیار سسٹم رجسٹری بدلتا ہے اور غیر متوقع اثر کر سکتا ہے۔ اپنے خطرے پر آگے بڑھیں۔",
         "unavailableInMicrosoftStore": "Microsoft Store ورژن میں دستیاب نہیں"
       }
+    },
+    "accentColor": {
+      "title": "ایکسنٹ رنگ",
+      "colors": {
+        "mango": "آم",
+        "lemon": "لیموں",
+        "matcha": "ماچا",
+        "lime": "لائم",
+        "default": "ڈیفالٹ",
+        "strongBlue": "گہرا نیلا",
+        "violet": "بنفشی",
+        "zune": "Zune",
+        "red": "سرخ"
+      }
     }
   },
   "projectGithubButtons": {

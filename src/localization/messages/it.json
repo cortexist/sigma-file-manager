@@ -428,6 +428,20 @@
         "description": "Questa opzione modifica il registro di sistema e può avere effetti collaterali imprevisti sul dispositivo. Continua a tuo rischio.",
         "unavailableInMicrosoftStore": "Non disponibile nella versione Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Colore d'accento",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Limone",
+        "matcha": "Matcha",
+        "lime": "Lime",
+        "default": "Predefinito",
+        "strongBlue": "Blu intenso",
+        "violet": "Viola",
+        "zune": "Zune",
+        "red": "Rosso"
+      }
     }
   },
   "projectGithubButtons": {

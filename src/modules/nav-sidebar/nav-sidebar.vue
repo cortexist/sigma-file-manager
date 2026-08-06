@@ -116,12 +116,30 @@ function getDriveIcon(drive: {
       data-tauri-drag-region
     >
       <div class="nav-sidebar-header-logo">
-        <img
+        <svg
           data-tauri-drag-region
-          src="@/assets/icons/logo-32x32.png"
           width="20"
           height="20"
+          viewBox="0 0 128 128"
+          xmlns="http://www.w3.org/2000/svg"
         >
+          <rect
+            x="34"
+            y="33.075"
+            width="60"
+            height="60"
+            fill="#ffffff"
+          />
+          <path d="M41.781,21l-41.681,0l-0,-7.016l41.681,0l0,7.016Zm-41.665,0l126.398,0.043c0.756,0 1.369,0.614 1.369,1.369l0,90.384c0,0.756 -0.614,1.369 -1.369,1.369l-125.029,0c-0.756,0 -1.369,-0.614 -1.369,-1.369l0,-91.796Zm80.884,21l-36,0l0,8l16.661,16.3l-16.625,17.671l0,9.029l37.963,0l0,-9l-25.989,0l16.857,-17.7l-16.16,-15.3l23.252,0l0.04,-9Z" fill="currentColor"/>
+          <rect
+            x="0.12"
+            y="14.035"
+            width="41.619"
+            height="7.095"
+            fill-opacity="0.15"
+            fill="#00000088"
+          />
+        </svg>
       </div>
     </div>
 
@@ -293,6 +311,10 @@ function getDriveIcon(drive: {
   border-radius: var(--radius-sm);
   margin-bottom: 12px;
   background-color: hsl(var(--background-2));
+}
+
+.nav-sidebar-header-logo {
+  color: hsl(var(--primary));
 }
 
 .nav-sidebar-items {

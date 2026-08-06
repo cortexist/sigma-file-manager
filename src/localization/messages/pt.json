@@ -428,6 +428,20 @@
         "description": "Esta opção modifica o registro do sistema e pode causar efeitos colaterais inesperados no seu dispositivo. Continue por sua conta e risco.",
         "unavailableInMicrosoftStore": "Não disponível na versão da Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Cor de destaque",
+      "colors": {
+        "mango": "Manga",
+        "lemon": "Limão",
+        "matcha": "Matchá",
+        "lime": "Lima",
+        "default": "Padrão",
+        "strongBlue": "Azul forte",
+        "violet": "Violeta",
+        "zune": "Zune",
+        "red": "Vermelho"
+      }
     }
   },
   "projectGithubButtons": {

@@ -457,6 +457,20 @@
         "description": "Эта опция изменяет системный реестр и может вызвать неожиданные побочные эффекты на вашем устройстве. Продолжайте на свой страх и риск.",
         "unavailableInMicrosoftStore": "Недоступно в версии из Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Акцентный цвет",
+      "colors": {
+        "mango": "Манго",
+        "lemon": "Лимон",
+        "matcha": "Матча",
+        "lime": "Лайм",
+        "default": "По умолчанию",
+        "strongBlue": "Насыщенный синий",
+        "violet": "Фиолетовый",
+        "zune": "Zune",
+        "red": "Красный"
+      }
     }
   },
   "projectGithubButtons": {

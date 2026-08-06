@@ -428,6 +428,20 @@
         "description": "Tùy chọn này sửa đổi sổ đăng ký hệ thống và có thể gây ra tác dụng phụ ngoài ý muốn trên thiết bị của bạn. Hãy tiếp tục với rủi ro của riêng bạn.",
         "unavailableInMicrosoftStore": "Không khả dụng trong phiên bản Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Màu nhấn",
+      "colors": {
+        "mango": "Xoài",
+        "lemon": "Chanh",
+        "matcha": "Matcha",
+        "lime": "Chanh xanh",
+        "default": "Mặc định",
+        "strongBlue": "Xanh đậm",
+        "violet": "Tím",
+        "zune": "Zune",
+        "red": "Đỏ"
+      }
     }
   },
   "projectGithubButtons": {
