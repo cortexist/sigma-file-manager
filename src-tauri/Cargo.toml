@@ -129,3 +129,8 @@ windows-sys = { version = "0.59", features = [
 gstreamer = "0.24.5"
 gstreamer-app = "0.24.5"
 gstreamer-video = "0.24.5"
+# Used directly for the file clipboard so cut/copy can be published as the several MIME
+# targets other Linux file managers expect. `arboard` already pulls this in for its own
+# Wayland backend, but only ever offers `text/uri-list`, which has nowhere to record
+# cut-versus-copy. See `system_clipboard/files.rs`.
+wl-clipboard-rs = "0.9"
