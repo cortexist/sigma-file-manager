@@ -21,6 +21,15 @@ type ViewTransitionDocument = Document & {
   };
 };
 
+/**
+ * Used when the user has not picked an accent and the active theme does not supply one.
+ *
+ * Lives here rather than in the settings store because `applyAccentColor` needs it and the
+ * store already imports this module — the other direction would be a cycle. The store
+ * re-exports it, so existing imports are unaffected.
+ */
+export const DEFAULT_ACCENT_COLOR = '198 19% 38%';
+
 const THEME_TRANSITION_DURATION_MS = 500;
 let activeViewTransition: ReturnType<NonNullable<ViewTransitionDocument['startViewTransition']>> | null = null;
 let activeViewTransitionAnimation: Animation | null = null;
@@ -30,7 +39,8 @@ export function useTheme(
   themeSettingRef: Ref<Theme> | ComputedRef<Theme>,
   transitionOriginRef?: Ref<ThemeTransitionOrigin | null> | ComputedRef<ThemeTransitionOrigin | null>,
   transitionsEnabledRef?: Ref<boolean> | ComputedRef<boolean>,
-  accentColorRef?: Ref<string> | ComputedRef<string>,
+  /** `null` means the user has never picked one, which is not the same as picking the default. */
+  accentColorRef?: Ref<string | null> | ComputedRef<string | null>,
 ) {
   const extensionsStorageStore = useExtensionsStorageStore();
   const currentTheme = ref<'light' | 'dark'>('dark');
@@ -182,6 +192,15 @@ export function useTheme(
    * Written as an inline custom property on the root, which outranks both the `.dark` and
    * light blocks in the stylesheet, so one value covers every theme. Applied after the theme
    * so a theme that also defines `--primary` does not overwrite the user's choice.
+   *
+   * Three cases, in priority order:
+   *
+   * 1. The user picked an accent — it wins over everything, which is the point of the setting.
+   * 2. No pick, but the active theme defines `--primary` — the theme keeps it. This used to be
+   *    clobbered: the setting defaulted to a concrete colour rather than to "unset", so a
+   *    theme's accent was overwritten even by a user who had never opened the setting.
+   * 3. Neither — fall back to the default, so the app looks the same as it always has instead
+   *    of dropping through to whatever the stylesheet happens to define.
    */
   function applyAccentColor() {
     if (typeof document === 'undefined' || !document.documentElement) {
@@ -190,12 +209,16 @@ export function useTheme(
 
     const accentColor = accentColorRef?.value?.trim();
 
-    if (!accentColor) {
-      document.documentElement.style.removeProperty('--primary');
+    if (accentColor) {
+      document.documentElement.style.setProperty('--primary', accentColor);
       return;
     }
 
-    document.documentElement.style.setProperty('--primary', accentColor);
+    if (appliedThemeVariables.has('--primary')) {
+      return;
+    }
+
+    document.documentElement.style.setProperty('--primary', DEFAULT_ACCENT_COLOR);
   }
 
   function setTheme(theme: Theme) {

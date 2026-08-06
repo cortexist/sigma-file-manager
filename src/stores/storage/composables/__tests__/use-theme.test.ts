@@ -19,7 +19,7 @@ vi.mock('@/stores/storage/extensions', () => ({
   }),
 }));
 
-import { useTheme } from '@/stores/storage/composables/use-theme';
+import { DEFAULT_ACCENT_COLOR, useTheme } from '@/stores/storage/composables/use-theme';
 
 function createInstalledExtensionData(): InstalledExtensionData {
   return {
@@ -101,7 +101,65 @@ describe('useTheme', () => {
 
     expect(currentTheme.value).toBe('light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
-    expect(document.documentElement.style.getPropertyValue('--primary')).toBe('');
+    // The theme's accent is gone, so the default takes over rather than leaving `--primary`
+    // unset and dropping through to whatever the stylesheet defines.
+    expect(document.documentElement.style.getPropertyValue('--primary')).toBe(
+      DEFAULT_ACCENT_COLOR,
+    );
+  });
+
+  describe('accent colour priority', () => {
+    /**
+     * The setting used to default to a concrete colour, so this path was unreachable: a
+     * theme's accent was overwritten even for a user who had never opened the setting.
+     */
+    it('lets an unset accent defer to one supplied by the theme', () => {
+      extensionsData.installedExtensions = {
+        'test.palette': createInstalledExtensionData(),
+      };
+
+      useTheme(
+        ref<Theme>('extension:test.palette:midnight'),
+        undefined,
+        undefined,
+        ref<string | null>(null),
+      );
+
+      expect(document.documentElement.style.getPropertyValue('--primary')).toBe('200 80% 60%');
+    });
+
+    it('lets a chosen accent override one supplied by the theme', () => {
+      extensionsData.installedExtensions = {
+        'test.palette': createInstalledExtensionData(),
+      };
+
+      useTheme(
+        ref<Theme>('extension:test.palette:midnight'),
+        undefined,
+        undefined,
+        ref<string | null>('12 100% 50%'),
+      );
+
+      expect(document.documentElement.style.getPropertyValue('--primary')).toBe('12 100% 50%');
+    });
+
+    it('falls back to the default when neither the user nor the theme supplies one', () => {
+      useTheme(ref<Theme>('dark'), undefined, undefined, ref<string | null>(null));
+
+      expect(document.documentElement.style.getPropertyValue('--primary')).toBe(
+        DEFAULT_ACCENT_COLOR,
+      );
+    });
+
+    it('tracks a later accent choice', async () => {
+      const accentColor = ref<string | null>(null);
+      useTheme(ref<Theme>('dark'), undefined, undefined, accentColor);
+
+      accentColor.value = '12 100% 50%';
+      await nextTick();
+
+      expect(document.documentElement.style.getPropertyValue('--primary')).toBe('12 100% 50%');
+    });
   });
 
   it('uses a view transition after initial theme changes', async () => {

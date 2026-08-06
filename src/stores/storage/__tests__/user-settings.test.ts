@@ -15,7 +15,13 @@ import {
 import type { StartupStorageFileBootstrap } from '@/stores/storage/utils/startup-storage-bootstrap';
 import type { Theme } from '@/types/user-settings';
 
-type ThemeEventCallback = (event: { payload: { theme: Theme } }) => void;
+// Mirrors the store's broadcast payload: either field may arrive on its own.
+type ThemeEventCallback = (event: {
+  payload: {
+    theme?: Theme;
+    accentColor?: string;
+  };
+}) => void;
 
 const {
   emitMock,
@@ -148,5 +154,61 @@ describe('user settings theme sync', () => {
     expect(lazyStoreSetMock).not.toHaveBeenCalled();
     expect(lazyStoreSaveMock).not.toHaveBeenCalled();
     expect(emitMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The accent feeds `--primary`, which each window sets on its own document root from its
+   * own copy of the settings. Without a broadcast, an already-open window — and Quick View
+   * is prelaunched, so it usually is — kept showing the accent from whenever it started.
+   */
+  it('broadcasts accent colour changes to secondary windows', async () => {
+    const userSettingsStore = useUserSettingsStore();
+
+    await userSettingsStore.init(createUserSettingsBootstrap('dark'));
+    emitMock.mockClear();
+
+    await userSettingsStore.set('accentColor', '330 100% 50%');
+
+    expect(emitMock).toHaveBeenCalledWith(
+      USER_SETTINGS_THEME_CHANGED_EVENT,
+      { accentColor: '330 100% 50%' },
+    );
+  });
+
+  it('applies accent colour changes from other windows without writing them back', async () => {
+    const userSettingsStore = useUserSettingsStore();
+
+    await userSettingsStore.init(createUserSettingsBootstrap('dark'));
+    emitMock.mockClear();
+    lazyStoreSaveMock.mockClear();
+    lazyStoreSetMock.mockClear();
+
+    themeEventCallbacks.get(USER_SETTINGS_THEME_CHANGED_EVENT)?.({
+      payload: {
+        accentColor: '12 100% 50%',
+      },
+    });
+    await nextTick();
+
+    expect(userSettingsStore.userSettings.accentColor).toBe('12 100% 50%');
+    expect(lazyStoreSetMock).not.toHaveBeenCalled();
+    expect(lazyStoreSaveMock).not.toHaveBeenCalled();
+    expect(emitMock).not.toHaveBeenCalled();
+  });
+
+  /** A payload carrying only one field must leave the other setting alone. */
+  it('leaves the theme untouched when only the accent is broadcast', async () => {
+    const userSettingsStore = useUserSettingsStore();
+
+    await userSettingsStore.init(createUserSettingsBootstrap('dark'));
+
+    themeEventCallbacks.get(USER_SETTINGS_THEME_CHANGED_EVENT)?.({
+      payload: {
+        accentColor: '12 100% 50%',
+      },
+    });
+    await nextTick();
+
+    expect(userSettingsStore.userSettings.theme).toBe('dark');
   });
 });
