@@ -1297,9 +1297,12 @@ onUnmounted(() => {
           'quick-view__body--media': fileType === 'video' || fileType === 'audio',
         }"
       >
+        <!-- Deliberately *not* keyed on the file path. These three own the element that
+             `requestFullscreen` was called on, and remounting it on every next-file dropped
+             the window out of fullscreen mid-browse. Both components reset themselves when
+             `src` changes, so one instance can carry the whole folder. -->
         <ImageViewer
           v-if="fileType === 'image'"
-          :key="`${currentFilePath}-image`"
           :src="fileAssetUrl"
           :alt="fileName"
           class="quick-view__image"
@@ -1307,7 +1310,6 @@ onUnmounted(() => {
 
         <MediaPlayer
           v-else-if="fileType === 'video'"
-          :key="`${currentFilePath}-video`"
           :src="fileMediaUrl"
           kind="video"
           class="quick-view__video"
@@ -1316,7 +1318,6 @@ onUnmounted(() => {
 
         <MediaPlayer
           v-else-if="fileType === 'audio'"
-          :key="`${currentFilePath}-audio`"
           :src="fileMediaUrl"
           kind="audio"
           :poster="audioArtworkSrc"

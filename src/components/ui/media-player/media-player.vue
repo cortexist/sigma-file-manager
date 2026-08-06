@@ -78,6 +78,15 @@ const isLooping = ref(false);
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let loopWatchTimer: ReturnType<typeof setInterval> | undefined;
 let lastProgressAt = -1;
+/**
+ * Autoplay is started from here rather than left to the `autoplay` attribute alone, because
+ * the attribute only takes effect on the element's *first* load — the HTML spec clears the
+ * can-autoplay flag once an element has played or been paused. Callers used to work around
+ * that by keying the player on the file path so each file got a brand new element, but that
+ * remounts the DOM node holding fullscreen, which dropped out of fullscreen on every
+ * next-file. Playing explicitly on each new source lets the instance survive instead.
+ */
+let shouldAutoplayNextLoad = props.autoplay;
 
 const isVideo = computed(() => props.kind === 'video');
 
@@ -281,6 +290,13 @@ function onLoadedMetadata() {
   duration.value = Number.isFinite(media.duration) ? media.duration : 0;
   media.volume = volume.value;
   media.muted = isMuted.value;
+
+  if (shouldAutoplayNextLoad) {
+    shouldAutoplayNextLoad = false;
+    void media.play().catch(() => {
+      // Same as pressing play: a blocked autoplay is not worth surfacing.
+    });
+  }
 }
 
 function clearWaiting() {
@@ -471,7 +487,8 @@ watch([isLooping, isPlaying], ([looping, playing]) => {
   stopLoopWatch();
 });
 
-// A new source is a different file: reset everything derived from the old one.
+// A new source is a different file: reset everything derived from the old one. The instance
+// itself is kept across files so that fullscreen survives; see `shouldAutoplayNextLoad`.
 watch(() => props.src, () => {
   hasError.value = false;
   isPlaying.value = false;
@@ -480,6 +497,28 @@ watch(() => props.src, () => {
   duration.value = 0;
   bufferedTo.value = 0;
   lastProgressAt = -1;
+  shouldAutoplayNextLoad = props.autoplay;
+  // `muted` means "start silent", so each file starts from the setting again rather than
+  // inheriting a manual unmute from the previous one. Volume is deliberately not reset —
+  // carrying it across files is what a player should do.
+  isMuted.value = props.muted;
+});
+
+/**
+ * Switching the setting on is a request to start playing what is already open, which is why
+ * this arms the same one-shot the next source would. Turning it off leaves playback alone.
+ */
+watch(() => props.autoplay, (autoplay) => {
+  if (!autoplay) {
+    shouldAutoplayNextLoad = false;
+    return;
+  }
+
+  const media = mediaRef.value;
+
+  if (media?.paused) {
+    void media.play().catch(() => {});
+  }
 });
 
 if (typeof document !== 'undefined') {

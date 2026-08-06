@@ -288,6 +288,22 @@ describe('ImageViewer', () => {
         y: 0,
       });
     });
+
+    /**
+     * The regression this guards: callers used to key the viewer on the file path, so moving
+     * to the next picture built a new element. That element is the one `requestFullscreen`
+     * was called on, so replacing it dropped the window out of fullscreen on every next-file.
+     */
+    it('reuses the same DOM node when the source changes', async () => {
+      const wrapper = mountViewer();
+      await completeLoad(visibleImage(wrapper));
+      const rootBefore = wrapper.element;
+
+      await wrapper.setProps({ src: 'asset://other.png' });
+
+      expect(wrapper.element).toBe(rootBefore);
+      expect(visibleImage(wrapper).attributes('src')).toBe('asset://other.png');
+    });
   });
 
   describe('panning', () => {

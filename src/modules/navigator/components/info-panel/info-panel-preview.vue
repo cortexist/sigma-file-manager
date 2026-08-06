@@ -188,8 +188,10 @@ watch(
       ref="previewRef"
       class="info-panel-preview__media-container"
     >
+      <!-- Not keyed on the path: this element is the one `requestFullscreen` is called on, and
+           remounting it when the selection changes dropped the viewer out of fullscreen. It
+           resets its own zoom and pan when `src` changes. -->
       <ImageViewer
-        :key="selectedEntry.path"
         :src="imageOriginalSrc"
         :preview-src="imageThumbnailSrc"
         :placeholder-src="imagePreviewPlaceholderSrc"
@@ -201,10 +203,10 @@ watch(
       v-else-if="isVideoFile"
       class="info-panel-preview__media-container"
     >
-      <!-- Keyed on the autoplay setting as well as the file: `autoplay` only takes effect at
-           load, so switching the setting on has to remount to start the preview playing. -->
+      <!-- Unkeyed for the same reason as the image viewer above. Switching the autoplay
+           setting on used to need a remount to take effect; the player now watches the prop
+           and starts playing itself, so the instance can persist across the selection. -->
       <MediaPlayer
-        :key="`${selectedEntry.path}|${autoplayVideoPreview}`"
         :src="playableMediaSrc"
         kind="video"
         :autoplay="autoplayVideoPreview"
@@ -217,7 +219,6 @@ watch(
       class="info-panel-preview__media-container"
     >
       <MediaPlayer
-        :key="selectedEntry.path"
         :src="playableMediaSrc"
         kind="audio"
         :poster="audioArtworkSrc"
