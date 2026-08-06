@@ -25,7 +25,11 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
-import { normalizeImageThumbnailMaxDimension, useImageThumbnails } from '../use-image-thumbnails';
+import {
+  IMAGE_PREVIEW_MAX_DIMENSION,
+  normalizeImageThumbnailMaxDimension,
+  useImageThumbnails,
+} from '../use-image-thumbnails';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -119,7 +123,18 @@ describe('normalizeImageThumbnailMaxDimension', () => {
   it('clamps requested thumbnail sizes to the backend cap', () => {
     expect(normalizeImageThumbnailMaxDimension(1)).toBe(1);
     expect(normalizeImageThumbnailMaxDimension(340)).toBe(340);
-    expect(normalizeImageThumbnailMaxDimension(10_000)).toBe(384);
+    expect(normalizeImageThumbnailMaxDimension(10_000)).toBe(IMAGE_PREVIEW_MAX_DIMENSION);
+  });
+
+  /**
+   * The grid's 384 is a *default*, not a ceiling. Preview panes size their request to the
+   * pane in device pixels, and clamping those back down to 384 is what made the info panel
+   * and Quick View previews look soft on a high-DPI display.
+   */
+  it('honours pane-sized requests above the grid default', () => {
+    expect(normalizeImageThumbnailMaxDimension(1120)).toBe(1120);
+    expect(normalizeImageThumbnailMaxDimension(IMAGE_PREVIEW_MAX_DIMENSION))
+      .toBe(IMAGE_PREVIEW_MAX_DIMENSION);
   });
 });
 

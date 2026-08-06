@@ -39,6 +39,7 @@ import {
 } from '@/stores/runtime/quick-view';
 import { convertMediaSrc } from '@/utils/media-src';
 import { MediaPlayer } from '@/components/ui/media-player';
+import { ImageViewer } from '@/components/ui/image-viewer';
 import WindowActions from '@/modules/window-toolbar/window-actions.vue';
 import {
   decodeTextFileBytesWithEncoding,
@@ -1296,13 +1297,13 @@ onUnmounted(() => {
           'quick-view__body--media': fileType === 'video' || fileType === 'audio',
         }"
       >
-        <img
+        <ImageViewer
           v-if="fileType === 'image'"
           :key="`${currentFilePath}-image`"
           :src="fileAssetUrl"
           :alt="fileName"
           class="quick-view__image"
-        >
+        />
 
         <MediaPlayer
           v-else-if="fileType === 'video'"
@@ -1643,10 +1644,15 @@ onUnmounted(() => {
   align-self: stretch;
 }
 
+/* Fills the pane the way the video player does, rather than shrink-wrapping the picture:
+   the viewer letterboxes inside itself, and its zoom and fullscreen controls need to sit
+   against the viewing area rather than against the image's own edges. */
+
 .quick-view__image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
 }
 
 /* The player fills the pane and letterboxes the video inside it, so the control bar spans

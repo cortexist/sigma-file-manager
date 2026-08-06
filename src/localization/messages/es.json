@@ -1259,5 +1259,12 @@
     "loop": "Repetir el archivo actual",
     "loopOff": "Desactivar la repetición",
     "artwork": "Portada del álbum"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

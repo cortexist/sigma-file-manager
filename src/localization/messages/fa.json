@@ -1259,5 +1259,12 @@
     "loop": "تکرار فایل فعلی",
     "loopOff": "خاموش کردن تکرار",
     "artwork": "تصویر آلبوم"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

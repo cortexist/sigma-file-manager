@@ -1259,5 +1259,12 @@
     "loop": "Повторять текущий файл",
     "loopOff": "Выключить повтор",
     "artwork": "Обложка альбома"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

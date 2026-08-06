@@ -1259,5 +1259,12 @@
     "loop": "Ponavljaj trenutno datoteko",
     "loopOff": "Izklopi ponavljanje",
     "artwork": "Naslovnica albuma"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

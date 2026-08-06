@@ -11,12 +11,12 @@ import {
   FolderIcon,
   FolderOpenIcon,
   FileIcon,
-  FileImageIcon,
   Loader2Icon,
 } from '@lucide/vue';
 import { useInfoPanelImagePreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-image-preview';
 import { useInfoPanelVideoPreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-video-preview';
 import { MediaPlayer } from '@/components/ui/media-player';
+import { ImageViewer } from '@/components/ui/image-viewer';
 import { useAudioCovers } from '@/composables/use-audio-covers';
 import UbuntuWslIcon from '@/components/icons/ubuntu-wsl-icon.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -44,9 +44,9 @@ const {
   isImageFile,
   mediaSrc,
   playableMediaSrc,
-  imagePreviewSrc,
+  imageOriginalSrc,
+  imageThumbnailSrc,
   imagePreviewPlaceholderSrc,
-  shouldShowImageFallback,
 } = useInfoPanelImagePreview(() => props.selectedEntry);
 
 const {
@@ -188,22 +188,13 @@ watch(
       ref="previewRef"
       class="info-panel-preview__media-container"
     >
-      <img
-        v-if="imagePreviewPlaceholderSrc && !shouldShowImageFallback"
-        :src="imagePreviewPlaceholderSrc"
+      <ImageViewer
+        :key="selectedEntry.path"
+        :src="imageOriginalSrc"
+        :preview-src="imageThumbnailSrc"
+        :placeholder-src="imagePreviewPlaceholderSrc"
         :alt="selectedEntry.name"
-        class="info-panel-preview__image info-panel-preview__image--placeholder"
-      >
-      <img
-        v-if="imagePreviewSrc"
-        :src="imagePreviewSrc"
-        :alt="selectedEntry.name"
-        class="info-panel-preview__image info-panel-preview__image--final animate-fade-in-x2"
-      >
-      <FileImageIcon
-        v-if="shouldShowImageFallback"
-        :size="48"
-        class="info-panel-preview__image-placeholder animate-fade-in-x2"
+        class="info-panel-preview__image-viewer animate-fade-in-x2"
       />
     </div>
     <div
@@ -314,30 +305,20 @@ watch(
   justify-content: center;
 }
 
-.info-panel-preview__image,
 .info-panel-preview__video {
   width: 100%;
   height: 100%;
+  border-radius: var(--radius-sm);
   object-fit: cover;
 }
 
-/* Sits behind the real thumbnail and is blurred hard: it is a 20px image stretched over the
-   whole pane, so it reads as the picture's colours rather than as a broken preview. */
+/* `contain` rather than the `cover` this pane used before: a viewer that can be zoomed has
+   to start by showing the whole frame, otherwise the first thing anyone does is zoom out to
+   find the edges that were cropped away. Matches how video is presented. */
 
-.info-panel-preview__image--placeholder {
-  position: absolute;
-  z-index: 1;
-  filter: blur(12px);
-  inset: 0;
-  opacity: 0.5;
-}
-
-.info-panel-preview__image--final {
-  position: relative;
-  z-index: 2;
-}
-
-.info-panel-preview__video {
+.info-panel-preview__image-viewer {
+  width: 100%;
+  height: 100%;
   border-radius: var(--radius-sm);
 }
 

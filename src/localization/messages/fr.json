@@ -1259,5 +1259,12 @@
     "loop": "Répéter le fichier actuel",
     "loopOff": "Désactiver la répétition",
     "artwork": "Pochette de l'album"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

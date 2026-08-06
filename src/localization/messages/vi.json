@@ -1259,5 +1259,12 @@
     "loop": "Lặp lại tệp hiện tại",
     "loopOff": "Tắt lặp lại",
     "artwork": "Ảnh bìa album"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

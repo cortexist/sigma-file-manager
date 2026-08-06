@@ -1259,5 +1259,12 @@
     "loop": "वर्तमान फ़ाइल दोहराएँ",
     "loopOff": "दोहराना बंद करें",
     "artwork": "एल्बम कवर"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

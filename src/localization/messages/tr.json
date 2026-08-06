@@ -1259,5 +1259,12 @@
     "loop": "Geçerli dosyayı tekrarla",
     "loopOff": "Tekrarı kapat",
     "artwork": "Albüm kapağı"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

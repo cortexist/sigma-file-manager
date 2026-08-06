@@ -1259,5 +1259,12 @@
     "loop": "موجودہ فائل دہرائیں",
     "loopOff": "دہرانا بند کریں",
     "artwork": "البم کور"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

@@ -1259,5 +1259,12 @@
     "loop": "Aktuelle Datei wiederholen",
     "loopOff": "Wiederholung ausschalten",
     "artwork": "Albumcover"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

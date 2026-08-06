@@ -7,6 +7,13 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { DirEntry } from '@/types/dir-entry';
 
 const IMAGE_THUMBNAIL_MAX_DIMENSION = 384;
+/**
+ * Ceiling for callers that ask for a specific size, mirroring `IMAGE_PREVIEW_MAX_DIMENSION`
+ * in `src-tauri/src/image_thumbnails.rs`. The grid keeps requesting the default above; the
+ * preview panes size their request to the pane in device pixels, which clamping to the
+ * grid's 384 used to throw away.
+ */
+export const IMAGE_PREVIEW_MAX_DIMENSION = 2048;
 const IMAGE_THUMBNAIL_PLACEHOLDER_SIZE = 20;
 const MAX_CONCURRENT_IMAGE_THUMBNAILS = 3;
 const MAX_CONCURRENT_IMAGE_PLACEHOLDERS = 1;
@@ -46,7 +53,7 @@ export function normalizeImageThumbnailMaxDimension(maxDimension?: number): numb
     return IMAGE_THUMBNAIL_MAX_DIMENSION;
   }
 
-  return Math.min(roundedDimension, IMAGE_THUMBNAIL_MAX_DIMENSION);
+  return Math.min(roundedDimension, IMAGE_PREVIEW_MAX_DIMENSION);
 }
 
 function getImageThumbnailKey(entry: DirEntry, maxDimension: number): string {

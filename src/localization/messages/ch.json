@@ -1259,5 +1259,12 @@
     "loop": "重复播放当前文件",
     "loopOff": "关闭重复播放",
     "artwork": "专辑封面"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

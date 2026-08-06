@@ -1259,5 +1259,12 @@
     "loop": "現在のファイルを繰り返す",
     "loopOff": "繰り返しをオフにする",
     "artwork": "アルバムアート"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

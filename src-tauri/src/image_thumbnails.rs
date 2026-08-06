@@ -20,6 +20,11 @@ use tauri::Manager;
 
 const IMAGE_THUMBNAIL_CACHE_DIR: &str = "image-thumbnails";
 const THUMBNAIL_MAX_DIMENSION: u32 = 384;
+/// Ceiling for callers that ask for a specific size. The grid still gets
+/// `THUMBNAIL_MAX_DIMENSION` by default, but the info panel and Quick View size their
+/// request to the pane in *device* pixels, which on a 4K display is already ~1120 —
+/// clamping those to the grid's 384 is what made those previews look soft.
+const IMAGE_PREVIEW_MAX_DIMENSION: u32 = 2048;
 const MAX_THUMBNAIL_CACHE_ITEM_COUNT: usize = 5000;
 const MAX_THUMBNAIL_CACHE_SIZE_BYTES: u64 = 1024 * 1024 * 1024;
 const THUMBNAIL_CACHE_LIMIT_CHECK_INTERVAL: usize = 100;
@@ -52,7 +57,7 @@ struct ThumbnailCacheMaintenanceState {
 
 fn normalize_thumbnail_max_dimension(max_dimension: Option<u32>) -> u32 {
     match max_dimension {
-        Some(dimension) if dimension > 0 => dimension.min(THUMBNAIL_MAX_DIMENSION),
+        Some(dimension) if dimension > 0 => dimension.min(IMAGE_PREVIEW_MAX_DIMENSION),
         _ => THUMBNAIL_MAX_DIMENSION,
     }
 }
@@ -828,10 +833,11 @@ mod tests {
     use super::{
         enforce_thumbnail_cache_limits, generate_image_thumbnail_file,
         normalize_thumbnail_max_dimension, path_is_same_or_descendant, thumbnail_cache_key,
-        thumbnail_cache_stats, validate_image_thumbnail_source,
-        MAX_ORIGINAL_IMAGE_THUMBNAIL_SOURCE_SIZE_BYTES, MAX_THUMBNAIL_CACHE_ITEM_COUNT,
-        MAX_THUMBNAIL_CACHE_SIZE_BYTES, MAX_THUMBNAIL_SOURCE_FILE_SIZE_BYTES,
-        MAX_THUMBNAIL_SOURCE_PIXELS, THUMBNAIL_MAX_DIMENSION,
+        thumbnail_cache_stats, validate_image_thumbnail_source, validate_video_thumbnail_size,
+        IMAGE_PREVIEW_MAX_DIMENSION, MAX_ORIGINAL_IMAGE_THUMBNAIL_SOURCE_SIZE_BYTES,
+        MAX_THUMBNAIL_CACHE_ITEM_COUNT, MAX_THUMBNAIL_CACHE_SIZE_BYTES,
+        MAX_THUMBNAIL_SOURCE_FILE_SIZE_BYTES, MAX_THUMBNAIL_SOURCE_PIXELS,
+        THUMBNAIL_MAX_DIMENSION,
     };
     use std::fs;
     use std::fs::File;
@@ -905,8 +911,28 @@ mod tests {
         );
         assert_eq!(
             normalize_thumbnail_max_dimension(Some(10_000)),
-            THUMBNAIL_MAX_DIMENSION
+            IMAGE_PREVIEW_MAX_DIMENSION
         );
+    }
+
+    /// A pane-sized request used to come back at the grid's 384, which is what made the
+    /// info panel and Quick View previews look soft on a high-DPI display.
+    #[test]
+    fn preview_sized_requests_are_not_clamped_to_the_grid_cap() {
+        assert_eq!(normalize_thumbnail_max_dimension(Some(1120)), 1120);
+        assert_eq!(
+            normalize_thumbnail_max_dimension(Some(IMAGE_PREVIEW_MAX_DIMENSION)),
+            IMAGE_PREVIEW_MAX_DIMENSION
+        );
+    }
+
+    /// Video thumbnails arrive from the frontend as data URLs and keep the smaller cap;
+    /// raising the image-preview ceiling must not widen what they may submit.
+    #[test]
+    fn video_thumbnail_size_validation_keeps_the_grid_cap() {
+        assert!(validate_video_thumbnail_size(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION).is_ok());
+        assert!(validate_video_thumbnail_size(THUMBNAIL_MAX_DIMENSION + 1, 100).is_err());
+        assert!(validate_video_thumbnail_size(100, IMAGE_PREVIEW_MAX_DIMENSION).is_err());
     }
 
     #[test]
