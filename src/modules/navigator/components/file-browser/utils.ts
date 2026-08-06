@@ -20,6 +20,7 @@ import { i18n } from '@/localization';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import {
   isFileBrowserImageEntry,
+  isFileBrowserAudioEntry,
   isFileBrowserVideoEntry,
 } from './file-browser-entry-groups';
 import {
@@ -33,6 +34,10 @@ export function isImageFile(entry: DirEntry): boolean {
 
 export function isVideoFile(entry: DirEntry): boolean {
   return isFileBrowserVideoEntry(entry);
+}
+
+export function isAudioFile(entry: DirEntry): boolean {
+  return isFileBrowserAudioEntry(entry);
 }
 
 export function getImageSrc(entry: DirEntry): string {

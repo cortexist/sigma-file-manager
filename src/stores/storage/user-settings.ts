@@ -47,8 +47,21 @@ import { BUILTIN_NAVIGATOR_ICON_THEME_IDS } from '@/types/icon-theme';
 
 export const USER_SETTINGS_THEME_CHANGED_EVENT = 'user-settings:theme-changed';
 
+export { DEFAULT_ACCENT_COLOR } from '@/stores/storage/composables/use-theme';
+
+/**
+ * Appearance that every window has to mirror, not only the one the change was made in.
+ *
+ * Each window hydrates its own copy of the settings at startup, so a value written here is
+ * invisible to the others until they are told. Auxiliary windows are also prelaunched and
+ * reused, so one can easily have been created before the user ever opened settings.
+ *
+ * Both fields are optional: a change to one does not have to restate the other.
+ */
 type ThemeChangedEventPayload = {
-  theme: Theme;
+  theme?: Theme;
+  /** `null` clears the accent; absent means this broadcast is not about the accent. */
+  accentColor?: string | null;
 };
 
 export const useUserSettingsStore = defineStore('userSettings', () => {
@@ -69,6 +82,9 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       isRtl: false,
     },
     theme: 'dark',
+    // Unset rather than the default colour, so a theme supplying its own `--primary` is not
+    // overridden on behalf of a user who never chose an accent. See `applyAccentColor`.
+    accentColor: null,
     text: {
       font: 'system-ui',
     },
@@ -306,7 +322,15 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       extensionsStorageStore.extensionsData.installedExtensions,
     );
   });
-  const { setTheme } = useTheme(themeSettingRef, themeTransitionOrigin, themeTransitionsEnabled);
+  // Passed through unresolved: `useTheme` needs to tell "never chosen" from "chose the
+  // default colour", so collapsing null to a concrete value here would lose the distinction.
+  const accentColorRef = computed(() => userSettings.value.accentColor);
+  const { setTheme } = useTheme(
+    themeSettingRef,
+    themeTransitionOrigin,
+    themeTransitionsEnabled,
+    accentColorRef,
+  );
 
   watch(
     () => [
@@ -416,12 +440,12 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
     }
   }
 
-  async function broadcastThemeChange(theme: Theme) {
+  async function broadcastAppearanceChange(payload: ThemeChangedEventPayload) {
     try {
-      await emit(USER_SETTINGS_THEME_CHANGED_EVENT, { theme } satisfies ThemeChangedEventPayload);
+      await emit(USER_SETTINGS_THEME_CHANGED_EVENT, payload);
     }
     catch (error) {
-      console.error('Failed to broadcast theme change:', error);
+      console.error('Failed to broadcast appearance change:', error);
     }
   }
 
@@ -434,11 +458,17 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       themeChangeEventUnlisten.value = await listen<ThemeChangedEventPayload>(
         USER_SETTINGS_THEME_CHANGED_EVENT,
         (event) => {
-          if (event.payload.theme === userSettings.value.theme) {
-            return;
+          const { theme, accentColor } = event.payload;
+
+          // Assigning only on a real change keeps the emitting window from reacting to its
+          // own broadcast, which `emit` also delivers locally.
+          if (theme !== undefined && theme !== userSettings.value.theme) {
+            userSettings.value.theme = theme;
           }
 
-          userSettings.value.theme = event.payload.theme;
+          if (accentColor !== undefined && accentColor !== userSettings.value.accentColor) {
+            userSettings.value.accentColor = accentColor;
+          }
         },
       );
     }
@@ -498,8 +528,14 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
 
     current[keys[keys.length - 1]] = value;
 
+    // Both feed `--primary` and the theme class on the document root, which every window
+    // maintains for itself. Anything else here is read from storage on next launch.
     if (key === 'theme') {
-      await broadcastThemeChange(value as Theme);
+      await broadcastAppearanceChange({ theme: value as Theme });
+    }
+    else if (key === 'accentColor') {
+      // `null` is a real value here — clearing the accent has to reach the other windows too.
+      await broadcastAppearanceChange({ accentColor: value as string | null });
     }
 
     await setUserSettingsStorage(key, value);

@@ -18,7 +18,7 @@ import { isVirtualLocationPath } from '@/utils/virtual-locations';
 import { isTransientClipboardAccessError } from '@/utils/system-clipboard-errors';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import {
-  hasSameFileClipboardContent,
+  hasSameFileClipboardPaths,
   shouldShowClipboardUi,
   type ClipboardOrigin,
 } from '@/stores/runtime/clipboard-visibility';
@@ -460,6 +460,33 @@ export const useClipboardStore = defineStore('clipboard', () => {
     return false;
   }
 
+  /**
+   * Which operation a system clipboard entry should actually be pasted with.
+   *
+   * The operation reported by the OS is not always trustworthy. A Linux system clipboard
+   * carries only a file list, with nowhere to record cut-versus-copy, so
+   * `read_system_clipboard_files` always reports `copy` there. Taking that at face value
+   * silently downgraded every cut to a copy: the paste duplicated the files and left the
+   * source in place.
+   *
+   * When the entry still holds exactly the paths we put there, the operation we recorded for
+   * it is the better answer. Anything else is somebody else's entry, and what the OS reports
+   * is all we have to go on.
+   */
+  function resolveSystemClipboardOperation(
+    systemPaths: string[],
+    systemOperation: 'copy' | 'move',
+  ): 'copy' | 'move' {
+    const isOwnClipboardEntry = clipboardOrigin.value === 'internal'
+      && hasSameFileClipboardPaths(clipboardItems.value, systemPaths);
+
+    if (isOwnClipboardEntry && (clipboardType.value === 'copy' || clipboardType.value === 'move')) {
+      return clipboardType.value;
+    }
+
+    return systemOperation;
+  }
+
   async function syncFromSystemClipboard(): Promise<void> {
     await waitForPendingSystemClipboardMutation();
 
@@ -497,18 +524,18 @@ export const useClipboardStore = defineStore('clipboard', () => {
       return;
     }
 
-    const preserveInternalOrigin = clipboardOrigin.value === 'internal'
-      && hasSameFileClipboardContent(
-        clipboardItems.value,
-        clipboardType.value,
-        systemClipboard.paths,
-        systemClipboard.operation,
-      );
+    // Matched on paths alone, not on paths *and* operation: our own cut never matched itself
+    // while the comparison included an operation the OS had already flattened to `copy`.
+    const isOwnClipboardEntry = clipboardOrigin.value === 'internal'
+      && hasSameFileClipboardPaths(clipboardItems.value, systemClipboard.paths);
 
-    clipboardType.value = systemClipboard.operation;
+    clipboardType.value = resolveSystemClipboardOperation(
+      systemClipboard.paths,
+      systemClipboard.operation,
+    );
     clipboardItems.value = systemClipboardItems;
     clipboardImage.value = null;
-    clipboardOrigin.value = preserveInternalOrigin ? 'internal' : 'external';
+    clipboardOrigin.value = isOwnClipboardEntry ? 'internal' : 'external';
   }
 
   function canReuseSavedClipboardImage(imageInfo: SystemClipboardImageInfo): boolean {
@@ -780,6 +807,7 @@ export const useClipboardStore = defineStore('clipboard', () => {
     canPasteTo,
     pasteItems,
     readSystemClipboardFiles,
+    resolveSystemClipboardOperation,
     readSystemClipboardImageInfo,
     saveSystemClipboardImageToTemp,
     ensureSystemClipboardImageSaved,

@@ -18,6 +18,7 @@ import { useUserSettingsStore } from '@/stores/storage/user-settings';
 
 const mockConvertFileSrc = vi.hoisted(() => vi.fn((path: string) => `asset://${path}`));
 const mockGetImageThumbnail = vi.hoisted(() => vi.fn<(entry: DirEntry, maxDimension?: number) => string | undefined>());
+const mockGetImageThumbnailPlaceholder = vi.hoisted(() => vi.fn<(entry: DirEntry, maxDimension?: number) => string | undefined>());
 const mockClearThumbnails = vi.hoisted(() => vi.fn());
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -63,6 +64,7 @@ vi.mock('@/stores/storage/user-paths', () => ({
 vi.mock('@/modules/navigator/composables/use-navigator-image-thumbnails', () => ({
   useNavigatorImageThumbnails: () => ({
     getImageThumbnail: mockGetImageThumbnail,
+    getImageThumbnailPlaceholder: mockGetImageThumbnailPlaceholder,
     clearThumbnails: mockClearThumbnails,
   }),
 }));
@@ -103,9 +105,11 @@ describe('useInfoPanelImagePreview', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     mockGetImageThumbnail.mockReset();
+    mockGetImageThumbnailPlaceholder.mockReset();
     mockClearThumbnails.mockReset();
     mockConvertFileSrc.mockClear();
     mockGetImageThumbnail.mockReturnValue('asset://thumb');
+    mockGetImageThumbnailPlaceholder.mockReturnValue('data:placeholder');
 
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -118,7 +122,17 @@ describe('useInfoPanelImagePreview', () => {
     });
   });
 
-  it('uses the original image when the setting is enabled', async () => {
+  // The viewer always ends up on the original; the thumbnail only bridges the gap until it
+  // decodes. So both layers are exposed, rather than one resolved to the other.
+  it('always exposes the original as the image source', async () => {
+    const selectedEntry = ref<DirEntry | null>(createImageEntry('png'));
+    const preview = mountInfoPanelImagePreview(selectedEntry);
+    await nextTick();
+
+    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.png');
+  });
+
+  it('skips the intermediate thumbnail when the full-size setting is enabled', async () => {
     const userSettingsStore = useUserSettingsStore();
     userSettingsStore.userSettings.navigator.infoPanel.showFullSizeImagePreview = true;
 
@@ -126,38 +140,66 @@ describe('useInfoPanelImagePreview', () => {
     const preview = mountInfoPanelImagePreview(selectedEntry);
     await nextTick();
 
-    expect(preview.imagePreviewSrc.value).toBe('asset://C:/media/photo.png');
+    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.png');
+    expect(preview.imageThumbnailSrc.value).toBe('');
     expect(mockGetImageThumbnail).not.toHaveBeenCalled();
     expect(preview.usesThumbnailImagePreview.value).toBe(false);
   });
 
-  it('uses thumbnails for gif files when the setting is disabled', async () => {
+  it('bridges with a thumbnail for gif files when the setting is disabled', async () => {
     const selectedEntry = ref<DirEntry | null>(createImageEntry('gif'));
     const preview = mountInfoPanelImagePreview(selectedEntry);
     await nextTick();
 
-    expect(preview.imagePreviewSrc.value).toBe('asset://thumb');
+    expect(preview.imageThumbnailSrc.value).toBe('asset://thumb');
     expect(mockGetImageThumbnail).toHaveBeenCalled();
     expect(preview.usesThumbnailImagePreview.value).toBe(true);
   });
 
-  it('uses thumbnails when the setting is disabled', async () => {
+  it('bridges with a thumbnail when the setting is disabled', async () => {
     const selectedEntry = ref<DirEntry | null>(createImageEntry('png'));
     const preview = mountInfoPanelImagePreview(selectedEntry);
     await nextTick();
 
-    expect(preview.imagePreviewSrc.value).toBe('asset://thumb');
+    expect(preview.imageThumbnailSrc.value).toBe('asset://thumb');
+    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.png');
     expect(mockGetImageThumbnail).toHaveBeenCalled();
     expect(preview.usesThumbnailImagePreview.value).toBe(true);
   });
 
-  it('falls back to the original svg source when thumbnails are unavailable', async () => {
-    mockGetImageThumbnail.mockReturnValue(undefined);
+  it('serves svg from the original only, with no thumbnail stage', async () => {
     const selectedEntry = ref<DirEntry | null>(createImageEntry('svg'));
     const preview = mountInfoPanelImagePreview(selectedEntry);
     await nextTick();
 
-    expect(preview.imagePreviewSrc.value).toBe('asset://C:/media/photo.svg');
+    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.svg');
+    expect(preview.imageThumbnailSrc.value).toBe('');
+    expect(preview.usesThumbnailImagePreview.value).toBe(false);
+  });
+
+  /**
+   * The pane is measured in device pixels and the request used to be clamped to the grid's
+   * 384, which is what made this preview look soft on a high-DPI display.
+   */
+  it('requests a thumbnail at the measured pane size rather than the grid size', async () => {
+    const selectedEntry = ref<DirEntry | null>(createImageEntry('png'));
+    const preview = mountInfoPanelImagePreview(selectedEntry);
+    await nextTick();
+
+    // The source is a lazy computed, so it has to be read for the request to be made.
+    void preview.imageThumbnailSrc.value;
+
+    expect(mockGetImageThumbnail).toHaveBeenCalledWith(expect.anything(), 560);
+  });
+
+  it('reports no image source for a non-image entry', async () => {
+    const selectedEntry = ref<DirEntry | null>(null);
+    const preview = mountInfoPanelImagePreview(selectedEntry);
+    await nextTick();
+
+    expect(preview.isImageFile.value).toBe(false);
+    expect(preview.imageOriginalSrc.value).toBe('');
+    expect(preview.imageThumbnailSrc.value).toBe('');
   });
 
   it('keeps the shared thumbnail cache when switching between image entries in thumbnail mode', async () => {

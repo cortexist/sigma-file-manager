@@ -11,11 +11,13 @@ import {
   FolderIcon,
   FolderOpenIcon,
   FileIcon,
-  FileImageIcon,
   Loader2Icon,
 } from '@lucide/vue';
 import { useInfoPanelImagePreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-image-preview';
 import { useInfoPanelVideoPreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-video-preview';
+import { MediaPlayer } from '@/components/ui/media-player';
+import { ImageViewer } from '@/components/ui/image-viewer';
+import { useAudioCovers } from '@/composables/use-audio-covers';
 import UbuntuWslIcon from '@/components/icons/ubuntu-wsl-icon.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isWslPath } from '@/utils/normalize-path';
@@ -41,14 +43,19 @@ const {
   previewRef,
   isImageFile,
   mediaSrc,
-  imagePreviewSrc,
+  playableMediaSrc,
+  imageOriginalSrc,
+  imageThumbnailSrc,
+  imagePreviewPlaceholderSrc,
 } = useInfoPanelImagePreview(() => props.selectedEntry);
 
 const {
-  videoPreviewRef,
   isVideoFile,
   muteVideoPreviewByDefault,
+  autoplayVideoPreview,
 } = useInfoPanelVideoPreview(() => props.selectedEntry);
+
+const audioCovers = useAudioCovers();
 
 const textPreviewContent = ref('');
 const textPreviewLoading = ref(false);
@@ -63,6 +70,29 @@ const infoPanelPreviewKind = computed(() => {
   }
 
   return determineFileType(entry.path);
+});
+
+/**
+ * Same order Quick View uses: the picture embedded in the track, then a cover file beside
+ * it. Nothing here means the player falls back to its music glyph.
+ */
+const audioArtworkSrc = computed((): string | undefined => {
+  const entry = props.selectedEntry;
+
+  if (!entry?.path || infoPanelPreviewKind.value !== 'audio') {
+    return undefined;
+  }
+
+  void audioCovers.embeddedCovers.value;
+  void audioCovers.siblingCovers.value;
+
+  const embedded = audioCovers.getEmbeddedCover(entry);
+
+  if (embedded) {
+    return embedded;
+  }
+
+  return audioCovers.getSiblingCover(entry.path);
 });
 
 const showWslDirectoryIcon = computed(() => {
@@ -158,40 +188,41 @@ watch(
       ref="previewRef"
       class="info-panel-preview__media-container"
     >
-      <img
-        v-if="imagePreviewSrc"
-        :src="imagePreviewSrc"
+      <!-- Not keyed on the path: this element is the one `requestFullscreen` is called on, and
+           remounting it when the selection changes dropped the viewer out of fullscreen. It
+           resets its own zoom and pan when `src` changes. -->
+      <ImageViewer
+        :src="imageOriginalSrc"
+        :preview-src="imageThumbnailSrc"
+        :placeholder-src="imagePreviewPlaceholderSrc"
         :alt="selectedEntry.name"
-        class="info-panel-preview__image animate-fade-in-x2"
-      >
-      <FileImageIcon
-        v-else
-        :size="48"
-        class="info-panel-preview__image-placeholder animate-fade-in-x2"
+        class="info-panel-preview__image-viewer animate-fade-in-x2"
       />
     </div>
     <div
       v-else-if="isVideoFile"
       class="info-panel-preview__media-container"
     >
-      <video
-        ref="videoPreviewRef"
-        :src="mediaSrc"
-        class="info-panel-preview__video animate-fade-in-x2"
-        controls
-        preload="metadata"
+      <!-- Unkeyed for the same reason as the image viewer above. Switching the autoplay
+           setting on used to need a remount to take effect; the player now watches the prop
+           and starts playing itself, so the instance can persist across the selection. -->
+      <MediaPlayer
+        :src="playableMediaSrc"
+        kind="video"
+        :autoplay="autoplayVideoPreview"
         :muted="muteVideoPreviewByDefault"
+        class="info-panel-preview__video animate-fade-in-x2"
       />
     </div>
     <div
       v-else-if="infoPanelPreviewKind === 'audio'"
-      class="info-panel-preview__media-container info-panel-preview__media-container--audio"
+      class="info-panel-preview__media-container"
     >
-      <audio
-        :src="mediaSrc"
+      <MediaPlayer
+        :src="playableMediaSrc"
+        kind="audio"
+        :poster="audioArtworkSrc"
         class="info-panel-preview__audio animate-fade-in-x2"
-        controls
-        preload="metadata"
       />
     </div>
     <div
@@ -266,6 +297,7 @@ watch(
 }
 
 .info-panel-preview__media-container {
+  position: relative;
   display: flex;
   overflow: hidden;
   width: 100%;
@@ -274,23 +306,26 @@ watch(
   justify-content: center;
 }
 
-.info-panel-preview__image,
 .info-panel-preview__video {
   width: 100%;
   height: 100%;
+  border-radius: var(--radius-sm);
   object-fit: cover;
 }
 
-.info-panel-preview__video {
-  border-radius: var(--radius-sm);
-}
+/* `contain` rather than the `cover` this pane used before: a viewer that can be zoomed has
+   to start by showing the whole frame, otherwise the first thing anyone does is zoom out to
+   find the edges that were cropped away. Matches how video is presented. */
 
-.info-panel-preview__media-container--audio {
-  padding: 8px 12px;
+.info-panel-preview__image-viewer {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-sm);
 }
 
 .info-panel-preview__audio {
   width: 100%;
+  height: 100%;
 }
 
 .info-panel-preview__pdf {

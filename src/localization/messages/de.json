@@ -428,6 +428,20 @@
         "description": "Diese Option ändert die Systemregistrierung und kann unerwartete Nebenwirkungen auf Ihrem Gerät haben. Fahren Sie auf eigenes Risiko fort.",
         "unavailableInMicrosoftStore": "In der Microsoft Store-Version nicht verfügbar"
       }
+    },
+    "accentColor": {
+      "title": "Akzentfarbe",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Zitrone",
+        "matcha": "Matcha",
+        "lime": "Limette",
+        "default": "Standard",
+        "strongBlue": "Kräftiges Blau",
+        "violet": "Violett",
+        "zune": "Zune",
+        "red": "Rot"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "Aktuelle Freigabe ersetzen?",
     "replaceShareDialogDescription": "Es werden bereits Dateien im Netzwerk freigegeben. Die aktuelle Freigabe wird gestoppt und durch eine neue ersetzt.",
     "replaceShareDialogConfirm": "Ersetzen"
+  },
+  "mediaPlayer": {
+    "play": "Wiedergabe",
+    "pause": "Pause",
+    "mute": "Stummschalten",
+    "unmute": "Stummschaltung aufheben",
+    "volume": "Lautstärke",
+    "seek": "Wiedergabeposition",
+    "fullscreen": "Vollbild aktivieren",
+    "exitFullscreen": "Vollbild beenden",
+    "loop": "Aktuelle Datei wiederholen",
+    "loopOff": "Wiederholung ausschalten",
+    "artwork": "Albumcover"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

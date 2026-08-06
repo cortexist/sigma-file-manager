@@ -13,8 +13,37 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip';
 
+const props = defineProps<{
+  /**
+   * Auxiliary windows need their own teardown before the window goes away, so they pass it
+   * here rather than letting the button hide the window out from under their state.
+   */
+  closeHandler?: () => void | Promise<void>;
+}>();
+
 const { t } = useI18n();
 const appWindow = getCurrentWindow();
+
+interface WindowControlSupport {
+  minimize?: boolean;
+  maximize?: boolean;
+}
+
+/**
+ * Tiling compositors size and place windows themselves, so minimize and maximize would be
+ * dead buttons there. The backend decides once at startup and injects the answer before the
+ * first paint, so this is read synchronously: anything asked over IPC would force the
+ * titlebar to render before it knew, and briefly show buttons it then had to take away.
+ *
+ * A missing global means the injection did not run, which is not evidence of a tiling
+ * desktop — default to drawing every control rather than withholding one.
+ */
+const support: WindowControlSupport = (
+  window as typeof window & { __SFM_WINDOW_CONTROL_SUPPORT__?: WindowControlSupport }
+).__SFM_WINDOW_CONTROL_SUPPORT__ ?? {};
+
+const canMinimize = support.minimize !== false;
+const canMaximize = support.maximize !== false;
 
 function minimizeWindow() {
   appWindow.minimize();
@@ -25,13 +54,23 @@ function maximizeWindow() {
 }
 
 function closeWindow() {
-  appWindow.hide();
+  if (props.closeHandler) {
+    void props.closeHandler();
+    return;
+  }
+
+  // `close()` rather than `hide()`, even though the window does end up merely hidden: this
+  // asks Tauri to close it, which fires `CloseRequested` on the Rust side, and that handler
+  // owns both the hiding and the decision about whether any window is left. Hiding directly
+  // from here skipped that decision entirely, so closing the last window from the app's own
+  // titlebar left the process running with nothing on screen.
+  void appWindow.close();
 }
 </script>
 
 <template>
   <div class="window-actions">
-    <Tooltip>
+    <Tooltip v-if="canMinimize">
       <TooltipTrigger as-child>
         <div
           class="window-toolbar-button"
@@ -47,7 +86,7 @@ function closeWindow() {
         {{ t('window.minimizeWindow') }}
       </TooltipContent>
     </Tooltip>
-    <Tooltip>
+    <Tooltip v-if="canMaximize">
       <TooltipTrigger as-child>
         <div
           class="window-toolbar-button"

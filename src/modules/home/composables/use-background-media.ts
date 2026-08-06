@@ -4,6 +4,7 @@
 
 import { computed, ref } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { convertMediaSrc } from '@/utils/media-src';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useUserPathsStore } from '@/stores/storage/user-paths';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
@@ -300,14 +301,18 @@ export function useBackgroundMedia(target?: BackgroundMediaTarget) {
       return defaultBannerImage;
     }
 
+    // Background videos need the loopback media server on Linux, where the asset
+    // protocol cannot feed WebKitGTK's media backend. See @/utils/media-src.
+    const toUrl = getMediaType(item) === 'video' ? convertMediaSrc : convertFileSrc;
+
     if (item.kind === 'custom') {
-      return convertFileSrc(item.path);
+      return toUrl(item.path);
     }
 
     const source = getMediaUrlSource(item);
 
     if (source && cachedMediaPaths.value[source]) {
-      return convertFileSrc(cachedMediaPaths.value[source]);
+      return toUrl(cachedMediaPaths.value[source]);
     }
 
     if (item.kind === 'builtin') {

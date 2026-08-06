@@ -20,6 +20,11 @@ use tauri::Manager;
 
 const IMAGE_THUMBNAIL_CACHE_DIR: &str = "image-thumbnails";
 const THUMBNAIL_MAX_DIMENSION: u32 = 384;
+/// Ceiling for callers that ask for a specific size. The grid still gets
+/// `THUMBNAIL_MAX_DIMENSION` by default, but the info panel and Quick View size their
+/// request to the pane in *device* pixels, which on a 4K display is already ~1120 —
+/// clamping those to the grid's 384 is what made those previews look soft.
+const IMAGE_PREVIEW_MAX_DIMENSION: u32 = 2048;
 const MAX_THUMBNAIL_CACHE_ITEM_COUNT: usize = 5000;
 const MAX_THUMBNAIL_CACHE_SIZE_BYTES: u64 = 1024 * 1024 * 1024;
 const THUMBNAIL_CACHE_LIMIT_CHECK_INTERVAL: usize = 100;
@@ -52,7 +57,7 @@ struct ThumbnailCacheMaintenanceState {
 
 fn normalize_thumbnail_max_dimension(max_dimension: Option<u32>) -> u32 {
     match max_dimension {
-        Some(dimension) if dimension > 0 => dimension.min(THUMBNAIL_MAX_DIMENSION),
+        Some(dimension) if dimension > 0 => dimension.min(IMAGE_PREVIEW_MAX_DIMENSION),
         _ => THUMBNAIL_MAX_DIMENSION,
     }
 }
@@ -444,7 +449,33 @@ fn cache_video_thumbnail_file(
     height: u32,
     thumbnail_data_url: String,
 ) -> Result<String, String> {
+    let thumbnail = decode_video_thumbnail_data_url(&thumbnail_data_url)?;
+
+    store_video_thumbnail_bytes(cache_dir, path, modified_time, size, width, height, thumbnail)
+}
+
+/// Writes an already-encoded JPEG into the thumbnail cache.
+///
+/// Shared by the webview path, which decodes a data URL, and the Linux path, which decodes
+/// the frame natively, so both get the same validation, cache limits and atomic rename.
+fn store_video_thumbnail_bytes(
+    cache_dir: PathBuf,
+    path: String,
+    modified_time: u64,
+    size: u64,
+    width: u32,
+    height: u32,
+    thumbnail: Vec<u8>,
+) -> Result<String, String> {
     validate_video_thumbnail_size(width, height)?;
+
+    if thumbnail.is_empty() {
+        return Err("Video thumbnail is empty".to_string());
+    }
+
+    if thumbnail.len() > MAX_VIDEO_THUMBNAIL_CACHE_BYTES {
+        return Err("Video thumbnail is too large".to_string());
+    }
 
     let source_metadata = fs::metadata(Path::new(&path))
         .map_err(|error| format!("Failed to read video metadata: {error}"))?;
@@ -473,7 +504,6 @@ fn cache_video_thumbnail_file(
         }
     }
 
-    let thumbnail = decode_video_thumbnail_data_url(&thumbnail_data_url)?;
     let temporary_path = temporary_thumbnail_path(&thumbnail_path);
 
     if let Err(error) = fs::write(&temporary_path, thumbnail) {
@@ -591,6 +621,94 @@ fn generate_image_thumbnail_file(
     Ok(thumbnail_path.to_string_lossy().to_string())
 }
 
+/// Writes an audio file's embedded artwork into the thumbnail cache and returns its path, or
+/// `None` when the file carries none.
+///
+/// The picture is stored exactly as it was embedded rather than resized here, so it can serve
+/// both the small filmstrip thumbnail and the full-size player artwork. Callers wanting a
+/// scaled version feed the returned path back through `generate_image_thumbnail`, which
+/// already caches by size.
+fn extract_audio_cover_file(
+    cache_dir: PathBuf,
+    path: String,
+    modified_time: u64,
+    size: u64,
+) -> Result<Option<String>, String> {
+    fs::create_dir_all(&cache_dir)
+        .map_err(|error| format!("Failed to create thumbnail cache directory: {error}"))?;
+
+    // `max_dimension` is meaningless for an untouched copy; 0 keeps this key clear of the
+    // resized-image keys for the same file.
+    // PNG because that is what `write_image_thumbnail` encodes, and the asset protocol picks
+    // the served content type from this extension.
+    let cover_path = cache_dir.join(format!(
+        "{}.png",
+        thumbnail_cache_key(&path, modified_time, size, 0)
+    ));
+
+    {
+        let _cache_file_lock = IMAGE_THUMBNAIL_CACHE_FILE_LOCK
+            .lock()
+            .map_err(|error| format!("Failed to lock thumbnail cache files: {error}"))?;
+
+        if cover_path.exists() {
+            return Ok(Some(cover_path.to_string_lossy().to_string()));
+        }
+    }
+
+    let Some(cover) = crate::audio_covers::extract_embedded_cover(&path)? else {
+        return Ok(None);
+    };
+
+    // Decoding proves it is a real image before it is handed to the webview, and gives the
+    // extension the asset protocol needs to serve it with a sensible type.
+    let decoded = image::load_from_memory(&cover)
+        .map_err(|error| format!("Embedded cover is not a readable image: {error}"))?;
+
+    let temporary_path = temporary_thumbnail_path(&cover_path);
+
+    if let Err(error) = write_image_thumbnail(&decoded, &temporary_path) {
+        let _ = fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+
+    {
+        let _cache_file_lock = IMAGE_THUMBNAIL_CACHE_FILE_LOCK
+            .lock()
+            .map_err(|error| format!("Failed to lock thumbnail cache files: {error}"))?;
+
+        if cover_path.exists() {
+            let _ = fs::remove_file(&temporary_path);
+            return Ok(Some(cover_path.to_string_lossy().to_string()));
+        }
+
+        if let Err(error) = fs::rename(&temporary_path, &cover_path) {
+            let _ = fs::remove_file(&temporary_path);
+            return Err(format!("Failed to finalize embedded cover: {error}"));
+        }
+
+        record_generated_thumbnail()?;
+    }
+
+    Ok(Some(cover_path.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub async fn extract_audio_cover(
+    app: tauri::AppHandle,
+    path: String,
+    modified_time: u64,
+    size: u64,
+) -> Result<Option<String>, String> {
+    let cache_dir = thumbnail_cache_dir(&app)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        extract_audio_cover_file(cache_dir, path, modified_time, size)
+    })
+    .await
+    .map_err(|error| format!("Failed to extract embedded cover: {error}"))?
+}
+
 #[tauri::command]
 pub async fn generate_image_thumbnail(
     app: tauri::AppHandle,
@@ -627,6 +745,62 @@ pub async fn get_cached_video_thumbnail(
     .map_err(|error| format!("Failed to get cached video thumbnail: {error}"))?
 }
 
+/// Decodes a video thumbnail natively instead of in the webview.
+///
+/// Only Linux needs this: WebKitGTK cannot hand decoded frames back to JavaScript while
+/// the accelerated video path is active. See `crate::video_thumbnails`.
+#[tauri::command]
+pub async fn generate_video_thumbnail(
+    app: tauri::AppHandle,
+    path: String,
+    modified_time: u64,
+    size: u64,
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let cache_dir = thumbnail_cache_dir(&app)?;
+
+        tauri::async_runtime::spawn_blocking(move || {
+            validate_video_thumbnail_size(width, height)?;
+
+            // Another pane may have generated the same thumbnail while this one queued.
+            if let Some(cached) = get_cached_video_thumbnail_file(
+                cache_dir.clone(),
+                path.clone(),
+                modified_time,
+                size,
+                width,
+                height,
+            )? {
+                return Ok(cached);
+            }
+
+            let thumbnail =
+                crate::video_thumbnails::generate_video_thumbnail_jpeg(&path, width, height)?;
+
+            store_video_thumbnail_bytes(
+                cache_dir,
+                path,
+                modified_time,
+                size,
+                width,
+                height,
+                thumbnail,
+            )
+        })
+        .await
+        .map_err(|error| format!("Failed to generate video thumbnail: {error}"))?
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app, path, modified_time, size, width, height);
+        Err("Native video thumbnails are only used on Linux".to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn cache_video_thumbnail(
     app: tauri::AppHandle,
@@ -659,10 +833,11 @@ mod tests {
     use super::{
         enforce_thumbnail_cache_limits, generate_image_thumbnail_file,
         normalize_thumbnail_max_dimension, path_is_same_or_descendant, thumbnail_cache_key,
-        thumbnail_cache_stats, validate_image_thumbnail_source,
-        MAX_ORIGINAL_IMAGE_THUMBNAIL_SOURCE_SIZE_BYTES, MAX_THUMBNAIL_CACHE_ITEM_COUNT,
-        MAX_THUMBNAIL_CACHE_SIZE_BYTES, MAX_THUMBNAIL_SOURCE_FILE_SIZE_BYTES,
-        MAX_THUMBNAIL_SOURCE_PIXELS, THUMBNAIL_MAX_DIMENSION,
+        thumbnail_cache_stats, validate_image_thumbnail_source, validate_video_thumbnail_size,
+        IMAGE_PREVIEW_MAX_DIMENSION, MAX_ORIGINAL_IMAGE_THUMBNAIL_SOURCE_SIZE_BYTES,
+        MAX_THUMBNAIL_CACHE_ITEM_COUNT, MAX_THUMBNAIL_CACHE_SIZE_BYTES,
+        MAX_THUMBNAIL_SOURCE_FILE_SIZE_BYTES, MAX_THUMBNAIL_SOURCE_PIXELS,
+        THUMBNAIL_MAX_DIMENSION,
     };
     use std::fs;
     use std::fs::File;
@@ -736,8 +911,28 @@ mod tests {
         );
         assert_eq!(
             normalize_thumbnail_max_dimension(Some(10_000)),
-            THUMBNAIL_MAX_DIMENSION
+            IMAGE_PREVIEW_MAX_DIMENSION
         );
+    }
+
+    /// A pane-sized request used to come back at the grid's 384, which is what made the
+    /// info panel and Quick View previews look soft on a high-DPI display.
+    #[test]
+    fn preview_sized_requests_are_not_clamped_to_the_grid_cap() {
+        assert_eq!(normalize_thumbnail_max_dimension(Some(1120)), 1120);
+        assert_eq!(
+            normalize_thumbnail_max_dimension(Some(IMAGE_PREVIEW_MAX_DIMENSION)),
+            IMAGE_PREVIEW_MAX_DIMENSION
+        );
+    }
+
+    /// Video thumbnails arrive from the frontend as data URLs and keep the smaller cap;
+    /// raising the image-preview ceiling must not widen what they may submit.
+    #[test]
+    fn video_thumbnail_size_validation_keeps_the_grid_cap() {
+        assert!(validate_video_thumbnail_size(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION).is_ok());
+        assert!(validate_video_thumbnail_size(THUMBNAIL_MAX_DIMENSION + 1, 100).is_err());
+        assert!(validate_video_thumbnail_size(100, IMAGE_PREVIEW_MAX_DIMENSION).is_err());
     }
 
     #[test]

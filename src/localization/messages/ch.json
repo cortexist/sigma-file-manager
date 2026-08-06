@@ -428,6 +428,20 @@
         "description": "此选项会修改系统注册表，并且可能会对您的设备产生意外的副作用。请自行承担风险后继续。",
         "unavailableInMicrosoftStore": "Microsoft Store 版本不可用"
       }
+    },
+    "accentColor": {
+      "title": "强调色",
+      "colors": {
+        "mango": "芒果",
+        "lemon": "柠檬",
+        "matcha": "抹茶",
+        "lime": "青柠",
+        "default": "默认",
+        "strongBlue": "浓蓝",
+        "violet": "紫罗兰",
+        "zune": "Zune",
+        "red": "红色"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "替换当前共享？",
     "replaceShareDialogDescription": "文件已在网络上共享。当前共享将被停止并替换为新的共享。",
     "replaceShareDialogConfirm": "替换"
+  },
+  "mediaPlayer": {
+    "play": "播放",
+    "pause": "暂停",
+    "mute": "静音",
+    "unmute": "取消静音",
+    "volume": "音量",
+    "seek": "播放进度",
+    "fullscreen": "进入全屏",
+    "exitFullscreen": "退出全屏",
+    "loop": "重复播放当前文件",
+    "loopOff": "关闭重复播放",
+    "artwork": "专辑封面"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

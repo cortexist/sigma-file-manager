@@ -18,6 +18,12 @@ export function isFileBrowserVideoEntry(entry: DirEntry): boolean {
   return extension ? FILE_EXTENSIONS.VIDEO.includes(extension) : false;
 }
 
+export function isFileBrowserAudioEntry(entry: DirEntry): boolean {
+  if (entry.is_dir) return false;
+  const extension = entry.ext?.toLowerCase();
+  return extension ? FILE_EXTENSIONS.AUDIO.includes(extension) : false;
+}
+
 export function groupFileBrowserEntries(entries: readonly DirEntry[]): GroupedEntries {
   const dirs: DirEntry[] = [];
   const images: DirEntry[] = [];

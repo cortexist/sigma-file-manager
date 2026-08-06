@@ -428,6 +428,20 @@
         "description": "Bu seçenek sistem kaydını değiştirir ve cihazınızda beklenmedik yan etkilere neden olabilir. Riski kabul ederek devam edin.",
         "unavailableInMicrosoftStore": "Microsoft Store sürümünde kullanılamaz"
       }
+    },
+    "accentColor": {
+      "title": "Vurgu rengi",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Limon",
+        "matcha": "Matcha",
+        "lime": "Misket limonu",
+        "default": "Varsayılan",
+        "strongBlue": "Koyu mavi",
+        "violet": "Menekşe",
+        "zune": "Zune",
+        "red": "Kırmızı"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "Mevcut paylaşım değiştirilsin mi?",
     "replaceShareDialogDescription": "Ağ üzerinden zaten dosyalar paylaşılıyor. Mevcut paylaşım durdurulup yenisiyle değiştirilecek.",
     "replaceShareDialogConfirm": "Değiştir"
+  },
+  "mediaPlayer": {
+    "play": "Oynat",
+    "pause": "Duraklat",
+    "mute": "Sessize al",
+    "unmute": "Sesi aç",
+    "volume": "Ses düzeyi",
+    "seek": "Oynatma konumu",
+    "fullscreen": "Tam ekrana geç",
+    "exitFullscreen": "Tam ekrandan çık",
+    "loop": "Geçerli dosyayı tekrarla",
+    "loopOff": "Tekrarı kapat",
+    "artwork": "Albüm kapağı"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

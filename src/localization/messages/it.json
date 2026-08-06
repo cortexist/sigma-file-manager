@@ -428,6 +428,20 @@
         "description": "Questa opzione modifica il registro di sistema e può avere effetti collaterali imprevisti sul dispositivo. Continua a tuo rischio.",
         "unavailableInMicrosoftStore": "Non disponibile nella versione Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Colore d'accento",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Limone",
+        "matcha": "Matcha",
+        "lime": "Lime",
+        "default": "Predefinito",
+        "strongBlue": "Blu intenso",
+        "violet": "Viola",
+        "zune": "Zune",
+        "red": "Rosso"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "Sostituire la condivisione attuale?",
     "replaceShareDialogDescription": "Ci sono già file condivisi in rete. La condivisione attuale verrà interrotta e sostituita con quella nuova.",
     "replaceShareDialogConfirm": "Sostituisci"
+  },
+  "mediaPlayer": {
+    "play": "Riproduci",
+    "pause": "Pausa",
+    "mute": "Disattiva audio",
+    "unmute": "Attiva audio",
+    "volume": "Volume",
+    "seek": "Posizione di riproduzione",
+    "fullscreen": "Attiva schermo intero",
+    "exitFullscreen": "Esci da schermo intero",
+    "loop": "Ripeti il file corrente",
+    "loopOff": "Disattiva la ripetizione",
+    "artwork": "Copertina dell'album"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

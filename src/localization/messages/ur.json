@@ -457,6 +457,20 @@
         "description": "یہ اختیار سسٹم رجسٹری بدلتا ہے اور غیر متوقع اثر کر سکتا ہے۔ اپنے خطرے پر آگے بڑھیں۔",
         "unavailableInMicrosoftStore": "Microsoft Store ورژن میں دستیاب نہیں"
       }
+    },
+    "accentColor": {
+      "title": "ایکسنٹ رنگ",
+      "colors": {
+        "mango": "آم",
+        "lemon": "لیموں",
+        "matcha": "ماچا",
+        "lime": "لائم",
+        "default": "ڈیفالٹ",
+        "strongBlue": "گہرا نیلا",
+        "violet": "بنفشی",
+        "zune": "Zune",
+        "red": "سرخ"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "موجودہ شیئر بدلیں؟",
     "replaceShareDialogDescription": "فائلیں پہلے سے نیٹ ورک پر ہیں۔ موجودہ شیئر بند ہو کر نئے سے بدل جائے گا۔",
     "replaceShareDialogConfirm": "بدل دیں"
+  },
+  "mediaPlayer": {
+    "play": "چلائیں",
+    "pause": "وقفہ",
+    "mute": "خاموش کریں",
+    "unmute": "آواز چالو کریں",
+    "volume": "آواز",
+    "seek": "پلے بیک پوزیشن",
+    "fullscreen": "مکمل اسکرین میں جائیں",
+    "exitFullscreen": "مکمل اسکرین سے باہر نکلیں",
+    "loop": "موجودہ فائل دہرائیں",
+    "loopOff": "دہرانا بند کریں",
+    "artwork": "البم کور"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

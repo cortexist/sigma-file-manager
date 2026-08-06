@@ -21,7 +21,7 @@ import { useFileBrowserContext } from './composables/use-file-browser-context';
 import { usePlatformStore } from '@/stores/runtime/platform';
 import { resolveImageDisplaySrc } from '@/modules/navigator/utils/resolve-image-display-src';
 import { useDevicePixelPreviewSize } from '@/modules/navigator/composables/use-device-pixel-preview-size';
-import { getImageSrc } from './utils';
+import { getImageSrc, isAudioFile } from './utils';
 import { getDriveEntryVolumeSizeBytes } from '@/utils/drive-icon';
 
 const DEFAULT_GRID_THUMBNAIL_SIZE = {
@@ -93,6 +93,18 @@ const shouldShowImageFallback = computed(() => props.variant === 'image'
   && isPreviewInLoadRange.value
   && !imagePreviewSrc.value
   && ctx.shouldShowImageThumbnailFallback(props.entry, imageThumbnailMaxDimension.value));
+/**
+ * Audio sits in the "other files" group rather than its own, so the tile is only a picture
+ * when the track actually carries embedded artwork; otherwise the usual file icon stands.
+ */
+const audioCover = computed(() => {
+  if (props.variant !== 'other' || !isAudioFile(props.entry) || !isPreviewInLoadRange.value) {
+    return undefined;
+  }
+
+  return ctx.getAudioCover(props.entry);
+});
+
 const videoThumbnail = computed(() => {
   if (props.variant !== 'video' || !isPreviewInLoadRange.value) {
     return undefined;
@@ -102,7 +114,9 @@ const videoThumbnail = computed(() => {
 });
 
 function shouldLoadPreviewNearViewport(): boolean {
-  return props.variant === 'image' || props.variant === 'video';
+  return props.variant === 'image'
+    || props.variant === 'video'
+    || (props.variant === 'other' && isAudioFile(props.entry));
 }
 
 function disconnectPreviewIntersectionObserver(): void {
@@ -310,8 +324,9 @@ watch(imagePreviewPlaceholderSrc, () => {
       `file-browser-grid-card--${props.variant}`,
       {
         'file-browser-grid-card--hidden': props.entry.is_hidden,
-        'file-browser-grid-card--image': props.variant === 'video' && videoThumbnail,
-        'file-browser-grid-card--icon-full': props.variant === 'other'
+        'file-browser-grid-card--image': (props.variant === 'video' && videoThumbnail)
+          || (props.variant === 'other' && audioCover),
+        'file-browser-grid-card--icon-full': (props.variant === 'other' && !audioCover)
           || shouldShowImageFallback
           || (props.variant === 'video' && !videoThumbnail),
       },
@@ -383,6 +398,12 @@ watch(imagePreviewPlaceholderSrc, () => {
           class="file-browser-grid-card__icon"
         />
       </template>
+      <img
+        v-else-if="audioCover"
+        :src="audioCover"
+        :alt="props.entry.name"
+        class="file-browser-grid-card__image animate-fade-in-x2"
+      >
       <FileBrowserEntryIcon
         v-else
         :entry="props.entry"
@@ -656,7 +677,7 @@ watch(imagePreviewPlaceholderSrc, () => {
 }
 
 .file-browser-grid-card__overlay--selected {
-  background-color: hsl(var(--primary) / 20%);
+  background-color: hsl(var(--secondary) / 20%);
   box-shadow: inset 0 0 0 2px hsl(var(--primary) / 60%);
   opacity: 0;
 }
@@ -670,7 +691,7 @@ watch(imagePreviewPlaceholderSrc, () => {
 }
 
 .file-browser-grid-card--image[data-selected] .file-browser-grid-card__overlay--selected {
-  background-color: hsl(var(--primary) / 50%);
+  background-color: hsl(var(--secondary) / 50%);
 }
 
 .file-browser-grid-card__overlay--clipboard {

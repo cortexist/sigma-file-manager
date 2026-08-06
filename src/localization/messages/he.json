@@ -457,6 +457,20 @@
         "description": "אפשרות זו משנה את רישום המערכת ועלולה לגרום לתופעות לוואי בלתי צפויות במכשירך. המשך על אחריותך.",
         "unavailableInMicrosoftStore": "לא זמין בגרסת Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "צבע הדגשה",
+      "colors": {
+        "mango": "מנגו",
+        "lemon": "לימון",
+        "matcha": "מאצ'ה",
+        "lime": "ליים",
+        "default": "ברירת מחדל",
+        "strongBlue": "כחול עז",
+        "violet": "סגול",
+        "zune": "Zune",
+        "red": "אדום"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "להחליף את השיתוף הנוכחי?",
     "replaceShareDialogDescription": "קבצים כבר משותפים ברשת. השיתוף הנוכחי ייעצר ויוחלף בחדש.",
     "replaceShareDialogConfirm": "החלף"
+  },
+  "mediaPlayer": {
+    "play": "הפעלה",
+    "pause": "השהיה",
+    "mute": "השתקה",
+    "unmute": "ביטול השתקה",
+    "volume": "עוצמת קול",
+    "seek": "מיקום הניגון",
+    "fullscreen": "מעבר למסך מלא",
+    "exitFullscreen": "יציאה ממסך מלא",
+    "loop": "חזרה על הקובץ הנוכחי",
+    "loopOff": "כיבוי החזרה",
+    "artwork": "עטיפת האלבום"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

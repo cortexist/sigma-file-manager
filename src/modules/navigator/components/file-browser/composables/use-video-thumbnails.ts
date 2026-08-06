@@ -5,6 +5,8 @@
 import { ref } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { DirEntry } from '@/types/dir-entry';
+import { convertMediaSrc } from '@/utils/media-src';
+import { ensurePlatformInfo } from '@/utils/platform-info';
 
 const MAX_CONCURRENT_THUMBNAILS = 3;
 const VIDEO_THUMBNAIL_SIZE = {
@@ -81,6 +83,9 @@ export function useVideoThumbnails() {
   const failedThumbnails = new Set<string>();
   let thumbnailGeneration = 0;
 
+  /// Grabs the frame in the webview. Linux never reaches this: WebKitGTK decodes video
+  /// into a GPU buffer JavaScript cannot sample, so the frame would be uninitialized
+  /// memory. That platform uses generateVideoThumbnailNatively instead.
   function createVideoThumbnailDataUrl(request: VideoThumbnailRequest): Promise<string> {
     return new Promise((resolve) => {
       const processingKey = getProcessingVideoThumbnailKey(request.thumbnailKey, request.generation);
@@ -149,7 +154,7 @@ export function useVideoThumbnails() {
         resolveThumbnail('');
       };
 
-      video.src = convertFileSrc(request.entry.path);
+      video.src = convertMediaSrc(request.entry.path);
     });
   }
 
@@ -173,6 +178,18 @@ export function useVideoThumbnails() {
       width: request.targetSize.width,
       height: request.targetSize.height,
       thumbnailDataUrl,
+    });
+
+    return convertFileSrc(thumbnailPath);
+  }
+
+  async function generateVideoThumbnailNatively(request: VideoThumbnailRequest): Promise<string> {
+    const thumbnailPath = await invoke<string>('generate_video_thumbnail', {
+      path: request.entry.path,
+      modifiedTime: request.entry.modified_time,
+      size: request.entry.size,
+      width: request.targetSize.width,
+      height: request.targetSize.height,
     });
 
     return convertFileSrc(thumbnailPath);
@@ -203,6 +220,20 @@ export function useVideoThumbnails() {
       }
 
       if (request.generation !== thumbnailGeneration || cancelledThumbnails.has(processingKey)) {
+        return;
+      }
+
+      // Linux decodes the frame natively; the command caches it and hands back a path.
+      if ((await ensurePlatformInfo()).isLinux) {
+        const nativeThumbnail = await generateVideoThumbnailNatively(request);
+
+        if (request.generation === thumbnailGeneration && !cancelledThumbnails.has(processingKey)) {
+          videoThumbnails.value = {
+            ...videoThumbnails.value,
+            [request.thumbnailKey]: nativeThumbnail,
+          };
+        }
+
         return;
       }
 

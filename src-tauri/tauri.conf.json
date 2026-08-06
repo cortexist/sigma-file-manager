@@ -2,12 +2,17 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Sigma File Manager",
   "version": "../package.json",
-  "identifier": "com.sigma-file-manager.app",
+  "identifier": "com.sigma-file-manager.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
+  },
+  "plugins": {
+    "fs": {
+      "requireLiteralLeadingDot": false
+    }
   },
   "app": {
     "windows": [
@@ -36,7 +41,7 @@
         "minHeight": 200,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true,
+        "decorations": false,
         "shadow": true,
         "visible": false,
         "url": "/quick-view"
@@ -51,7 +56,7 @@
         "minHeight": 200,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true,
+        "decorations": false,
         "shadow": true,
         "visible": false,
         "url": "/print-view"
@@ -61,10 +66,12 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "**",
-          "$APPDATA/**"
-        ]
+        "scope": { 
+          "requireLiteralLeadingDot": false,
+          "allow": [
+            "**",
+            "$APPDATA/**"
+        ]}
       }
     }
   },
@@ -81,6 +88,24 @@
       "nsis": {
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libayatana-appindicator3-1",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-libav"
+        ],
+        "recommends": [
+          "gstreamer1.0-plugins-ugly",
+          "gstreamer1.0-pipewire"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
       }
     },
     "icon": [

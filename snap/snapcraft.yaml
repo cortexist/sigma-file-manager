@@ -31,6 +31,7 @@ apps:
     plugs:
       - home
       - removable-media
+      - audio-playback
       - network
       - network-bind
       - network-status
@@ -82,6 +83,13 @@ parts:
       - libwebkit2gtk-4.1-0=2.44.0-2
       - libjavascriptcoregtk-4.1-0=2.44.0-2
       - libayatana-appindicator3-1
+      # WebKitGTK plays media through GStreamer, which loads these plugins by name at
+      # runtime, so they never appear in the binary's linked libraries. Without them
+      # video preview fails to build a pipeline and audio has no sink at all.
+      - gstreamer1.0-plugins-base
+      - gstreamer1.0-plugins-good
+      - gstreamer1.0-plugins-bad
+      - gstreamer1.0-libav
     override-pull: |
       craftctl default
       version="$(grep -m1 '"version"' package.json | sed -E 's/.*"version": *"([^"]+)".*/\1/')"

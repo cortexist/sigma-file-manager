@@ -457,6 +457,20 @@
         "description": "यह विकल्प सिस्टम रजिस्ट्री को संशोधित करता है और आपके डिवाइस पर अप्रत्याशित दुष्प्रभाव हो सकता है। स्वयं के जोखिम पर आगे बढ़ें।",
         "unavailableInMicrosoftStore": "Microsoft Store संस्करण में उपलब्ध नहीं"
       }
+    },
+    "accentColor": {
+      "title": "एक्सेंट रंग",
+      "colors": {
+        "mango": "आम",
+        "lemon": "नींबू",
+        "matcha": "माचा",
+        "lime": "लाइम",
+        "default": "डिफ़ॉल्ट",
+        "strongBlue": "गहरा नीला",
+        "violet": "बैंगनी",
+        "zune": "Zune",
+        "red": "लाल"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "वर्तमान शेयर बदलें?",
     "replaceShareDialogDescription": "फ़ाइलें पहले से ही नेटवर्क पर साझा की जा रही हैं. वर्तमान शेयर बंद कर दिया जाएगा और उसके स्थान पर नया शेयर ले लिया जाएगा।",
     "replaceShareDialogConfirm": "प्रतिस्थापित करें"
+  },
+  "mediaPlayer": {
+    "play": "चलाएँ",
+    "pause": "रोकें",
+    "mute": "म्यूट करें",
+    "unmute": "अनम्यूट करें",
+    "volume": "आवाज़",
+    "seek": "प्लेबैक स्थिति",
+    "fullscreen": "पूर्ण स्क्रीन में जाएँ",
+    "exitFullscreen": "पूर्ण स्क्रीन से बाहर निकलें",
+    "loop": "वर्तमान फ़ाइल दोहराएँ",
+    "loopOff": "दोहराना बंद करें",
+    "artwork": "एल्बम कवर"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

@@ -34,8 +34,13 @@ import {
   fetchQuickViewSiblingPathsFromDisk,
   QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
   QUICK_VIEW_LOAD_FILE_EVENT,
+  QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
+import { convertMediaSrc } from '@/utils/media-src';
+import { MediaPlayer } from '@/components/ui/media-player';
+import { ImageViewer } from '@/components/ui/image-viewer';
+import WindowActions from '@/modules/window-toolbar/window-actions.vue';
 import {
   decodeTextFileBytesWithEncoding,
   encodeTextFileBytes,
@@ -51,7 +56,9 @@ import {
   releaseAuxiliaryWindow,
 } from '@/utils/auxiliary-windows';
 import { useImageThumbnails } from '@/modules/navigator/components/file-browser/composables/use-image-thumbnails';
+import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/composables/use-video-thumbnails';
 import { useHorizontalFixedVirtualList } from '@/composables/use-horizontal-fixed-virtual-list';
+import { useAudioCovers } from '@/composables/use-audio-covers';
 
 const { t } = useI18n();
 
@@ -62,6 +69,8 @@ const resolvedSiblingPaths = ref<string[]>([]);
 const siblingPathsProvidedByMain = ref(false);
 
 const stripThumbnails = useImageThumbnails();
+const stripAudioCovers = useAudioCovers();
+const stripVideoThumbnails = useVideoThumbnails();
 const stripDirEntryByPath = ref<Record<string, DirEntry>>({});
 let stripEntryLoadToken = 0;
 let stripThumbnailParentKey: string | null = null;
@@ -106,6 +115,7 @@ let textPreviewRequestId = 0;
 let markdownPreviewRequestId = 0;
 let unlistenLoadFile: UnlistenFn | null = null;
 let unlistenCloseRequested: UnlistenFn | null = null;
+let unlistenSiblingPathsChanged: UnlistenFn | null = null;
 
 watch(
   resolvedSiblingPaths,
@@ -116,6 +126,7 @@ watch(
       stripDirEntryByPath.value = {};
       stripThumbnailParentKey = null;
       stripThumbnails.clearThumbnails();
+      stripVideoThumbnails.clearThumbnails();
       return;
     }
 
@@ -131,6 +142,7 @@ watch(
     if (nextParentKey !== stripThumbnailParentKey) {
       stripThumbnailParentKey = nextParentKey;
       stripThumbnails.clearThumbnails();
+      stripVideoThumbnails.clearThumbnails();
       stripVirtualThumbRangePrevious = {
         start: 0,
         end: 0,
@@ -163,6 +175,7 @@ watch(
       stripDirEntryByPath.value = {};
       stripThumbnailParentKey = null;
       stripThumbnails.clearThumbnails();
+      stripVideoThumbnails.clearThumbnails();
       stripVirtualThumbRangePrevious = {
         start: 0,
         end: 0,
@@ -216,9 +229,41 @@ const fileName = computed((): string => {
   return getFileName(currentFilePath.value);
 });
 
+/**
+ * Artwork for the open track: the picture embedded in the file, else a cover image sitting
+ * beside it. Returning nothing leaves the player on its music-glyph fallback.
+ */
+const audioArtworkSrc = computed((): string | undefined => {
+  const path = currentFilePath.value;
+
+  if (!path || fileType.value !== 'audio' || isHttpOrHttpsUrl(path)) {
+    return undefined;
+  }
+
+  void stripAudioCovers.embeddedCovers.value;
+  void stripAudioCovers.siblingCovers.value;
+
+  const entry = stripDirEntryByPath.value[path];
+  const embedded = entry ? stripAudioCovers.getEmbeddedCover(entry) : undefined;
+
+  if (embedded) {
+    return embedded;
+  }
+
+  return stripAudioCovers.getSiblingCover(path);
+});
+
 const fileAssetUrl = computed((): string => {
   if (!currentFilePath.value) return '';
   return getQuickViewDisplayUrl(currentFilePath.value);
+});
+
+// Video and audio go through the loopback media server on Linux, where the asset
+// protocol cannot feed WebKitGTK's media backend. See @/utils/media-src.
+const fileMediaUrl = computed((): string => {
+  if (!currentFilePath.value) return '';
+  if (isHttpOrHttpsUrl(currentFilePath.value)) return currentFilePath.value;
+  return convertMediaSrc(currentFilePath.value);
 });
 
 const textIsDirty = computed(() => {
@@ -339,6 +384,42 @@ function quickViewStripImageSrc(path: string): string | undefined {
   return stripThumbnails.getImageThumbnail(entry);
 }
 
+function quickViewStripVideoSrc(path: string): string | undefined {
+  if (determineFileType(path) !== 'video' || isHttpOrHttpsUrl(path)) {
+    return undefined;
+  }
+
+  void stripVideoThumbnails.videoThumbnails.value;
+
+  const entry = stripDirEntryByPath.value[path];
+
+  if (!entry) {
+    return undefined;
+  }
+
+  return stripVideoThumbnails.getVideoThumbnail(entry);
+}
+
+/**
+ * Audio has no frame to sample, so the strip shows the picture embedded in the file. Falls
+ * back to the music glyph, which is what the template does when this returns nothing.
+ */
+function quickViewStripAudioSrc(path: string): string | undefined {
+  if (determineFileType(path) !== 'audio' || isHttpOrHttpsUrl(path)) {
+    return undefined;
+  }
+
+  void stripAudioCovers.embeddedCovers.value;
+
+  const entry = stripDirEntryByPath.value[path];
+
+  if (!entry) {
+    return undefined;
+  }
+
+  return stripAudioCovers.getEmbeddedCover(entry);
+}
+
 function quickViewStripImageShowsSpinner(path: string): boolean {
   if (determineFileType(path) !== 'image') {
     return false;
@@ -376,23 +457,27 @@ function cancelQuickViewStripThumbnailForSiblingIndex(entryIndex: number) {
 }
 
 function cancelQuickViewStripThumbnailForPath(path: string | undefined) {
-  if (!path) {
+  if (!path || isHttpOrHttpsUrl(path)) {
     return;
   }
 
-  if (determineFileType(path) !== 'image' || isHttpOrHttpsUrl(path)) {
-    return;
-  }
-
-  if (getFileExtension(path) === 'svg') {
-    return;
-  }
-
+  const fileType = determineFileType(path);
   const entry = stripDirEntryByPath.value[path];
 
-  if (entry) {
-    stripThumbnails.cancelImageThumbnail(entry);
+  if (!entry) {
+    return;
   }
+
+  if (fileType === 'video') {
+    stripVideoThumbnails.cancelVideoThumbnail(entry);
+    return;
+  }
+
+  if (fileType !== 'image' || getFileExtension(path) === 'svg') {
+    return;
+  }
+
+  stripThumbnails.cancelImageThumbnail(entry);
 }
 
 const QUICK_VIEW_STRIP_THUMB_WIDTH = 64;
@@ -668,6 +753,74 @@ async function closeWindow() {
   await nextTick();
 
   await releaseAuxiliaryWindow('quick-view');
+}
+
+/**
+ * Drops the open file without touching the filmstrip, leaving the window on its empty state
+ * with the surviving files still one click away. Used when the file on screen is deleted:
+ * carrying on with a pane playing something that no longer exists is worse than showing
+ * nothing, and there is no way to know whether any neighbour is worth advancing to.
+ */
+function clearDisplayedFile() {
+  const removedPath = currentFilePath.value;
+
+  if (removedPath) {
+    const remainingEdits = { ...pendingTextEdits.value };
+    delete remainingEdits[removedPath];
+    pendingTextEdits.value = remainingEdits;
+  }
+
+  // Retire any in-flight read so a late reply cannot repopulate the pane.
+  textPreviewRequestId += 1;
+  markdownPreviewRequestId += 1;
+
+  currentFilePath.value = null;
+  textEditorValue.value = '';
+  textSavedBaseline.value = '';
+  textPreviewError.value = null;
+  textPreviewLoading.value = false;
+  textWasTruncated.value = false;
+  textSaveRoundTripSafe.value = true;
+
+  void getCurrentWindow().setTitle('Sigma File Manager | Quick View');
+  void emitTo(
+    {
+      kind: 'WebviewWindow',
+      label: 'main',
+    },
+    QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
+    { path: null },
+  );
+}
+
+/**
+ * A listing that no longer mentions the open file is not proof the file went away — the
+ * browser may just be filtered, which would hide it while it sits happily on disk. Only the
+ * filesystem can settle that, so confirm before clearing anything.
+ */
+async function discardDisplayedFileIfDeleted(paths: string[]) {
+  const displayedPath = currentFilePath.value;
+
+  if (!displayedPath || isHttpOrHttpsUrl(displayedPath) || paths.includes(displayedPath)) {
+    return;
+  }
+
+  try {
+    if (await invoke<boolean>('path_exists', { path: displayedPath })) {
+      return;
+    }
+  }
+  catch {
+    // Unconfirmed is not deleted; leave what is on screen alone.
+    return;
+  }
+
+  // A new file may have loaded while the check was in flight.
+  if (currentFilePath.value !== displayedPath) {
+    return;
+  }
+
+  clearDisplayedFile();
 }
 
 async function setQuickViewWindowTitle(path: string) {
@@ -997,6 +1150,26 @@ async function setupEventListeners() {
     },
   );
 
+  /**
+   * The browser this window was opened from re-sends its file list whenever the directory
+   * watcher sees the folder change, so the strip follows files being created and deleted.
+   * The main window has already checked the list belongs to this window's directory.
+   */
+  unlistenSiblingPathsChanged = await listen<{ paths: string[] }>(
+    QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
+    async (event) => {
+      const paths = uniqueSiblingPaths(event.payload.paths);
+
+      resolvedSiblingPaths.value = paths;
+      siblingPathsProvidedByMain.value = true;
+
+      await discardDisplayedFileIfDeleted(paths);
+
+      await nextTick();
+      scrollActiveThumbIntoView();
+    },
+  );
+
   unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
     event.preventDefault();
     await closeWindow();
@@ -1075,6 +1248,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown, true);
   teardownMarkdownScrollSync();
   stripThumbnails.clearThumbnails();
+  stripVideoThumbnails.clearThumbnails();
 
   if (unlistenLoadFile) {
     unlistenLoadFile();
@@ -1083,11 +1257,28 @@ onUnmounted(() => {
   if (unlistenCloseRequested) {
     unlistenCloseRequested();
   }
+
+  if (unlistenSiblingPathsChanged) {
+    unlistenSiblingPathsChanged();
+  }
 });
 </script>
 
 <template>
   <div class="quick-view">
+    <!-- App-drawn titlebar so this window matches the frameless main window rather than
+         wearing the desktop's own decorations. -->
+    <div
+      class="quick-view__titlebar"
+      data-tauri-drag-region
+    >
+      <span
+        class="quick-view__titlebar-title"
+        data-tauri-drag-region
+      >{{ fileName }}</span>
+      <WindowActions :close-handler="closeWindow" />
+    </div>
+
     <div
       v-if="isLoading"
       class="quick-view__loading"
@@ -1101,31 +1292,36 @@ onUnmounted(() => {
     <template v-else-if="currentFilePath">
       <div
         class="quick-view__body"
-        :class="{ 'quick-view__body--stretch': fileType === 'text' }"
+        :class="{
+          'quick-view__body--stretch': fileType === 'text',
+          'quick-view__body--media': fileType === 'video' || fileType === 'audio',
+        }"
       >
-        <img
+        <!-- Deliberately *not* keyed on the file path. These three own the element that
+             `requestFullscreen` was called on, and remounting it on every next-file dropped
+             the window out of fullscreen mid-browse. Both components reset themselves when
+             `src` changes, so one instance can carry the whole folder. -->
+        <ImageViewer
           v-if="fileType === 'image'"
-          :key="`${currentFilePath}-image`"
           :src="fileAssetUrl"
           :alt="fileName"
           class="quick-view__image"
-        >
+        />
 
-        <video
+        <MediaPlayer
           v-else-if="fileType === 'video'"
-          :key="`${currentFilePath}-video`"
-          :src="fileAssetUrl"
+          :src="fileMediaUrl"
+          kind="video"
           class="quick-view__video"
-          controls
           autoplay
         />
 
-        <audio
+        <MediaPlayer
           v-else-if="fileType === 'audio'"
-          :key="`${currentFilePath}-audio`"
-          :src="fileAssetUrl"
+          :src="fileMediaUrl"
+          kind="audio"
+          :poster="audioArtworkSrc"
           class="quick-view__audio"
-          controls
           autoplay
         />
 
@@ -1265,89 +1461,6 @@ onUnmounted(() => {
           </p>
         </div>
       </div>
-
-      <div
-        v-if="resolvedSiblingPaths.length > 0"
-        class="quick-view__strip"
-      >
-        <ScrollArea
-          ref="stripScrollAreaRef"
-          orientation="horizontal"
-          class="quick-view__strip-scroll"
-        >
-          <div
-            class="quick-view__strip-virtual-spacer"
-            :style="{
-              width: `${stripVirtualTotalWidthPx}px`,
-              minHeight: `${QUICK_VIEW_STRIP_THUMB_WIDTH}px`,
-            }"
-          >
-            <div
-              class="quick-view__strip-row quick-view__strip-row--virtual"
-              role="tablist"
-              :aria-label="t('quickView.thumbnailStripLabel')"
-              :style="{ left: `${stripVirtualRowLeftPx}px` }"
-            >
-              <button
-                v-for="thumb in stripVirtualVisibleThumbs"
-                :key="thumb.path"
-                type="button"
-                role="tab"
-                class="quick-view__thumb"
-                :class="{ 'quick-view__thumb--active': thumb.path === currentFilePath }"
-                :aria-selected="thumb.path === currentFilePath"
-                :aria-setsize="resolvedSiblingPaths.length"
-                :aria-posinset="resolvedSiblingPaths.indexOf(thumb.path) + 1"
-                :data-quick-view-thumb="thumb.path"
-                :title="thumb.hasUnsavedBadge ? t('quickView.thumbnailUnsavedHint') : undefined"
-                @click="void selectPath(thumb.path)"
-              >
-                <img
-                  v-if="thumb.kind === 'image' && quickViewStripImageSrc(thumb.path)"
-                  class="quick-view__thumb-image"
-                  :src="quickViewStripImageSrc(thumb.path)"
-                  alt=""
-                >
-                <Loader2Icon
-                  v-else-if="thumb.kind === 'image' && quickViewStripImageShowsSpinner(thumb.path)"
-                  :size="28"
-                  class="quick-view__thumb-loading-icon"
-                  aria-hidden="true"
-                />
-                <FileImageIcon
-                  v-else-if="thumb.kind === 'image'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <VideoIcon
-                  v-else-if="thumb.kind === 'video'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <Music2Icon
-                  v-else-if="thumb.kind === 'audio'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <FileTextIcon
-                  v-else-if="thumb.kind === 'document'"
-                  class="quick-view__thumb-icon"
-                  :size="28"
-                  aria-hidden="true"
-                />
-                <span
-                  v-if="thumb.hasUnsavedBadge"
-                  class="quick-view__thumb-unsaved-badge"
-                  aria-hidden="true"
-                />
-              </button>
-            </div>
-          </div>
-        </ScrollArea>
-      </div>
     </template>
 
     <div
@@ -1355,6 +1468,101 @@ onUnmounted(() => {
       class="quick-view__empty"
     >
       <p>{{ t('quickView.noFileSelected') }}</p>
+    </div>
+
+    <div
+      v-if="resolvedSiblingPaths.length > 0"
+      class="quick-view__strip"
+    >
+      <ScrollArea
+        ref="stripScrollAreaRef"
+        orientation="horizontal"
+        class="quick-view__strip-scroll"
+      >
+        <div
+          class="quick-view__strip-virtual-spacer"
+          :style="{
+            width: `${stripVirtualTotalWidthPx}px`,
+            minHeight: `${QUICK_VIEW_STRIP_THUMB_WIDTH}px`,
+          }"
+        >
+          <div
+            class="quick-view__strip-row quick-view__strip-row--virtual"
+            role="tablist"
+            :aria-label="t('quickView.thumbnailStripLabel')"
+            :style="{ left: `${stripVirtualRowLeftPx}px` }"
+          >
+            <button
+              v-for="thumb in stripVirtualVisibleThumbs"
+              :key="thumb.path"
+              type="button"
+              role="tab"
+              class="quick-view__thumb"
+              :class="{ 'quick-view__thumb--active': thumb.path === currentFilePath }"
+              :aria-selected="thumb.path === currentFilePath"
+              :aria-setsize="resolvedSiblingPaths.length"
+              :aria-posinset="resolvedSiblingPaths.indexOf(thumb.path) + 1"
+              :data-quick-view-thumb="thumb.path"
+              :title="thumb.hasUnsavedBadge ? t('quickView.thumbnailUnsavedHint') : undefined"
+              @click="void selectPath(thumb.path)"
+            >
+              <img
+                v-if="thumb.kind === 'image' && quickViewStripImageSrc(thumb.path)"
+                class="quick-view__thumb-image"
+                :src="quickViewStripImageSrc(thumb.path)"
+                alt=""
+              >
+              <Loader2Icon
+                v-else-if="thumb.kind === 'image' && quickViewStripImageShowsSpinner(thumb.path)"
+                :size="28"
+                class="quick-view__thumb-loading-icon"
+                aria-hidden="true"
+              />
+              <FileImageIcon
+                v-else-if="thumb.kind === 'image'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <img
+                v-else-if="thumb.kind === 'video' && quickViewStripVideoSrc(thumb.path)"
+                class="quick-view__thumb-image"
+                :src="quickViewStripVideoSrc(thumb.path)"
+                alt=""
+              >
+              <VideoIcon
+                v-else-if="thumb.kind === 'video'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <img
+                v-else-if="thumb.kind === 'audio' && quickViewStripAudioSrc(thumb.path)"
+                class="quick-view__thumb-image"
+                :src="quickViewStripAudioSrc(thumb.path)"
+                alt=""
+              >
+              <Music2Icon
+                v-else-if="thumb.kind === 'audio'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <FileTextIcon
+                v-else-if="thumb.kind === 'document'"
+                class="quick-view__thumb-icon"
+                :size="28"
+                aria-hidden="true"
+              />
+              <span
+                v-if="thumb.hasUnsavedBadge"
+                class="quick-view__thumb-unsaved-badge"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </div>
+      </ScrollArea>
     </div>
 
     <div class="quick-view__hint">
@@ -1396,6 +1604,24 @@ onUnmounted(() => {
   }
 }
 
+.quick-view__titlebar {
+  display: flex;
+  height: var(--window-toolbar-height);
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 12px;
+  gap: 8px;
+}
+
+.quick-view__titlebar-title {
+  overflow: hidden;
+  color: hsl(var(--foreground) / 70%);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .quick-view__body {
   display: flex;
   min-height: 0;
@@ -1406,27 +1632,45 @@ onUnmounted(() => {
   padding: 8px;
 }
 
+/* Video already letterboxes itself against black, so the pane padding only costs height
+   that a portrait video in a narrow window cannot spare. */
+
+.quick-view__body--media {
+  padding: 0;
+}
+
 .quick-view__body--stretch {
   width: 100%;
   align-items: stretch;
   align-self: stretch;
 }
 
+/* Fills the pane the way the video player does, rather than shrink-wrapping the picture:
+   the viewer letterboxes inside itself, and its zoom and fullscreen controls need to sit
+   against the viewing area rather than against the image's own edges. */
+
 .quick-view__image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
 }
 
+/* The player fills the pane and letterboxes the video inside it, so the control bar spans
+   the viewing area instead of tracking the video's own edges. */
+
 .quick-view__video {
-  max-width: 100%;
-  max-height: 100%;
-  background: black;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
 }
 
 .quick-view__audio {
-  width: 80%;
-  max-width: 500px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
 }
 
 .quick-view__pdf {
@@ -1596,14 +1840,14 @@ onUnmounted(() => {
 .quick-view__strip {
   width: 100%;
   flex: 0 0 auto;
-  padding: 10px 12px 6px;
+  padding: 6px 12px 0 12px;
   border-top: 1px solid hsl(var(--border, 0 0% 90%));
   background: hsl(var(--background, 0 0% 100%) / 95%);
 }
 
 .quick-view__strip-scroll {
   width: 100%;
-  height: 92px;
+  height: 85px;
 }
 
 .quick-view__strip-scroll :deep(.sigma-ui-scroll-area__viewport > div) {
@@ -1689,7 +1933,7 @@ onUnmounted(() => {
 
 .quick-view__hint {
   flex: 0 0 auto;
-  padding: 8px;
+  padding: 0 8px 8px 8px;
   background: hsl(var(--background, 0 0% 100%) / 90%);
   color: hsl(var(--muted-foreground, 0 0% 45%));
   font-size: 12px;

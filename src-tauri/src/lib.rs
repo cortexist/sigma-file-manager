@@ -4,6 +4,7 @@
 
 mod app_updater;
 mod archive;
+mod audio_covers;
 mod background_sources;
 mod clipboard_source;
 mod clipboard_watcher;
@@ -20,6 +21,7 @@ mod image_thumbnails;
 mod input_simulation;
 mod lan_share;
 mod link_operations;
+mod media_server;
 mod open_with;
 mod process_runner;
 mod startup_storage_bootstrap;
@@ -31,6 +33,9 @@ mod terminal;
 mod url_drop;
 mod user_storage_files_config;
 pub mod utils;
+#[cfg(target_os = "linux")]
+mod video_thumbnails;
+mod window_manager;
 mod windows_installation;
 #[cfg(windows)]
 mod windows_print_view_webview;
@@ -41,6 +46,76 @@ use tauri::{Emitter, Manager};
 const SIGMA_AUTOSTART_CLI_FLAG: &str = "--sigma-autostart";
 const AUXILIARY_WINDOW_RELEASE_EVENT: &str = "auxiliary-window:release";
 const PRINT_VIEW_NATIVE_CLOSE_REQUESTED_EVENT: &str = "print-view:native-close-requested";
+
+/// Reasons the app should outlive its last window.
+///
+/// Nothing returns `true` yet, and that is deliberate: the app now quits once the user closes
+/// everything. It exists so the lifetime rule lives in one place instead of being re-derived
+/// at each close site.
+///
+/// The intended first caller is a mini player — keeping audio or video going after the windows
+/// are gone, surfaced from the tray or a status bar. Anything else that must outlive the
+/// windows (a running copy job, say) belongs here too. Whatever registers a reason is also
+/// responsible for giving the user a way back to a window, since quitting will no longer
+/// happen on its own.
+fn should_keep_running_without_windows(_app: &tauri::AppHandle) -> bool {
+    false
+}
+
+/// Whether closing `closing_label` leaves the user with nothing, so the app should quit.
+///
+/// Takes the window list rather than an `AppHandle` purely so the rule can be tested; the
+/// caller does the querying.
+///
+/// Judged on *visibility*, not existence: auxiliary windows are prelaunched and merely hidden
+/// when dismissed, so a quick-view window is usually alive even when the user can see nothing
+/// at all. The window being closed is excluded by label because it has only just been hidden
+/// and may still report itself as visible.
+///
+/// No window's label is privileged. The main and auxiliary windows can each outlive the
+/// other, so only the absence of every other visible window ends the process.
+fn should_exit_after_close<I, S>(windows: I, closing_label: &str, keep_running: bool) -> bool
+where
+    I: IntoIterator<Item = (S, bool)>,
+    S: AsRef<str>,
+{
+    if keep_running {
+        return false;
+    }
+
+    !windows
+        .into_iter()
+        .any(|(label, is_visible)| label.as_ref() != closing_label && is_visible)
+}
+
+/// Lets the frontend re-run the check after hiding a window itself.
+///
+/// Not every window disappears through a close request: auxiliary windows are hidden when
+/// released or prelaunched, and the print view hides itself when finished. Those paths never
+/// reach `CloseRequested`, so without this the app could be left running with nothing on
+/// screen. Nothing is excluded here — no window is mid-close, the caller has already hidden
+/// whatever it hid.
+#[tauri::command]
+fn exit_if_no_windows_left(app: tauri::AppHandle) {
+    exit_if_last_window_closed(&app, "");
+}
+
+/// Quits once the last visible window goes away. Called after the closing window is hidden.
+fn exit_if_last_window_closed(app: &tauri::AppHandle, closing_label: &str) {
+    let windows: Vec<(String, bool)> = app
+        .webview_windows()
+        .into_iter()
+        .map(|(label, window)| (label, window.is_visible().unwrap_or(false)))
+        .collect();
+
+    if should_exit_after_close(
+        windows,
+        closing_label,
+        should_keep_running_without_windows(app),
+    ) {
+        app.exit(0);
+    }
+}
 
 fn handle_auxiliary_window_close_requested(window: &tauri::Window, api: &tauri::CloseRequestApi) {
     let label = window.label();
@@ -263,6 +338,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(window_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_system_fonts::init())
@@ -285,6 +361,7 @@ pub fn run() {
             app_updater::app_updates_managed_externally,
             system_tray::reload_webview,
             system_tray::update_tray_shortcut,
+            exit_if_no_windows_left,
             dir_reader::read_dir,
             dir_reader::read_dir_with_timeout,
             dir_reader::get_dir_entry_with_timeout,
@@ -334,7 +411,9 @@ pub fn run() {
             global_search::global_search_query,
             global_search::global_search_query_paths,
             image_thumbnails::cache_video_thumbnail,
+            image_thumbnails::generate_video_thumbnail,
             image_thumbnails::generate_image_thumbnail,
+            image_thumbnails::extract_audio_cover,
             image_thumbnails::get_cached_video_thumbnail,
             open_with::get_associated_programs,
             open_with::open_with_program,
@@ -414,16 +493,22 @@ pub fn run() {
             lan_share::start_lan_share,
             lan_share::stop_lan_share,
             lan_share::get_local_ip,
+            media_server::get_media_server_origin,
         ])
         .setup(setup_handler)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
+                    // Still hidden rather than destroyed: the window is reused if the app
+                    // turns out to have a reason to stay alive, and hiding it first makes it
+                    // disappear immediately either way.
                     let _ = window.hide();
                     api.prevent_close();
                 } else {
                     handle_auxiliary_window_close_requested(window, api);
                 }
+
+                exit_if_last_window_closed(window.app_handle(), window.label());
             }
             if let tauri::WindowEvent::Destroyed = event {
                 if window.label() == "main" {
@@ -531,5 +616,98 @@ mod tests {
         assert!(result.delegated_paths.is_empty());
         assert!(result.had_absorbed_paths);
         assert!(!result.had_delegated_paths());
+    }
+}
+
+#[cfg(test)]
+mod window_lifetime_tests {
+    use super::should_exit_after_close;
+
+    /// `(label, is_visible)` pairs as the running app would report them.
+    fn windows(entries: &[(&str, bool)]) -> Vec<(String, bool)> {
+        entries
+            .iter()
+            .map(|(label, visible)| ((*label).to_string(), *visible))
+            .collect()
+    }
+
+    #[test]
+    fn quits_when_the_only_window_is_closed() {
+        assert!(should_exit_after_close(
+            windows(&[("main", true)]),
+            "main",
+            false
+        ));
+    }
+
+    /// The case that makes existence checks wrong: quick-view is prelaunched and merely
+    /// hidden, so a window exists even though the user can see nothing.
+    #[test]
+    fn quits_when_the_only_other_window_is_a_hidden_prelaunched_one() {
+        assert!(should_exit_after_close(
+            windows(&[("main", true), ("quick-view", false), ("print-view", false)]),
+            "main",
+            false
+        ));
+    }
+
+    #[test]
+    fn keeps_running_when_quick_view_outlives_the_main_window() {
+        assert!(!should_exit_after_close(
+            windows(&[("main", true), ("quick-view", true)]),
+            "main",
+            false
+        ));
+    }
+
+    #[test]
+    fn keeps_running_when_the_main_window_outlives_quick_view() {
+        assert!(!should_exit_after_close(
+            windows(&[("main", true), ("quick-view", true)]),
+            "quick-view",
+            false
+        ));
+    }
+
+    /// Closing the last visible window quits even when the main window still exists hidden,
+    /// which is how it is left after being closed earlier.
+    #[test]
+    fn quits_when_the_last_visible_window_closes_over_a_hidden_main() {
+        assert!(should_exit_after_close(
+            windows(&[("main", false), ("quick-view", true)]),
+            "quick-view",
+            false
+        ));
+    }
+
+    #[test]
+    fn counts_the_print_view_as_a_window_worth_staying_for() {
+        assert!(!should_exit_after_close(
+            windows(&[("main", true), ("print-view", true)]),
+            "main",
+            false
+        ));
+    }
+
+    /// The extension point for a future mini player: a registered reason outranks the window
+    /// count entirely.
+    #[test]
+    fn stays_alive_while_something_asks_it_to() {
+        assert!(!should_exit_after_close(
+            windows(&[("main", true)]),
+            "main",
+            true
+        ));
+    }
+
+    /// The closing window is excluded by label because it has only just been hidden and may
+    /// still report itself visible.
+    #[test]
+    fn ignores_the_closing_window_even_if_it_still_reports_visible() {
+        assert!(should_exit_after_close(
+            windows(&[("main", true)]),
+            "main",
+            false
+        ));
     }
 }

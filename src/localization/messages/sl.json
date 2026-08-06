@@ -457,6 +457,20 @@
         "description": "Ta možnost spremeni sistemski register in lahko povzroči nepričakovane stranske učinke na vaši napravi. Nadaljujte na lastno odgovornost.",
         "unavailableInMicrosoftStore": "Ni na voljo v različici iz trgovine Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Poudarna barva",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Limona",
+        "matcha": "Matcha",
+        "lime": "Limeta",
+        "default": "Privzeto",
+        "strongBlue": "Močno modra",
+        "violet": "Vijolična",
+        "zune": "Zune",
+        "red": "Rdeča"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "Zamenjaj trenutno deljenje?",
     "replaceShareDialogDescription": "Datoteke se že delijo po omrežju. Trenutno deljenje bo ustavljeno in zamenjano z novim.",
     "replaceShareDialogConfirm": "Zamenjaj"
+  },
+  "mediaPlayer": {
+    "play": "Predvajaj",
+    "pause": "Premor",
+    "mute": "Izklopi zvok",
+    "unmute": "Vklopi zvok",
+    "volume": "Glasnost",
+    "seek": "Položaj predvajanja",
+    "fullscreen": "Vklopi celozaslonski način",
+    "exitFullscreen": "Izhod iz celozaslonskega načina",
+    "loop": "Ponavljaj trenutno datoteko",
+    "loopOff": "Izklopi ponavljanje",
+    "artwork": "Naslovnica albuma"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

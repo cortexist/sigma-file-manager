@@ -126,17 +126,26 @@ export function useDirEntryActions() {
       return await pasteSystemClipboardImage(destinationPath);
     }
 
+    // Not `systemClipboard.operation` directly: on Linux that is always `copy`, which turned
+    // every cut-paste into a copy that left the source behind. See the store for why.
+    const operation = clipboardStore.resolveSystemClipboardOperation(
+      systemClipboard.paths,
+      systemClipboard.operation,
+    );
+
     const result = await performCopyMoveWithConflicts(
       systemClipboard.paths,
       destinationPath,
-      systemClipboard.operation,
+      operation,
     );
 
     if (!result || result.cancelled) {
       return false;
     }
 
-    const isCopy = systemClipboard.operation === 'copy';
+    // Also what decides whether the source directories get refreshed, so a wrong value here
+    // left a moved-away file still showing in the pane it came from.
+    const isCopy = operation === 'copy';
     const sourcesForSizes = systemClipboard.paths.map((path, index) => ({
       path,
       is_dir: result.sourcePathIsDir[index] ?? false,

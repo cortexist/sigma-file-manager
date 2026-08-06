@@ -457,6 +457,20 @@
         "description": "This option modifies the system registry and can have unexpected side effects on your device. Continue at your own risk.",
         "unavailableInMicrosoftStore": "Not available in the Microsoft Store version"
       }
+    },
+    "accentColor": {
+      "title": "Accent color",
+      "colors": {
+        "mango": "Mango",
+        "lemon": "Lemon",
+        "matcha": "Matcha",
+        "lime": "Lime",
+        "default": "Default",
+        "strongBlue": "Strong blue",
+        "violet": "Violet",
+        "zune": "Zune",
+        "red": "Red"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "Replace current share?",
     "replaceShareDialogDescription": "Files are already being shared over the network. The current share will be stopped and replaced with the new one.",
     "replaceShareDialogConfirm": "Replace"
+  },
+  "mediaPlayer": {
+    "play": "Play",
+    "pause": "Pause",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "volume": "Volume",
+    "seek": "Seek",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "loop": "Repeat current file",
+    "loopOff": "Turn off repeat",
+    "artwork": "Album artwork"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

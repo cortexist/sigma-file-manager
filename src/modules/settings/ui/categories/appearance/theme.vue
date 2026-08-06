@@ -5,6 +5,7 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 <script setup lang="ts">
 import { BaseCombobox } from '@/components/base';
+import AccentColor from './accent-color.vue';
 import { SettingsItem } from '@/modules/settings';
 import {
   getAvailableThemeOptions,
@@ -135,17 +136,33 @@ function onThemeComboboxSelect(payload: { ref: HTMLElement }) {
     :title="t('settings.homeBannerEffects.theme.title')"
     :icon="SunMoonIcon"
   >
-    <BaseCombobox
-      v-model="selectedTheme"
-      :options="themeOptions"
-      :option-groups="themeOptionGroups"
-      by="value"
-      :search-placeholder="t('search')"
-      :empty-text="t('noData')"
-      :select-on-highlight="true"
-      :close-on-select="false"
-      @keyboard-highlight="onThemeComboboxKeyboardHighlight"
-      @select="onThemeComboboxSelect"
-    />
+    <div class="theme-setting__controls">
+      <AccentColor />
+      <BaseCombobox
+        v-model="selectedTheme"
+        :options="themeOptions"
+        :option-groups="themeOptionGroups"
+        by="value"
+        :search-placeholder="t('search')"
+        :empty-text="t('noData')"
+        :select-on-highlight="true"
+        :close-on-select="false"
+        @keyboard-highlight="onThemeComboboxKeyboardHighlight"
+        @select="onThemeComboboxSelect"
+      />
+    </div>
   </SettingsItem>
 </template>
+
+<style scoped>
+/* The swatch sits beside the theme picker; the item's own slot stacks its children. */
+.theme-setting__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-setting__controls :deep(.base-combobox) {
+  flex: 1 1 auto;
+}
+</style>

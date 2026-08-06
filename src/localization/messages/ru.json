@@ -457,6 +457,20 @@
         "description": "Эта опция изменяет системный реестр и может вызвать неожиданные побочные эффекты на вашем устройстве. Продолжайте на свой страх и риск.",
         "unavailableInMicrosoftStore": "Недоступно в версии из Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Акцентный цвет",
+      "colors": {
+        "mango": "Манго",
+        "lemon": "Лимон",
+        "matcha": "Матча",
+        "lime": "Лайм",
+        "default": "По умолчанию",
+        "strongBlue": "Насыщенный синий",
+        "violet": "Фиолетовый",
+        "zune": "Zune",
+        "red": "Красный"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "Заменить текущий доступ?",
     "replaceShareDialogDescription": "Файлы уже доступны по сети. Текущий доступ будет остановлен и заменён новым.",
     "replaceShareDialogConfirm": "Заменить"
+  },
+  "mediaPlayer": {
+    "play": "Воспроизвести",
+    "pause": "Пауза",
+    "mute": "Отключить звук",
+    "unmute": "Включить звук",
+    "volume": "Громкость",
+    "seek": "Позиция воспроизведения",
+    "fullscreen": "Полноэкранный режим",
+    "exitFullscreen": "Выйти из полноэкранного режима",
+    "loop": "Повторять текущий файл",
+    "loopOff": "Выключить повтор",
+    "artwork": "Обложка альбома"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

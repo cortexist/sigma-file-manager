@@ -428,6 +428,20 @@
         "description": "このオプションはシステム レジストリを変更するため、デバイスで予期しない副作用が発生する可能性があります。自己責任で続行してください。",
         "unavailableInMicrosoftStore": "Microsoft Store 版では利用できません"
       }
+    },
+    "accentColor": {
+      "title": "アクセントカラー",
+      "colors": {
+        "mango": "マンゴー",
+        "lemon": "レモン",
+        "matcha": "抹茶",
+        "lime": "ライム",
+        "default": "デフォルト",
+        "strongBlue": "ストロングブルー",
+        "violet": "バイオレット",
+        "zune": "Zune",
+        "red": "レッド"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "現在の共有を置き換えますか？",
     "replaceShareDialogDescription": "すでにネットワーク上でファイルが共有されています。現在の共有を停止し、新しいものに置き換えます。",
     "replaceShareDialogConfirm": "置き換え"
+  },
+  "mediaPlayer": {
+    "play": "再生",
+    "pause": "一時停止",
+    "mute": "ミュート",
+    "unmute": "ミュート解除",
+    "volume": "音量",
+    "seek": "再生位置",
+    "fullscreen": "全画面表示にする",
+    "exitFullscreen": "全画面表示を終了",
+    "loop": "現在のファイルを繰り返す",
+    "loopOff": "繰り返しをオフにする",
+    "artwork": "アルバムアート"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }

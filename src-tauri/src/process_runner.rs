@@ -14,6 +14,10 @@ pub enum ProcessRunError {
 }
 
 pub struct ProcessRunOutput {
+    // Read only by Windows-gated callers (WSL listing, terminal detection); Linux callers
+    // go through `command_succeeds` and look at the status alone. The narrow cfg keeps the
+    // dead-code warning armed on Windows, where losing the last reader would be a real bug.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub stdout: Vec<u8>,
     pub status: ExitStatus,
 }

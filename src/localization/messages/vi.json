@@ -428,6 +428,20 @@
         "description": "Tùy chọn này sửa đổi sổ đăng ký hệ thống và có thể gây ra tác dụng phụ ngoài ý muốn trên thiết bị của bạn. Hãy tiếp tục với rủi ro của riêng bạn.",
         "unavailableInMicrosoftStore": "Không khả dụng trong phiên bản Microsoft Store"
       }
+    },
+    "accentColor": {
+      "title": "Màu nhấn",
+      "colors": {
+        "mango": "Xoài",
+        "lemon": "Chanh",
+        "matcha": "Matcha",
+        "lime": "Chanh xanh",
+        "default": "Mặc định",
+        "strongBlue": "Xanh đậm",
+        "violet": "Tím",
+        "zune": "Zune",
+        "red": "Đỏ"
+      }
     }
   },
   "projectGithubButtons": {
@@ -1232,5 +1246,25 @@
     "replaceShareDialogTitle": "Thay thế chia sẻ hiện tại?",
     "replaceShareDialogDescription": "Các tập tin đang được chia sẻ qua mạng. Chia sẻ hiện tại sẽ bị dừng và thay thế bằng chia sẻ mới.",
     "replaceShareDialogConfirm": "Thay thế"
+  },
+  "mediaPlayer": {
+    "play": "Phát",
+    "pause": "Tạm dừng",
+    "mute": "Tắt tiếng",
+    "unmute": "Bật tiếng",
+    "volume": "Âm lượng",
+    "seek": "Vị trí phát",
+    "fullscreen": "Bật toàn màn hình",
+    "exitFullscreen": "Thoát toàn màn hình",
+    "loop": "Lặp lại tệp hiện tại",
+    "loopOff": "Tắt lặp lại",
+    "artwork": "Ảnh bìa album"
+  },
+  "imageViewer": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   }
 }
