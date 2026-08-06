@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Sigma File Manager",
   "version": "../package.json",
-  "identifier": "com.sigma-file-manager.app",
+  "identifier": "com.sigma-file-manager.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
