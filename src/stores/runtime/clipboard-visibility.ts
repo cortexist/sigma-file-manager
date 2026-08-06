@@ -9,13 +9,18 @@ import { arePathsEquivalent } from '@/utils/file-operation-paths';
 export type ClipboardOrigin = 'internal' | 'external' | '';
 type FileClipboardOperationType = 'copy' | 'move' | '';
 
-export function hasSameFileClipboardContent(
+/**
+ * Set comparison of the paths alone, ignoring copy-vs-move.
+ *
+ * Needed on its own because not every platform round-trips the operation: a Linux system
+ * clipboard carries only a file list, so the paths are the only part of our own clipboard
+ * that can be recognised when reading it back.
+ */
+export function hasSameFileClipboardPaths(
   localItems: DirEntry[],
-  localType: FileClipboardOperationType,
   systemPaths: string[],
-  systemOperation: 'copy' | 'move',
 ): boolean {
-  if (localType !== systemOperation || localItems.length !== systemPaths.length) {
+  if (localItems.length !== systemPaths.length) {
     return false;
   }
 
@@ -34,6 +39,19 @@ export function hasSameFileClipboardContent(
   }
 
   return unmatchedSystemPaths.length === 0;
+}
+
+export function hasSameFileClipboardContent(
+  localItems: DirEntry[],
+  localType: FileClipboardOperationType,
+  systemPaths: string[],
+  systemOperation: 'copy' | 'move',
+): boolean {
+  if (localType !== systemOperation) {
+    return false;
+  }
+
+  return hasSameFileClipboardPaths(localItems, systemPaths);
 }
 
 export function shouldShowClipboardUi(options: {

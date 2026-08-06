@@ -506,10 +506,15 @@ export function useFileBrowserSelection(
       return await pasteSystemClipboardImage(targetPath);
     }
 
+    // Not `systemClipboard.operation` directly: on Linux that is always `copy`, which turned
+    // every cut-paste into a copy that left the source behind. See the store for why.
     const pasted = await handleExternalDrop(
       systemClipboard.paths,
       targetPath,
-      systemClipboard.operation,
+      clipboardStore.resolveSystemClipboardOperation(
+        systemClipboard.paths,
+        systemClipboard.operation,
+      ),
     );
 
     if (pasted) {
