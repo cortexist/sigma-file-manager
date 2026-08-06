@@ -468,6 +468,210 @@ describe('clipboard store', () => {
     expect(store.clipboardItems[0].path).toBe('C:/Source/file.txt');
   });
 
+  /**
+   * A Linux system clipboard carries only a file list, so `read_system_clipboard_files`
+   * always reports `copy` there. Syncing used to overwrite the local operation with it, which
+   * silently downgraded a cut to a copy: the paste then duplicated the files and left the
+   * source in place. Our own entry has to keep the operation we recorded for it.
+   */
+  it('keeps an internal cut a move when the system clipboard reports copy', async () => {
+    invokeMock.mockImplementation(async (commandName: string) => {
+      if (commandName === 'path_exists') {
+        return true;
+      }
+
+      if (commandName === 'read_system_clipboard_files') {
+        // What Linux reports back for a file list it cannot tag as a cut.
+        return {
+          paths: ['C:/Source/file.txt'],
+          operation: 'copy',
+        };
+      }
+
+      return undefined;
+    });
+    const store = useClipboardStore();
+
+    store.setClipboard('move', [
+      createEntry({ path: 'C:/Source/file.txt' }),
+    ], {
+      syncToSystemClipboard: false,
+    });
+
+    await store.syncFromSystemClipboard();
+
+    expect(store.clipboardType).toBe('move');
+    expect(store.isMoveOperation).toBe(true);
+  });
+
+  it('pastes an internal cut as a move after a system clipboard sync', async () => {
+    invokeMock.mockImplementation(async (commandName: string) => {
+      if (commandName === 'path_exists') {
+        return true;
+      }
+
+      if (commandName === 'read_system_clipboard_files') {
+        return {
+          paths: ['C:/Source/file.txt'],
+          operation: 'copy',
+        };
+      }
+
+      // The sync rebuilds its entries from the paths it read back.
+      if (commandName === 'get_dir_entry_with_timeout') {
+        return createEntry({ path: 'C:/Source/file.txt' });
+      }
+
+      if (commandName === 'paths_are_directories') {
+        return [false];
+      }
+
+      return undefined;
+    });
+    copyMoveStartJobMock.mockResolvedValue({ success: true });
+    const store = useClipboardStore();
+
+    store.setClipboard('move', [
+      createEntry({ path: 'C:/Source/file.txt' }),
+    ], {
+      syncToSystemClipboard: false,
+    });
+
+    await store.syncFromSystemClipboard();
+    await store.pasteItems('C:/Destination');
+
+    expect(copyMoveStartJobMock).toHaveBeenCalledWith(
+      'move',
+      ['C:/Source/file.txt'],
+      'C:/Destination',
+      null,
+      undefined,
+      expect.anything(),
+    );
+  });
+
+  /**
+   * The paste paths in `use-file-browser-selection` and `use-dir-entry-actions` read the
+   * system clipboard directly rather than going through `pasteItems`, so they resolve the
+   * operation through this. It is the single place that decides cut-versus-copy.
+   */
+  describe('resolveSystemClipboardOperation', () => {
+    it('prefers our recorded move over a copy the OS could not represent', () => {
+      const store = useClipboardStore();
+
+      store.setClipboard('move', [
+        createEntry({ path: 'C:/Source/file.txt' }),
+      ], {
+        syncToSystemClipboard: false,
+      });
+
+      expect(store.resolveSystemClipboardOperation(['C:/Source/file.txt'], 'copy')).toBe('move');
+    });
+
+    it('matches our entry regardless of path order', () => {
+      const store = useClipboardStore();
+
+      store.setClipboard('move', [
+        createEntry({ path: 'C:/Source/a.txt' }),
+        createEntry({ path: 'C:/Source/b.txt' }),
+      ], {
+        syncToSystemClipboard: false,
+      });
+
+      expect(store.resolveSystemClipboardOperation(
+        ['C:/Source/b.txt', 'C:/Source/a.txt'],
+        'copy',
+      )).toBe('move');
+    });
+
+    it('defers to the OS when the entry is not ours', () => {
+      const store = useClipboardStore();
+
+      store.setClipboard('move', [
+        createEntry({ path: 'C:/Source/file.txt' }),
+      ], {
+        syncToSystemClipboard: false,
+      });
+
+      // A different set of paths means somebody else replaced the clipboard.
+      expect(store.resolveSystemClipboardOperation(['C:/Other/file.txt'], 'copy')).toBe('copy');
+    });
+
+    it('defers to the OS when a superset of our paths is on the clipboard', () => {
+      const store = useClipboardStore();
+
+      store.setClipboard('move', [
+        createEntry({ path: 'C:/Source/a.txt' }),
+      ], {
+        syncToSystemClipboard: false,
+      });
+
+      expect(store.resolveSystemClipboardOperation(
+        ['C:/Source/a.txt', 'C:/Source/b.txt'],
+        'copy',
+      )).toBe('copy');
+    });
+
+    it('defers to the OS with an empty local clipboard', () => {
+      const store = useClipboardStore();
+
+      expect(store.resolveSystemClipboardOperation(['C:/Source/file.txt'], 'move')).toBe('move');
+      expect(store.resolveSystemClipboardOperation(['C:/Source/file.txt'], 'copy')).toBe('copy');
+    });
+  });
+
+  it('still takes the operation from a foreign clipboard entry', async () => {
+    invokeMock.mockImplementation(async (commandName: string) => {
+      if (commandName === 'path_exists') {
+        return true;
+      }
+
+      if (commandName === 'read_system_clipboard_files') {
+        // Different paths, so this is somebody else's entry and it is authoritative.
+        return {
+          paths: ['C:/Elsewhere/other.txt'],
+          operation: 'copy',
+        };
+      }
+
+      return undefined;
+    });
+    const store = useClipboardStore();
+
+    store.setClipboard('move', [
+      createEntry({ path: 'C:/Source/file.txt' }),
+    ], {
+      syncToSystemClipboard: false,
+    });
+
+    await store.syncFromSystemClipboard();
+
+    expect(store.clipboardType).toBe('copy');
+  });
+
+  /** Windows does round-trip the operation, and a foreign move must survive the sync. */
+  it('accepts a foreign move reported by the system clipboard', async () => {
+    invokeMock.mockImplementation(async (commandName: string) => {
+      if (commandName === 'path_exists') {
+        return true;
+      }
+
+      if (commandName === 'read_system_clipboard_files') {
+        return {
+          paths: ['C:/Elsewhere/other.txt'],
+          operation: 'move',
+        };
+      }
+
+      return undefined;
+    });
+    const store = useClipboardStore();
+
+    await store.syncFromSystemClipboard();
+
+    expect(store.clipboardType).toBe('move');
+  });
+
   it('dismisses move clipboard when external paste removed the source paths', async () => {
     invokeMock.mockImplementation(async (commandName: string) => {
       if (commandName === 'path_exists') {
