@@ -59,7 +59,12 @@ function closeWindow() {
     return;
   }
 
-  appWindow.hide();
+  // `close()` rather than `hide()`, even though the window does end up merely hidden: this
+  // asks Tauri to close it, which fires `CloseRequested` on the Rust side, and that handler
+  // owns both the hiding and the decision about whether any window is left. Hiding directly
+  // from here skipped that decision entirely, so closing the last window from the app's own
+  // titlebar left the process running with nothing on screen.
+  void appWindow.close();
 }
 </script>
 

@@ -88,6 +88,18 @@ where
         .any(|(label, is_visible)| label.as_ref() != closing_label && is_visible)
 }
 
+/// Lets the frontend re-run the check after hiding a window itself.
+///
+/// Not every window disappears through a close request: auxiliary windows are hidden when
+/// released or prelaunched, and the print view hides itself when finished. Those paths never
+/// reach `CloseRequested`, so without this the app could be left running with nothing on
+/// screen. Nothing is excluded here — no window is mid-close, the caller has already hidden
+/// whatever it hid.
+#[tauri::command]
+fn exit_if_no_windows_left(app: tauri::AppHandle) {
+    exit_if_last_window_closed(&app, "");
+}
+
 /// Quits once the last visible window goes away. Called after the closing window is hidden.
 fn exit_if_last_window_closed(app: &tauri::AppHandle, closing_label: &str) {
     let windows: Vec<(String, bool)> = app
@@ -349,6 +361,7 @@ pub fn run() {
             app_updater::app_updates_managed_externally,
             system_tray::reload_webview,
             system_tray::update_tray_shortcut,
+            exit_if_no_windows_left,
             dir_reader::read_dir,
             dir_reader::read_dir_with_timeout,
             dir_reader::get_dir_entry_with_timeout,

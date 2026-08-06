@@ -21,7 +21,7 @@ const { t } = useI18n();
         y="33.075"
         width="60"
         height="60"
-        fill="#ffffff"
+        class="glyph"
       />
       <path d="M41.781,21l-41.681,0l-0,-7.016l41.681,0l0,7.016Zm-41.665,0l126.398,0.043c0.756,0 1.369,0.614 1.369,1.369l0,90.384c0,0.756 -0.614,1.369 -1.369,1.369l-125.029,0c-0.756,0 -1.369,-0.614 -1.369,-1.369l0,-91.796Zm80.884,21l-36,0l0,8l16.661,16.3l-16.625,17.671l0,9.029l37.963,0l0,-9l-25.989,0l16.857,-17.7l-16.16,-15.3l23.252,0l0.04,-9Z" fill="currentColor"/>
       <rect
@@ -57,6 +57,10 @@ const { t } = useI18n();
   color: hsl(var(--primary));
   width: 64px;
   height: 64px;
+}
+
+.settings-header .glyph {
+  fill: contrast-color(hsl(var(--primary)));
 }
 
 .settings-header__title-section {

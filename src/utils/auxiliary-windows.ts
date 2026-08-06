@@ -3,6 +3,7 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 import type { Window } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { getAllWindows } from '@tauri-apps/api/window';
 import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -59,6 +60,21 @@ const operationGeneration = new Map<AuxiliaryWindowLabel, number>();
 export interface AuxiliaryWindowTaskContext {
   window: Window;
   isCurrent: () => boolean;
+}
+
+/**
+ * Asks the backend to quit if no window is left on screen.
+ *
+ * Needed wherever this module hides a window itself: those paths never raise a close request,
+ * which is what normally triggers the check.
+ */
+async function requestExitIfNoWindowsLeft(): Promise<void> {
+  try {
+    await invoke('exit_if_no_windows_left');
+  }
+  catch {
+    // Nothing to recover: failing to quit only leaves the app as it already was.
+  }
 }
 
 export function isAuxiliaryWindowPrelaunchEnabled(label: AuxiliaryWindowLabel): boolean {
@@ -261,10 +277,15 @@ async function releaseAuxiliaryWindowOnMain(label: AuxiliaryWindowLabel): Promis
 
     if (isAuxiliaryWindowPrelaunchEnabled(label)) {
       await window.hide();
+      // Hiding here never reaches the Rust close handler, so the app has to be asked whether
+      // anything is still on screen. Releasing a prelaunched window while the main window is
+      // already hidden would otherwise leave the process running with nothing visible.
+      await requestExitIfNoWindowsLeft();
       return;
     }
 
     await closeAuxiliaryWindow(window, label);
+    await requestExitIfNoWindowsLeft();
   });
 }
 
