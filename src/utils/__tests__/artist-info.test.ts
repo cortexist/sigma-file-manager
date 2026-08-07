@@ -216,7 +216,7 @@ describe('buildNowPlayingCards', () => {
       info: parseArtistInfo('Single by Dire Straits\nFormed in Deptford in 1977.'),
     });
 
-    expect(withBio.at(-1)).toEqual({
+    expect(withBio[withBio.length - 1]).toEqual({
       kicker: 'About',
       headline: ['Dire Straits'],
       body: 'Formed in Deptford in 1977.',
