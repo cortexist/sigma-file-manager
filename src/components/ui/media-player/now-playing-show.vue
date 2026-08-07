@@ -600,7 +600,7 @@ onBeforeUnmount(clearTimers);
   position: absolute;
   width: 100%;
   height: 100%;
-  animation: now-playing-pan 26s ease-in-out infinite alternate;
+  animation: now-playing-pan 20s ease-in-out infinite alternate;
   animation-play-state: paused;
   filter: saturate(35%) contrast(108%) brightness(66%);
   inset: 0;
@@ -617,10 +617,16 @@ onBeforeUnmount(clearTimers);
   animation-play-state: running;
 }
 
+/*
+ * The zoom has to stay ahead of the drift or the picture's edge walks into frame: a translation
+ * of t% needs a scale of at least 1 + 2t/100 to keep the photo covering the frame, and both
+ * values interpolate, so the tightest point is the small-scale end. 1.08 against 3% has enough
+ * margin; shrinking the starting scale without shrinking the drift would not.
+ */
 @keyframes now-playing-pan {
-  from { transform: scale(1.02) translate3d(-1.2%, 0.6%, 0); }
+  from { transform: scale(1.08) translate3d(-3%, 1.8%, 0); }
 
-  to { transform: scale(1.14) translate3d(1.8%, -1.4%, 0); }
+  to { transform: scale(1.28) translate3d(4.5%, -3.5%, 0); }
 }
 
 .now-playing-show__tint,
@@ -841,7 +847,7 @@ onBeforeUnmount(clearTimers);
 
 .now-playing-show__piece--secondary {
   color: rgb(255 255 255 / 80%);
-  font-size: clamp(26px, 8vh, 108px);
+  font-size: clamp(32px, 14vh, 180px);
 }
 
 /* The label keeps the accent and stays out of the blend, so there is always one element on the
@@ -849,7 +855,7 @@ onBeforeUnmount(clearTimers);
 
 .now-playing-show__piece--label {
   color: var(--now-playing-accent);
-  font-size: clamp(12px, 2.2vh, 26px);
+  font-size: clamp(24px, 4vh, 56px);
   letter-spacing: 0.3em;
   mix-blend-mode: normal;
   transition:
@@ -862,7 +868,7 @@ onBeforeUnmount(clearTimers);
 .now-playing-show__piece--prose {
   max-width: 34ch;
   color: rgb(255 255 255 / 82%);
-  font-size: clamp(18px, 3vh, 34px);
+  font-size: clamp(14px, 3vh, 34px);
   font-weight: 400;
   line-height: 1.4;
   text-transform: none;
