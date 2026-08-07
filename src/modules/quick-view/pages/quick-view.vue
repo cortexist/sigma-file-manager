@@ -59,6 +59,7 @@ import { useImageThumbnails } from '@/modules/navigator/components/file-browser/
 import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/composables/use-video-thumbnails';
 import { useHorizontalFixedVirtualList } from '@/composables/use-horizontal-fixed-virtual-list';
 import { useAudioCovers } from '@/composables/use-audio-covers';
+import { useArtistShow } from '@/composables/use-artist-show';
 
 const { t } = useI18n();
 
@@ -70,6 +71,7 @@ const siblingPathsProvidedByMain = ref(false);
 
 const stripThumbnails = useImageThumbnails();
 const stripAudioCovers = useAudioCovers();
+const artistShow = useArtistShow();
 const stripVideoThumbnails = useVideoThumbnails();
 const stripDirEntryByPath = ref<Record<string, DirEntry>>({});
 let stripEntryLoadToken = 0;
@@ -1215,6 +1217,15 @@ watch(currentFilePath, (path) => {
     scrollActiveThumbIntoView();
   });
 
+  // Resolved ahead of the show being asked for, so a track left playing has its material ready
+  // by the time the ten-second countdown runs out.
+  if (path && !isHttpOrHttpsUrl(path) && determineFileType(path) === 'audio') {
+    void artistShow.load(path);
+  }
+  else {
+    void artistShow.load(null);
+  }
+
   if (!path || determineFileType(path) !== 'text') {
     textEditorValue.value = '';
     textSavedBaseline.value = '';
@@ -1321,6 +1332,7 @@ onUnmounted(() => {
           :src="fileMediaUrl"
           kind="audio"
           :poster="audioArtworkSrc"
+          :now-playing="artistShow.show.value"
           class="quick-view__audio"
           autoplay
         />

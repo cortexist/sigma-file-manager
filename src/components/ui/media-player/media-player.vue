@@ -29,6 +29,8 @@ import {
   Loader2Icon,
 } from '@lucide/vue';
 import { Slider } from '@/components/ui/slider';
+import NowPlayingShow from './now-playing-show.vue';
+import type { NowPlayingCard } from '@/utils/artist-info';
 
 const props = withDefaults(defineProps<{
   src: string;
@@ -38,11 +40,20 @@ const props = withDefaults(defineProps<{
   muted?: boolean;
   /** Artwork for audio, resolved by the caller. Falls back to a music icon when absent. */
   poster?: string;
+  /**
+   * Material for the fullscreen audio show, resolved by the caller for the same reason as
+   * `poster`: only it knows the file path behind `src`. Absent means no show.
+   */
+  nowPlaying?: {
+    photos: string[];
+    cards: NowPlayingCard[];
+  } | null;
 }>(), {
   kind: 'video',
   autoplay: false,
   muted: false,
   poster: undefined,
+  nowPlaying: null,
 });
 
 const { t } = useI18n();
@@ -50,6 +61,8 @@ const { t } = useI18n();
 const SEEK_STEP_SECONDS = 5;
 const VOLUME_STEP = 0.05;
 const CONTROLS_IDLE_MS = 2500;
+/** How long fullscreen audio sits untouched before the show takes the screen. */
+const SHOW_IDLE_MS = 10000;
 const LOOP_WRAP_LEAD_SECONDS = 0.2;
 const LOOP_WATCH_INTERVAL_MS = 100;
 
@@ -68,6 +81,7 @@ const volume = ref(1);
 const isMuted = ref(props.muted);
 const isPointerActive = ref(false);
 const isFocusWithin = ref(false);
+const isShowVisible = ref(false);
 /**
  * Repeat-one for now. When play-all and shuffle arrive this becomes the "repeat" leg of a
  * playback mode, so the button lives in its own lower-left group rather than beside the
@@ -76,6 +90,7 @@ const isFocusWithin = ref(false);
 const isLooping = ref(false);
 
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
+let showIdleTimer: ReturnType<typeof setTimeout> | undefined;
 let loopWatchTimer: ReturnType<typeof setInterval> | undefined;
 let lastProgressAt = -1;
 /**
@@ -103,9 +118,12 @@ const isVideo = computed(() => props.kind === 'video');
  *
  * Scrubbing keeps them up so the bar does not vanish mid-drag, keyboard focus keeps them
  * reachable without a pointer, and a paused video keeps them up because nothing is being
- * watched. Audio has nothing to obscure, so its controls are always shown.
+ * watched. Audio has nothing to obscure, so its controls are always shown — except under the
+ * fullscreen show, which is only up because nobody has touched anything for ten seconds, and
+ * which the first sign of a person dismisses along with restoring the bar.
  */
 const controlsVisible = computed(() => {
+  if (isShowVisible.value) return false;
   if (!isVideo.value) return true;
 
   return !isPlaying.value
@@ -134,6 +152,14 @@ const bufferedPercent = computed(
   () => (duration.value > 0 ? Math.min(100, (bufferedTo.value / duration.value) * 100) : 0),
 );
 
+const playedFraction = computed(
+  () => (duration.value > 0 ? currentTime.value / duration.value : 0),
+);
+
+const showTimeLabel = computed(
+  () => (duration.value > 0 ? `${formatTime(currentTime.value)} / ${formatTime(duration.value)}` : ''),
+);
+
 const volumeIcon = computed(() => {
   if (isMuted.value || volume.value === 0) return VolumeXIcon;
   return volume.value < 0.5 ? Volume1Icon : Volume2Icon;
@@ -145,9 +171,39 @@ function clearIdleTimer() {
   idleTimer = undefined;
 }
 
+/**
+ * The show is only ever wanted for audio playing fullscreen: video already fills the screen with
+ * something worth looking at, and a windowed player is sitting next to the rest of the app.
+ */
+const canRunShow = computed(() => (
+  !isVideo.value
+  && isFullscreen.value
+  && isPlaying.value
+  && (props.nowPlaying?.cards.length ?? 0) > 0
+));
+
+/**
+ * Restarts the countdown to the show and dismisses it if it is up. Called from the same places
+ * that keep the controls awake, so any sign of a person at the machine hands the screen back.
+ */
+function restartShowIdle() {
+  clearTimeout(showIdleTimer);
+  showIdleTimer = undefined;
+  isShowVisible.value = false;
+
+  if (!canRunShow.value) return;
+
+  showIdleTimer = setTimeout(() => {
+    isShowVisible.value = true;
+  }, SHOW_IDLE_MS);
+}
+
+watch(canRunShow, restartShowIdle);
+
 function markPointerActive() {
   isPointerActive.value = true;
   clearIdleTimer();
+  restartShowIdle();
   idleTimer = setTimeout(() => {
     isPointerActive.value = false;
   }, CONTROLS_IDLE_MS);
@@ -437,6 +493,9 @@ function onProgress() {
 }
 
 function onKeydown(event: KeyboardEvent) {
+  // Any key is a person at the machine, including the ones this player ignores.
+  restartShowIdle();
+
   // Let the seek and volume sliders keep their own arrow key handling.
   if (event.target instanceof HTMLElement && event.target.closest('.sigma-ui-slider')) {
     if (event.key !== ' ' && event.key.toLowerCase() !== 'k') return;
@@ -529,6 +588,7 @@ if (typeof document !== 'undefined') {
 
 onBeforeUnmount(() => {
   clearIdleTimer();
+  clearTimeout(showIdleTimer);
   stopLoopWatch();
 
   if (typeof document !== 'undefined') {
@@ -617,6 +677,19 @@ onBeforeUnmount(() => {
         class="media-player__artwork-fallback"
       />
     </div>
+
+    <!-- Mounted for all audio and never remounted, so entering fullscreen never has to rebuild
+         the subtree holding it. Only `active` changes once the player is running. -->
+    <NowPlayingShow
+      v-if="!isVideo"
+      :cards="nowPlaying?.cards ?? []"
+      :photos="nowPlaying?.photos ?? []"
+      :fallback-photo="poster"
+      :album-art="poster"
+      :active="isShowVisible"
+      :progress="playedFraction"
+      :time-label="showTimeLabel"
+    />
 
     <div
       v-if="isWaiting && !hasError"

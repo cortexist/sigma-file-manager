@@ -18,6 +18,7 @@ import { useInfoPanelVideoPreview } from '@/modules/navigator/components/info-pa
 import { MediaPlayer } from '@/components/ui/media-player';
 import { ImageViewer } from '@/components/ui/image-viewer';
 import { useAudioCovers } from '@/composables/use-audio-covers';
+import { useArtistShow } from '@/composables/use-artist-show';
 import UbuntuWslIcon from '@/components/icons/ubuntu-wsl-icon.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isWslPath } from '@/utils/normalize-path';
@@ -56,6 +57,7 @@ const {
 } = useInfoPanelVideoPreview(() => props.selectedEntry);
 
 const audioCovers = useAudioCovers();
+const artistShow = useArtistShow();
 
 const textPreviewContent = ref('');
 const textPreviewLoading = ref(false);
@@ -94,6 +96,18 @@ const audioArtworkSrc = computed((): string | undefined => {
 
   return audioCovers.getSiblingCover(entry.path);
 });
+
+/**
+ * Resolved as soon as an audio file is selected rather than when the player goes fullscreen,
+ * so the material is already in hand by the time the idle countdown runs out.
+ */
+watch(
+  [() => props.selectedEntry?.path, infoPanelPreviewKind],
+  ([path, kind]) => {
+    void artistShow.load(kind === 'audio' ? path : null);
+  },
+  { immediate: true },
+);
 
 const showWslDirectoryIcon = computed(() => {
   if (!props.selectedEntry?.is_dir) return false;
@@ -222,6 +236,7 @@ watch(
         :src="playableMediaSrc"
         kind="audio"
         :poster="audioArtworkSrc"
+        :now-playing="artistShow.show.value"
         class="info-panel-preview__audio animate-fade-in-x2"
       />
     </div>
