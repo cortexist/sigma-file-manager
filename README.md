@@ -157,6 +157,100 @@ run, they take over the system clipboard.
   WebKit sometimes fails to composite its own error page, so a real error can show as plain
   white.
 
+## Now Playing show
+
+Fullscreen audio takes over the screen when you stop touching the machine, in the manner of the
+old Zune desktop software: artist photography with a slow pan, metadata thrown across the frame
+in capitals, and a colour wash that drifts through the Zune palette. Any movement or keypress
+hands the screen straight back.
+
+![The Now Playing show](docs/now-playing.gif)
+
+The original pulled its photography and biographies from Microsoft's servers, which is why the
+feature died with the service. This one reads a folder you fill yourself, so there is nothing to
+shut down.
+
+### Folder layout
+
+Put a `.artist` folder beside the audio. `artist` without the dot works too, matched without
+regard to case, so the folder can stay hidden or not as you prefer.
+
+![The track folder on the left, the .artist folder opened on the right](docs/album_cover_and_artist_folder.png)
+
+The track folder is on the left above, the `.artist` folder opened on the right. The folder is
+looked for **beside the track first, then one level up**, so an `Artist/Album/track.mp3` tree can
+keep a single `.artist` folder at the artist level and have every album under it use the same
+photography.
+
+Inside it:
+
+- **Images** — `jpg`, `jpeg`, `png`, `webp`, `avif` or `gif`, any names you like, as the two
+  photographs are on the right above. They are used as backdrops in name order, so number them
+  if the order matters.
+- **`artist.info`** — the text. Any other `*.info` file is used if this one is absent.
+
+The **album cover** is separate from the `.artist` folder and comes from the track's own
+embedded artwork first, falling back to an image beside the track named `cover`, `folder`,
+`album`, `albumart` or `artist`, with or without a leading dot, in `jpg`, `jpeg`, `png` or
+`webp`. That is what `.album.jpg` is doing on the left above.
+
+Nothing is mandatory. With no `.artist` folder at all the show still runs from the file name,
+reading `Artist - Title.mp3`, using the album cover as its backdrop.
+
+### `artist.info`
+
+The format is deliberately whatever you get from selecting a Wikipedia infobox and pressing
+copy, because that is what people actually do:
+
+```
+Single by Dire Straits
+from the album Brothers in Arms
+B-side	"Love over Gold" (Live)
+Released	28 June 1985[1]
+Studio	AIR (Salem, Montserrat)
+Genre	Pop rock
+Length	
+8:22 (album version)
+7:04 (LP edit)
+Label	Vertigo
+Songwriters	
+Mark KnopflerSting
+```
+
+Which means all of the following are handled:
+
+- `Key<TAB>Value` on one line.
+- A key with an **empty** value whose entries continue on the lines below it, as `Length` does.
+- Citation markers such as `[1]`, which are stripped.
+- List items that arrived concatenated, as `Mark KnopflerSting` does — split at the
+  lowercase-to-uppercase seam, with name particles like `McCartney` and `DeVito` left alone.
+  Writing one value per line avoids the guesswork entirely.
+- `Key: value` instead of tabs, for hand-written files. A leading `8:22` is still read as a
+  value, not as a key called `8`.
+- Lines before the first key, including `Single by …` and `from the album …`, which is where the
+  artist and album come from. Anything else there becomes an "About" card.
+
+Recognised keys are `artist`, `title`, `album`, `released`, `label`, `genre`, `b-side`,
+`songwriters`, `producers`, `studio` and `length`, with common synonyms. Note that **ID3 tags are
+not read for any of this** — files pulled off the web routinely have none at all, which is why
+the sidecar and the file name are the sources.
+
+### Watching it
+
+Open an audio file in Quick View (<kbd>Space</kbd>) or select it with the info panel open, then
+press the **fullscreen button in the player**, and leave the machine alone for ten seconds.
+
+**Use the player's own fullscreen control, not the compositor's.** The show keys off the page
+being in fullscreen; making the *window* fullscreen with a Sway binding leaves the page unaware,
+and the countdown never starts.
+
+If the album cover is missing from the show but the file is there, restart the app: a directory
+with no cover in it is remembered for the lifetime of the process, so artwork added to a folder
+you have already browsed stays invisible until then.
+
+Timings live at the top of `src/components/ui/media-player/now-playing-show.vue`, and the
+ten-second delay is `SHOW_IDLE_MS` in `media-player.vue`.
+
 ## Licence
 
 GNU GPLv3, unchanged from upstream. See [LICENSE.md](LICENSE.md).
