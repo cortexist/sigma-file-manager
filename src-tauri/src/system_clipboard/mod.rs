@@ -101,6 +101,36 @@ pub async fn set_system_clipboard_image_from_png_bytes(png_bytes: Vec<u8>) -> Re
     .map_err(|error| error.to_string())?
 }
 
+/// Puts the frame showing at `position_seconds` of a video file on the clipboard as an image.
+///
+/// Linux decodes the frame itself instead of letting the webview read it back off a canvas,
+/// because WebKitGTK hands decoded video to the GPU where JavaScript only ever samples black
+/// — the same reason video thumbnails are decoded outside the webview. Other platforms have
+/// no such problem and capture the frame in the webview, so they never call this.
+#[tauri::command]
+pub async fn copy_video_frame_to_system_clipboard(
+    path: String,
+    position_seconds: f64,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            let png_bytes =
+                crate::video_thumbnails::capture_video_frame_png(&path, position_seconds)?;
+
+            image::set_system_clipboard_image_from_png_bytes_sync(&png_bytes)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (path, position_seconds);
+        Err("Native video frame capture is only used on Linux".to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn set_system_clipboard_image_from_path(path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {

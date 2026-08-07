@@ -1258,6 +1258,9 @@
     "exitFullscreen": "יציאה ממסך מלא",
     "loop": "חזרה על הקובץ הנוכחי",
     "loopOff": "כיבוי החזרה",
+    "captureFrame": "העתקת הפריים הנוכחי ללוח",
+    "frameCopied": "הפריים הועתק ללוח",
+    "frameCaptureFailed": "לא ניתן להעתיק את הפריים",
     "artwork": "עטיפת האלבום"
   },
   "imageViewer": {

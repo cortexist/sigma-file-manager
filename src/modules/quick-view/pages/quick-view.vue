@@ -268,6 +268,20 @@ const fileMediaUrl = computed((): string => {
   return convertMediaSrc(currentFilePath.value);
 });
 
+/**
+ * Offers the still-capture button for anything playing off the disk. A remote URL handed in
+ * by an extension has no path for the native decoder to open, so those keep the plain player.
+ */
+const videoCaptureSourcePath = computed(() => {
+  const path = currentFilePath.value;
+
+  if (!path || fileType.value !== 'video' || isHttpOrHttpsUrl(path)) {
+    return undefined;
+  }
+
+  return path;
+});
+
 const textIsDirty = computed(() => {
   if (!currentFilePath.value || determineFileType(currentFilePath.value) !== 'text') {
     return false;
@@ -1324,6 +1338,7 @@ onUnmounted(() => {
           :src="fileMediaUrl"
           kind="video"
           class="quick-view__video"
+          :capture-source-path="videoCaptureSourcePath"
           autoplay
         />
 

@@ -1258,6 +1258,9 @@
     "exitFullscreen": "Izhod iz celozaslonskega načina",
     "loop": "Ponavljaj trenutno datoteko",
     "loopOff": "Izklopi ponavljanje",
+    "captureFrame": "Kopiraj trenutno sličico v odložišče",
+    "frameCopied": "Sličica je kopirana v odložišče",
+    "frameCaptureFailed": "Sličice ni bilo mogoče kopirati",
     "artwork": "Naslovnica albuma"
   },
   "imageViewer": {

@@ -1258,6 +1258,9 @@
     "exitFullscreen": "خروج از تمام‌صفحه",
     "loop": "تکرار فایل فعلی",
     "loopOff": "خاموش کردن تکرار",
+    "captureFrame": "کپی فریم فعلی در بریده‌دان",
+    "frameCopied": "فریم در بریده‌دان کپی شد",
+    "frameCaptureFailed": "کپی کردن فریم ممکن نشد",
     "artwork": "تصویر آلبوم"
   },
   "imageViewer": {

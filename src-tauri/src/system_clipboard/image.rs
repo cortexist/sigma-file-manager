@@ -29,6 +29,11 @@ struct ClipboardImageBytes {
     bytes: Vec<u8>,
 }
 
+/// The targets a PNG is offered and looked for under on Wayland. `image/png` is what modern
+/// applications ask for; the others cover the ones that only know an older spelling.
+#[cfg(target_os = "linux")]
+const WAYLAND_PNG_MIME_TYPES: [&str; 3] = ["image/png", "image/x-png", "PNG"];
+
 pub(crate) fn set_system_clipboard_image_from_png_bytes_sync(
     png_bytes: &[u8],
 ) -> Result<(), String> {
@@ -69,6 +74,17 @@ fn set_system_clipboard_image_from_png_bytes_inner(png_bytes: &[u8]) -> Result<(
     {
         use std::borrow::Cow;
 
+        // `arboard` writes images through X11 only, and nothing bridges that back to a
+        // Wayland compositor's clipboard: the image lands somewhere no Wayland application
+        // can paste from. Offering it natively first is the same split file paths already
+        // take, and a compositor without `wlr-data-control` falls through unchanged.
+        #[cfg(target_os = "linux")]
+        {
+            if wayland_set_clipboard_png_bytes(png_bytes).is_ok() {
+                return Ok(());
+            }
+        }
+
         let decoded_image = image::load_from_memory(png_bytes)
             .map_err(|error| format!("Failed to decode PNG clipboard image: {error}"))?;
         let rgba_image = decoded_image.to_rgba8();
@@ -92,6 +108,28 @@ fn set_system_clipboard_image_from_png_bytes_inner(png_bytes: &[u8]) -> Result<(
     }
 }
 
+/// Offers the PNG on the Wayland clipboard under the targets image consumers ask for.
+#[cfg(target_os = "linux")]
+fn wayland_set_clipboard_png_bytes(png_bytes: &[u8]) -> Result<(), String> {
+    use wl_clipboard_rs::copy::{MimeSource, MimeType, Options, Source};
+
+    let sources = WAYLAND_PNG_MIME_TYPES
+        .into_iter()
+        .map(|mime_type| MimeSource {
+            source: Source::Bytes(png_bytes.to_vec().into_boxed_slice()),
+            mime_type: MimeType::Specific(mime_type.to_string()),
+        })
+        .collect();
+
+    let mut options = Options::new();
+    // Serve the offer from a background thread. Blocking here would hold the clipboard
+    // command until the next application took ownership.
+    options.foreground(false);
+    options
+        .copy_multi(sources)
+        .map_err(|error| error.to_string())
+}
+
 pub(crate) fn read_system_clipboard_image_info_sync(
 ) -> Result<Option<SystemClipboardImageInfo>, String> {
     #[cfg(target_os = "windows")]
@@ -105,8 +143,46 @@ pub(crate) fn read_system_clipboard_image_info_sync(
     }
 }
 
+/// Reads a PNG off the Wayland clipboard, under any of the targets we also offer.
+///
+/// `None` means "nothing this layer can answer" — no Wayland, or no image on the clipboard —
+/// and every caller falls back to `arboard`.
+#[cfg(target_os = "linux")]
+fn wayland_read_clipboard_png() -> Option<Vec<u8>> {
+    use std::io::Read;
+    use wl_clipboard_rs::paste::{get_contents, ClipboardType, MimeType, Seat};
+
+    for mime_type in WAYLAND_PNG_MIME_TYPES {
+        let Ok((mut reader, _)) = get_contents(
+            ClipboardType::Regular,
+            Seat::Unspecified,
+            MimeType::Specific(mime_type),
+        ) else {
+            continue;
+        };
+
+        let mut buffer = Vec::new();
+
+        if reader.read_to_end(&mut buffer).is_ok() && is_valid_png_bytes(&buffer) {
+            return Some(buffer);
+        }
+    }
+
+    None
+}
+
 #[cfg(not(target_os = "windows"))]
 fn unix_read_clipboard_image_info() -> Result<Option<SystemClipboardImageInfo>, String> {
+    #[cfg(target_os = "linux")]
+    if let Some(image) = wayland_read_clipboard_image_bytes()? {
+        return Ok(Some(SystemClipboardImageInfo {
+            width: image.width as usize,
+            height: image.height as usize,
+            size_bytes: image.bytes.len(),
+            clipboard_sequence: None,
+        }));
+    }
+
     let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
 
     match clipboard.get_image() {
@@ -118,6 +194,25 @@ fn unix_read_clipboard_image_info() -> Result<Option<SystemClipboardImageInfo>, 
         })),
         Err(_) => Ok(None),
     }
+}
+
+/// The Wayland clipboard entry as raw pixels, matching what `arboard` hands back.
+#[cfg(target_os = "linux")]
+fn wayland_read_clipboard_image_bytes() -> Result<Option<ClipboardImageBytes>, String> {
+    let Some(png_bytes) = wayland_read_clipboard_png() else {
+        return Ok(None);
+    };
+
+    let rgba_image = image::load_from_memory(&png_bytes)
+        .map_err(|error| format!("Failed to decode PNG clipboard image: {error}"))?
+        .to_rgba8();
+    let (width, height) = rgba_image.dimensions();
+
+    Ok(Some(ClipboardImageBytes {
+        width,
+        height,
+        bytes: rgba_image.into_raw(),
+    }))
 }
 
 pub(crate) fn save_system_clipboard_image_to_temp_sync(
@@ -355,6 +450,11 @@ fn save_clipboard_image_bytes_to_temp(
 }
 
 fn read_system_clipboard_image_bytes() -> Result<Option<ClipboardImageBytes>, String> {
+    #[cfg(target_os = "linux")]
+    if let Some(image) = wayland_read_clipboard_image_bytes()? {
+        return Ok(Some(image));
+    }
+
     let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
     let image = match clipboard.get_image() {
         Ok(image) => image,
@@ -726,5 +826,23 @@ mod tests {
             u32::from_le_bytes(dib_bytes[8..12].try_into().expect("height")),
             2
         );
+    }
+
+    /// Manual check: decodes a real video frame, puts it on the clipboard and holds it there
+    /// long enough to paste somewhere else or read back with `wl-paste --type image/png`.
+    /// Ignored because it needs a desktop session and GStreamer plugins. Run with:
+    /// `SFM_TEST_VIDEO=/path/to.mp4 cargo test --lib -- --ignored holds_a_video_frame`
+    #[test]
+    #[ignore]
+    #[cfg(target_os = "linux")]
+    fn holds_a_video_frame_on_the_clipboard() {
+        let path = std::env::var("SFM_TEST_VIDEO").expect("SFM_TEST_VIDEO must be set");
+        let png =
+            crate::video_thumbnails::capture_video_frame_png(&path, 2.0).expect("frame decodes");
+
+        super::set_system_clipboard_image_from_png_bytes_sync(&png).expect("clipboard write");
+
+        println!("holding {} PNG bytes on the clipboard", png.len());
+        std::thread::sleep(std::time::Duration::from_secs(20));
     }
 }

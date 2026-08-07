@@ -1258,6 +1258,9 @@
     "exitFullscreen": "Sair da tela cheia",
     "loop": "Repetir o arquivo atual",
     "loopOff": "Desativar a repetição",
+    "captureFrame": "Copiar o quadro atual para a área de transferência",
+    "frameCopied": "Quadro copiado para a área de transferência",
+    "frameCaptureFailed": "Não foi possível copiar o quadro",
     "artwork": "Capa do álbum"
   },
   "imageViewer": {

@@ -27,10 +27,14 @@ import {
   RepeatOffIcon,
   Music2Icon,
   Loader2Icon,
+  CameraIcon,
+  CheckIcon,
+  TriangleAlertIcon,
 } from '@lucide/vue';
 import { Slider } from '@/components/ui/slider';
 import NowPlayingShow from './now-playing-show.vue';
 import type { NowPlayingCard } from '@/utils/artist-info';
+import { copyCurrentVideoFrameToClipboard } from '@/utils/video-frame-capture';
 
 const props = withDefaults(defineProps<{
   src: string;
@@ -48,12 +52,23 @@ const props = withDefaults(defineProps<{
     photos: string[];
     cards: NowPlayingCard[];
   } | null;
+  /**
+   * The file on disk that `src` is playing. Supplying it offers the still-capture button,
+   * which copies the frame on screen to the system clipboard.
+   *
+   * It is the path rather than a plain flag because Linux cannot read the frame out of the
+   * element and decodes it from the file instead; see `@/utils/video-frame-capture`. Callers
+   * playing something that has no path — a remote URL handed in by an extension — leave this
+   * unset and get a player without the button.
+   */
+  captureSourcePath?: string;
 }>(), {
   kind: 'video',
   autoplay: false,
   muted: false,
   poster: undefined,
   nowPlaying: null,
+  captureSourcePath: undefined,
 });
 
 const { t } = useI18n();
@@ -65,6 +80,8 @@ const CONTROLS_IDLE_MS = 2500;
 const SHOW_IDLE_MS = 10000;
 const LOOP_WRAP_LEAD_SECONDS = 0.2;
 const LOOP_WATCH_INTERVAL_MS = 100;
+/** How long the capture button reports the outcome of a capture before going back to idle. */
+const FRAME_CAPTURE_FEEDBACK_MS = 2000;
 
 const containerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLMediaElement | null>(null);
@@ -88,10 +105,13 @@ const isShowVisible = ref(false);
  * transport controls.
  */
 const isLooping = ref(false);
+/** `idle` between captures; the others are what the button reports back for a moment. */
+const frameCaptureState = ref<'idle' | 'busy' | 'copied' | 'failed'>('idle');
 
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let showIdleTimer: ReturnType<typeof setTimeout> | undefined;
 let loopWatchTimer: ReturnType<typeof setInterval> | undefined;
+let frameCaptureFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
 let lastProgressAt = -1;
 /**
  * Autoplay is started from here rather than left to the `autoplay` attribute alone, because
@@ -163,6 +183,33 @@ const showTimeLabel = computed(
 const volumeIcon = computed(() => {
   if (isMuted.value || volume.value === 0) return VolumeXIcon;
   return volume.value < 0.5 ? Volume1Icon : Volume2Icon;
+});
+
+/**
+ * Grabbing a still is only meaningful for a frame someone is looking at, so the button is
+ * offered while the video is stopped — before the first play, or paused — and is out of the
+ * way while it is running. That also sidesteps having to define which frame a click during
+ * playback would even mean.
+ */
+const canCaptureFrame = computed(() => (
+  Boolean(props.captureSourcePath) && isVideo.value && !isPlaying.value && !hasError.value
+));
+
+const frameCaptureIcon = computed(() => {
+  switch (frameCaptureState.value) {
+    case 'busy': return Loader2Icon;
+    case 'copied': return CheckIcon;
+    case 'failed': return TriangleAlertIcon;
+    default: return CameraIcon;
+  }
+});
+
+const frameCaptureLabel = computed(() => {
+  switch (frameCaptureState.value) {
+    case 'copied': return t('mediaPlayer.frameCopied');
+    case 'failed': return t('mediaPlayer.frameCaptureFailed');
+    default: return t('mediaPlayer.captureFrame');
+  }
 });
 
 function clearIdleTimer() {
@@ -300,6 +347,36 @@ function seekBy(deltaSeconds: number) {
 
 function toggleLoop() {
   isLooping.value = !isLooping.value;
+}
+
+/**
+ * Copies the frame on screen to the system clipboard.
+ *
+ * The outcome is reported on the button itself rather than as a notification, because the
+ * auxiliary windows this player runs in draw no toaster of their own.
+ */
+async function captureFrame() {
+  const media = mediaRef.value;
+  const sourcePath = props.captureSourcePath;
+
+  if (!(media instanceof HTMLVideoElement) || !sourcePath) return;
+  if (frameCaptureState.value === 'busy') return;
+
+  clearTimeout(frameCaptureFeedbackTimer);
+  frameCaptureState.value = 'busy';
+
+  try {
+    await copyCurrentVideoFrameToClipboard(media, sourcePath);
+    frameCaptureState.value = 'copied';
+  }
+  catch (error) {
+    console.error('Failed to copy the current video frame to the clipboard:', error);
+    frameCaptureState.value = 'failed';
+  }
+
+  frameCaptureFeedbackTimer = setTimeout(() => {
+    frameCaptureState.value = 'idle';
+  }, FRAME_CAPTURE_FEEDBACK_MS);
 }
 
 function toggleMute() {
@@ -557,6 +634,8 @@ watch(() => props.src, () => {
   bufferedTo.value = 0;
   lastProgressAt = -1;
   shouldAutoplayNextLoad = props.autoplay;
+  clearTimeout(frameCaptureFeedbackTimer);
+  frameCaptureState.value = 'idle';
   // `muted` means "start silent", so each file starts from the setting again rather than
   // inheriting a manual unmute from the previous one. Volume is deliberately not reset —
   // carrying it across files is what a player should do.
@@ -589,6 +668,7 @@ if (typeof document !== 'undefined') {
 onBeforeUnmount(() => {
   clearIdleTimer();
   clearTimeout(showIdleTimer);
+  clearTimeout(frameCaptureFeedbackTimer);
   stopLoopWatch();
 
   if (typeof document !== 'undefined') {
@@ -775,6 +855,25 @@ onBeforeUnmount(() => {
         </div>
         <!-- Playback modes. Play-all and shuffle will join the loop toggle here. -->
         <div class="media-player__modes media-player__controls-end">
+          <button
+            v-if="canCaptureFrame"
+            type="button"
+            class="media-player__button media-player__capture"
+            :class="{
+              'media-player__capture--copied': frameCaptureState === 'copied',
+              'media-player__capture--failed': frameCaptureState === 'failed',
+            }"
+            :disabled="frameCaptureState === 'busy'"
+            :aria-label="frameCaptureLabel"
+            :title="frameCaptureLabel"
+            @click="captureFrame"
+          >
+            <component
+              :is="frameCaptureIcon"
+              :size="18"
+              :class="{ 'media-player__capture-icon--busy': frameCaptureState === 'busy' }"
+            />
+          </button>
           <button
             type="button"
             class="media-player__button"
@@ -982,6 +1081,25 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* The outcome of a capture is reported here, so it needs to read without colour alone —
+   the glyph swaps to a tick or a warning triangle for the same couple of seconds. */
+
+.media-player__capture:disabled {
+  cursor: default;
+}
+
+.media-player__capture--copied {
+  color: hsl(var(--primary));
+}
+
+.media-player__capture--failed {
+  color: hsl(var(--destructive));
+}
+
+.media-player__capture-icon--busy {
+  animation: media-player-spin 1s linear infinite;
 }
 
 .media-player__controls-end {

@@ -433,6 +433,7 @@ pub fn run() {
             system_clipboard::paste_saved_clipboard_image,
             system_clipboard::set_system_clipboard_image_from_png_bytes,
             system_clipboard::set_system_clipboard_image_from_path,
+            system_clipboard::copy_video_frame_to_system_clipboard,
             input_simulation::simulate_paste_shortcut,
             system_clipboard::read_system_clipboard_text,
             system_clipboard::read_system_clipboard_change_token,

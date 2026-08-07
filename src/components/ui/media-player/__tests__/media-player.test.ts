@@ -2,7 +2,7 @@
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import {
   beforeEach,
   describe,
@@ -17,6 +17,15 @@ vi.mock('vue-i18n', () => ({
     t: (key: string) => key,
   }),
 }));
+
+const copyCurrentVideoFrameToClipboard = vi.fn();
+
+vi.mock('@/utils/video-frame-capture', () => ({
+  copyCurrentVideoFrameToClipboard: (...args: unknown[]) =>
+    copyCurrentVideoFrameToClipboard(...args),
+}));
+
+const CAPTURE_PATH = '/home/user/Videos/first.mp4';
 
 const FIRST_SRC = 'media://first.mp4';
 const SECOND_SRC = 'media://second.mp4';
@@ -57,6 +66,8 @@ describe('MediaPlayer', () => {
     play = vi.fn(() => Promise.resolve());
     HTMLMediaElement.prototype.play = play as unknown as HTMLMediaElement['play'];
     HTMLMediaElement.prototype.pause = vi.fn() as unknown as HTMLMediaElement['pause'];
+    copyCurrentVideoFrameToClipboard.mockReset();
+    copyCurrentVideoFrameToClipboard.mockResolvedValue(undefined);
   });
 
   /**
@@ -158,6 +169,66 @@ describe('MediaPlayer', () => {
       await Promise.resolve();
 
       expect(wrapper.find('.media-player__error').exists()).toBe(false);
+    });
+  });
+
+  describe('frame capture', () => {
+    it('is not offered unless the caller supplies the file behind the source', async () => {
+      const wrapper = mountPlayer();
+      await loadMetadata(wrapper);
+
+      expect(wrapper.find('.media-player__capture').exists()).toBe(false);
+    });
+
+    // Only a stopped video has a frame anyone is looking at.
+    it('shows the button while stopped and hides it during playback', async () => {
+      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      await loadMetadata(wrapper);
+      expect(wrapper.find('.media-player__capture').exists()).toBe(true);
+
+      await wrapper.get('video').trigger('play');
+      expect(wrapper.find('.media-player__capture').exists()).toBe(false);
+
+      await wrapper.get('video').trigger('pause');
+      expect(wrapper.find('.media-player__capture').exists()).toBe(true);
+    });
+
+    it('copies the frame on screen and reports back on the button', async () => {
+      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      await loadMetadata(wrapper);
+
+      await wrapper.get('.media-player__capture').trigger('click');
+      await flushPromises();
+
+      expect(copyCurrentVideoFrameToClipboard)
+        .toHaveBeenCalledWith(wrapper.get('video').element, CAPTURE_PATH);
+      expect(wrapper.get('.media-player__capture').attributes('title'))
+        .toBe('mediaPlayer.frameCopied');
+    });
+
+    it('reports a failed copy instead of claiming the frame was captured', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      copyCurrentVideoFrameToClipboard.mockRejectedValue(new Error('no frame'));
+      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      await loadMetadata(wrapper);
+
+      await wrapper.get('.media-player__capture').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.get('.media-player__capture').attributes('title'))
+        .toBe('mediaPlayer.frameCaptureFailed');
+    });
+
+    it('drops the previous outcome when the next file opens', async () => {
+      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      await loadMetadata(wrapper);
+      await wrapper.get('.media-player__capture').trigger('click');
+      await flushPromises();
+
+      await wrapper.setProps({ src: SECOND_SRC });
+
+      expect(wrapper.get('.media-player__capture').attributes('title'))
+        .toBe('mediaPlayer.captureFrame');
     });
   });
 });

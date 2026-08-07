@@ -1258,6 +1258,9 @@
     "exitFullscreen": "退出全屏",
     "loop": "重复播放当前文件",
     "loopOff": "关闭重复播放",
+    "captureFrame": "将当前帧复制到剪贴板",
+    "frameCopied": "已将帧复制到剪贴板",
+    "frameCaptureFailed": "无法复制该帧",
     "artwork": "专辑封面"
   },
   "imageViewer": {

@@ -1258,6 +1258,9 @@
     "exitFullscreen": "Salir de pantalla completa",
     "loop": "Repetir el archivo actual",
     "loopOff": "Desactivar la repetición",
+    "captureFrame": "Copiar el fotograma actual al portapapeles",
+    "frameCopied": "Fotograma copiado al portapapeles",
+    "frameCaptureFailed": "No se pudo copiar el fotograma",
     "artwork": "Portada del álbum"
   },
   "imageViewer": {

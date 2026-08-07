@@ -1258,6 +1258,9 @@
     "exitFullscreen": "全画面表示を終了",
     "loop": "現在のファイルを繰り返す",
     "loopOff": "繰り返しをオフにする",
+    "captureFrame": "現在のフレームをクリップボードにコピー",
+    "frameCopied": "フレームをクリップボードにコピーしました",
+    "frameCaptureFailed": "フレームをコピーできませんでした",
     "artwork": "アルバムアート"
   },
   "imageViewer": {
