@@ -77,7 +77,8 @@ pub fn start_drag<F: Fn(DragResult, CursorPosition) + Send + 'static>(
             log::debug!("Drag context created successfully");
             let callback = Rc::new(on_drop_callback);
             on_drop_failed(callback.clone(), window, &handler_ids, &options);
-            on_drop_performed(callback.clone(), window, &handler_ids, &drag_context);
+            on_drop_performed(callback.clone(), window, &drag_context);
+            cleanup_on_drag_end(window, &handler_ids);
 
             log::debug!("Setting up drag icon");
             let icon_pixbuf: Option<gdk_pixbuf::Pixbuf> = match &image {
@@ -124,7 +125,6 @@ fn on_drop_failed<F: Fn(DragResult, CursorPosition) + Send + 'static>(
 ) {
     log::debug!("Setting up drop failed handler");
     let window_clone = window.clone();
-    let handler_ids_clone = handler_ids.clone();
 
     let skip_animatation_on_cancel_or_failure = options.skip_animatation_on_cancel_or_failure;
 
@@ -138,7 +138,6 @@ fn on_drop_failed<F: Fn(DragResult, CursorPosition) + Send + 'static>(
                 get_cursor_position(&window_clone).unwrap(),
             );
 
-            cleanup_signal_handlers(&handler_ids_clone, &window_clone);
             if skip_animatation_on_cancel_or_failure {
                 Propagation::Stop
             } else {
@@ -161,20 +160,38 @@ fn cleanup_signal_handlers(
 fn on_drop_performed<F: Fn(DragResult, CursorPosition) + Send + 'static>(
     callback: Rc<F>,
     window: &gtk::ApplicationWindow,
-    handler_ids: &Arc<Mutex<Vec<SignalHandlerId>>>,
     drag_context: &gdk::DragContext,
 ) {
     log::debug!("Setting up drop performed handler");
     let window = window.clone();
-    let handler_ids = handler_ids.clone();
 
+    // Do NOT clean up here: on Wayland, "drop-performed" reaches the source
+    // before the target requests the data, so tearing down the
+    // drag-data-get handler at this point makes the target receive an
+    // empty payload. Cleanup is deferred to "drag-end".
     drag_context.connect_drop_performed(move |context, _| {
         log::debug!("Drop performed successfully");
         log::trace!("Selected action: {:?}", context.selected_action());
         log::trace!("Suggested action: {:?}", context.suggested_action());
-        cleanup_signal_handlers(&handler_ids, &window);
         callback(DragResult::Dropped, get_cursor_position(&window).unwrap());
     });
+}
+
+fn cleanup_on_drag_end(
+    window: &gtk::ApplicationWindow,
+    handler_ids: &Arc<Mutex<Vec<SignalHandlerId>>>,
+) {
+    log::debug!("Setting up drag end handler");
+    let handler_ids_clone = handler_ids.clone();
+
+    // "drag-end" fires after the data transfer has completed, for both
+    // dropped and cancelled drags. The handler disconnects itself along
+    // with the others (allowed while the emission is running).
+    let handler_id = window.connect_drag_end(move |window, _| {
+        log::debug!("Drag ended");
+        cleanup_signal_handlers(&handler_ids_clone, window);
+    });
+    handler_ids.lock().unwrap().push(handler_id);
 }
 
 fn get_cursor_position(window: &gtk::ApplicationWindow) -> Result<CursorPosition, Error> {
