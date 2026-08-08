@@ -596,13 +596,21 @@ onBeforeUnmount(clearTimers);
  * photo on its way out keeps drifting for the whole dissolve.
  */
 
+/*
+ * If this animation ever looks jerky, check how the app was launched before touching it:
+ * `tauri:dev:webkit-igpu` sets WEBKIT_DISABLE_COMPOSITING_MODE=1, under which every CSS
+ * animation is software-rendered frame by frame and nothing here can be smooth.
+ */
+
 .now-playing-show__photo {
   position: absolute;
   width: 100%;
   height: 100%;
   animation: now-playing-pan 20s ease-in-out infinite alternate;
   animation-play-state: paused;
-  filter: saturate(35%) contrast(108%) brightness(66%);
+
+  /* Raised from 35%: with the tint no longer blending, the photo carries more of the colour. */
+  filter: saturate(60%) contrast(112%) brightness(62%);
   inset: 0;
   object-fit: cover;
   opacity: 0;
@@ -616,6 +624,13 @@ onBeforeUnmount(clearTimers);
 .now-playing-show--active .now-playing-show__photo {
   animation-play-state: running;
 }
+
+/*
+ * The zoom has to stay ahead of the drift or the picture's edge walks into frame: a translation
+ * of t% needs a scale of at least 1 + 2t/100 to keep the photo covering the frame, and both
+ * values interpolate, so the tightest point is the small-scale end. 1.08 against 3% has enough
+ * margin; shrinking the starting scale without shrinking the drift would not.
+ */
 
 /*
  * The zoom has to stay ahead of the drift or the picture's edge walks into frame: a translation
@@ -639,12 +654,24 @@ onBeforeUnmount(clearTimers);
 /* One shared accent behind the whole frame is what reads as the screen changing hue, rather
    than a tinted picture sitting behind static furniture. */
 
+/*
+ * Plain alpha, not `mix-blend-mode`.
+ *
+ * The original `color` blend kept the photograph's luminance and took only hue and saturation
+ * from the accent; a blended layer also needs a backdrop readback and re-blend on every frame
+ * the panning photo changes, where an alpha wash composites for free. The look was retuned for
+ * the cheaper form — wash lightened, photo saturation raised from 35% to 60% — and that colour
+ * treatment is the one that was signed off, so keep the two halves together if changing either.
+ */
+
 .now-playing-show__tint {
   background: var(--now-playing-accent);
-  mix-blend-mode: color;
-  opacity: 0.35;
+  opacity: 0.22;
   transition: background-color 5200ms linear;
 }
+
+/* Same reasoning as the tint: a soft-light blend over moving photography is a per-frame
+   readback. As plain alpha it is a gentle highlight rather than a light-preserving burn. */
 
 .now-playing-show__burn {
   background: radial-gradient(
@@ -652,8 +679,7 @@ onBeforeUnmount(clearTimers);
     color-mix(in srgb, var(--now-playing-accent) 55%, transparent),
     transparent 35%
   );
-  mix-blend-mode: soft-light;
-  opacity: 0.35;
+  opacity: 0.25;
   transition: background 5200ms linear;
 }
 

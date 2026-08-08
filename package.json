@@ -34,6 +34,7 @@
     "sync-version": "node ./scripts/sync-version.js",
     "tauri:dev": "npm run sync-version && tauri dev",
     "tauri:dev:webkit-igpu": "npm run sync-version && env WEBKIT_DISABLE_COMPOSITING_MODE=1 tauri dev",
+    "tauri:dev:no-dmabuf": "npm run sync-version && env WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri dev",
     "tauri:build": "npm run sync-version && env NO_STRIP=true tauri build",
     "tauri:build:linux": "npm run tauri:build",
     "flatpak:build": "bash ./flatpak/build-flatpak.sh",
