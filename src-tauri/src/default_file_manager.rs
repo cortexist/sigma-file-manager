@@ -6,6 +6,8 @@
 mod launcher;
 #[cfg(windows)]
 mod registry;
+#[cfg(target_os = "linux")]
+mod xdg;
 
 #[cfg(windows)]
 use crate::windows_installation::{
@@ -660,7 +662,12 @@ pub fn default_file_manager_available() -> bool {
         default_file_manager_is_supported()
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        xdg::available()
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         false
     }
@@ -673,7 +680,13 @@ pub fn is_default_file_manager(app_handle: tauri::AppHandle) -> Result<bool, Str
         detect_default_file_manager(&app_handle)
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app_handle;
+        xdg::is_default()
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = app_handle;
         Ok(false)
@@ -690,7 +703,13 @@ pub fn set_default_file_manager(
         apply_default_file_manager(&app_handle, enabled)
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app_handle;
+        xdg::set_default(enabled)
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = app_handle;
         let _ = enabled;

@@ -455,6 +455,7 @@
       "defaultFileManager": {
         "title": "Sigma File Manager کو ڈیفالٹ فائل مینیجر بنائیں",
         "description": "یہ اختیار سسٹم رجسٹری بدلتا ہے اور غیر متوقع اثر کر سکتا ہے۔ اپنے خطرے پر آگے بڑھیں۔",
+        "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Microsoft Store ورژن میں دستیاب نہیں"
       }
     },

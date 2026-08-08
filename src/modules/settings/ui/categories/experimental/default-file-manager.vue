@@ -4,7 +4,7 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 -->
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { FolderOpenIcon } from '@lucide/vue';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/toaster';
@@ -22,6 +22,14 @@ const platformStore = usePlatformStore();
 const isEnabled = ref(false);
 const isLoading = ref(true);
 const isApplying = ref(false);
+
+// The warning about the registry is true on Windows and meaningless on Linux,
+// where this writes a desktop entry and one line of a config file.
+const description = computed(() => (
+  platformStore.isLinux
+    ? t('settings.experimental.defaultFileManager.descriptionLinux')
+    : t('settings.experimental.defaultFileManager.description')
+));
 
 async function refreshDefaultFileManagerState(showError = true) {
   isLoading.value = true;
@@ -70,10 +78,12 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Shown wherever the backend can act: Windows via the registry, Linux via
+       the XDG association. The switch itself is disabled when it cannot. -->
   <SettingsItem
-    v-if="platformStore.isWindows"
+    v-if="platformStore.isWindows || platformStore.isLinux"
     :title="t('settings.experimental.defaultFileManager.title')"
-    :description="t('settings.experimental.defaultFileManager.description')"
+    :description="description"
     :icon="FolderOpenIcon"
   >
     <template #title-suffix>

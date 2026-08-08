@@ -455,6 +455,7 @@
       "defaultFileManager": {
         "title": "Nastavi Sigma File Manager kot privzeti upravljalnik datotek",
         "description": "Ta možnost spremeni sistemski register in lahko povzroči nepričakovane stranske učinke na vaši napravi. Nadaljujte na lastno odgovornost.",
+        "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Ni na voljo v različici iz trgovine Microsoft Store"
       }
     },

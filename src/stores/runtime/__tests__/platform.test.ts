@@ -14,8 +14,15 @@ describe('platform capabilities', () => {
     expect(canUseDefaultFileManager('windows', false)).toBe(false);
   });
 
-  it('disables the default file manager integration on other platforms', () => {
-    expect(canUseDefaultFileManager('linux', true)).toBe(false);
+  it('allows it on Linux, where the backend sets the XDG association', () => {
+    expect(canUseDefaultFileManager('linux', true)).toBe(true);
+  });
+
+  it('disables it on Linux when xdg-utils is missing, which the backend reports', () => {
+    expect(canUseDefaultFileManager('linux', false)).toBe(false);
+  });
+
+  it('disables it on macOS, where the Finder cannot be replaced', () => {
     expect(canUseDefaultFileManager('macos', true)).toBe(false);
   });
 });

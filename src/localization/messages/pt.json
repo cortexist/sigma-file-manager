@@ -426,6 +426,7 @@
       "defaultFileManager": {
         "title": "Definir o Sigma File Manager como gerenciador de arquivos padrão",
         "description": "Esta opção modifica o registro do sistema e pode causar efeitos colaterais inesperados no seu dispositivo. Continue por sua conta e risco.",
+        "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Não disponível na versão da Microsoft Store"
       }
     },

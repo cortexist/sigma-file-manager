@@ -9,11 +9,19 @@ import { invoke } from '@tauri-apps/api/core';
 import { initPlatformInfo as initSharedPlatformInfo } from '@/utils/platform-info';
 import { initMediaServer } from '@/utils/media-src';
 
+/**
+ * Windows writes registry keys; Linux owns the `inode/directory` MIME
+ * association through xdg-mime. macOS has no equivalent — the Finder cannot be
+ * replaced — so it is excluded here rather than in the backend.
+ *
+ * The backend's own answer still gates both: on Windows it is false for Store
+ * installations, and on Linux false when xdg-utils is missing.
+ */
 export function canUseDefaultFileManager(
   platform: Platform | null,
   defaultFileManagerAvailable: boolean,
 ): boolean {
-  return platform === 'windows' && defaultFileManagerAvailable;
+  return (platform === 'windows' || platform === 'linux') && defaultFileManagerAvailable;
 }
 
 export const usePlatformStore = defineStore('platform', () => {

@@ -426,6 +426,7 @@
       "defaultFileManager": {
         "title": "Đặt Sigma File Manager làm trình quản lý tệp mặc định",
         "description": "Tùy chọn này sửa đổi sổ đăng ký hệ thống và có thể gây ra tác dụng phụ ngoài ý muốn trên thiết bị của bạn. Hãy tiếp tục với rủi ro của riêng bạn.",
+        "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Không khả dụng trong phiên bản Microsoft Store"
       }
     },

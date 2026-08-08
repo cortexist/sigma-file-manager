@@ -455,6 +455,7 @@
       "defaultFileManager": {
         "title": "הגדר את Sigma File Manager כמנהל הקבצים שמוגדר כברירת מחדל",
         "description": "אפשרות זו משנה את רישום המערכת ועלולה לגרום לתופעות לוואי בלתי צפויות במכשירך. המשך על אחריותך.",
+        "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "לא זמין בגרסת Microsoft Store"
       }
     },

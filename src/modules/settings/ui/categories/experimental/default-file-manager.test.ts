@@ -78,9 +78,34 @@ describe('default file manager setting', () => {
     expect(invokeMock).toHaveBeenCalledWith('is_default_file_manager');
   });
 
-  it('does not show the Windows-only setting on other platforms', () => {
+  it('offers the setting on Linux, where the backend owns the XDG association', async () => {
     const platformStore = usePlatformStore();
     platformStore.currentPlatform = 'linux';
+    platformStore.supportsDefaultFileManager = true;
+
+    const wrapper = mount(DefaultFileManager);
+    await flushPromises();
+
+    expect(wrapper.get('[role="switch"]').attributes('disabled')).toBeUndefined();
+    expect(invokeMock).toHaveBeenCalledWith('is_default_file_manager');
+    // That badge is about the Microsoft Store, so it has no business here.
+    expect(wrapper.find('.default-file-manager__availability-badge').exists()).toBe(false);
+  });
+
+  it('shows it disabled on a Linux system without xdg-utils, rather than hiding it', () => {
+    const platformStore = usePlatformStore();
+    platformStore.currentPlatform = 'linux';
+    platformStore.supportsDefaultFileManager = false;
+
+    const wrapper = mount(DefaultFileManager);
+
+    expect(wrapper.get('[role="switch"]').attributes('disabled')).toBeDefined();
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('does not show the setting on macOS, where the Finder cannot be replaced', () => {
+    const platformStore = usePlatformStore();
+    platformStore.currentPlatform = 'macos';
     platformStore.supportsDefaultFileManager = false;
 
     const wrapper = mount(DefaultFileManager);

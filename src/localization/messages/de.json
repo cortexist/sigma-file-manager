@@ -426,6 +426,7 @@
       "defaultFileManager": {
         "title": "Sigma File Manager als Standard-Dateimanager festlegen",
         "description": "Diese Option ändert die Systemregistrierung und kann unerwartete Nebenwirkungen auf Ihrem Gerät haben. Fahren Sie auf eigenes Risiko fort.",
+        "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "In der Microsoft Store-Version nicht verfügbar"
       }
     },

@@ -123,8 +123,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const allSections = shallowRef<SettingsSection[]>([]);
   const isInitialized = ref(false);
 
+  // `supportsDefaultFileManager` rather than a platform check: the backend is
+  // the one that knows whether the integration can work here — false for
+  // Microsoft Store builds, and on Linux when xdg-utils is missing — and it
+  // covers Windows and Linux alike.
   const sections = computed(() => allSections.value.filter(
-    section => section.key !== 'defaultFileManager' || platformStore.isWindows,
+    section => section.key !== 'defaultFileManager' || platformStore.supportsDefaultFileManager,
   ));
   const tabs = computed(() =>
     settingsTabs
