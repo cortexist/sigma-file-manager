@@ -179,7 +179,7 @@ export type UserSettings = {
    * Bare HSL channels, e.g. `198 19% 38%`, assigned straight to `--primary`.
    *
    * `null` means the user has never picked one, which is deliberately distinct from picking
-   * the default colour: only an explicit choice overrides an accent supplied by the theme.
+   * the default color: only an explicit choice overrides an accent supplied by the theme.
    */
   accentColor: string | null;
   text: TextSettings;

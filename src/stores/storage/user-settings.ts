@@ -82,7 +82,7 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       isRtl: false,
     },
     theme: 'dark',
-    // Unset rather than the default colour, so a theme supplying its own `--primary` is not
+    // Unset rather than the default color, so a theme supplying its own `--primary` is not
     // overridden on behalf of a user who never chose an accent. See `applyAccentColor`.
     accentColor: null,
     text: {
@@ -343,7 +343,7 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
     );
   });
   // Passed through unresolved: `useTheme` needs to tell "never chosen" from "chose the
-  // default colour", so collapsing null to a concrete value here would lose the distinction.
+  // default color", so collapsing null to a concrete value here would lose the distinction.
   const accentColorRef = computed(() => userSettings.value.accentColor);
   const { setTheme } = useTheme(
     themeSettingRef,

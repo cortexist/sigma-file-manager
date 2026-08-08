@@ -264,7 +264,7 @@ describe('ImageViewer', () => {
       const wrapper = mountViewer();
       await completeLoad(visibleImage(wrapper));
 
-      // Anchor right of centre: the transform must shift left to hold that point in place.
+      // Anchor right of center: the transform must shift left to hold that point in place.
       await dispatch(wrapper.element, 'wheel', {
         deltaY: -240,
         clientX: 700,

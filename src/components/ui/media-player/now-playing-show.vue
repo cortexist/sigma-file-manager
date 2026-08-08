@@ -332,7 +332,7 @@ const textPieces = computed((): TextPiece[] => {
     pieces.push(buildPiece('primary', headline, cardIndex.value, 1));
   }
 
-  // Prose keeps its capitalisation and its line breaks; a biography set in cropped capitals
+  // Prose keeps its capitalization and its line breaks; a biography set in cropped capitals
   // would be decoration rather than something anyone could read.
   if (card.body) {
     pieces.push(buildPiece('prose', card.body, cardIndex.value, 2));
@@ -609,7 +609,7 @@ onBeforeUnmount(clearTimers);
   animation: now-playing-pan 20s ease-in-out infinite alternate;
   animation-play-state: paused;
 
-  /* Raised from 35%: with the tint no longer blending, the photo carries more of the colour. */
+  /* Raised from 35%: with the tint no longer blending, the photo carries more of the color. */
   filter: saturate(60%) contrast(112%) brightness(62%);
   inset: 0;
   object-fit: cover;
@@ -660,7 +660,7 @@ onBeforeUnmount(clearTimers);
  * The original `color` blend kept the photograph's luminance and took only hue and saturation
  * from the accent; a blended layer also needs a backdrop readback and re-blend on every frame
  * the panning photo changes, where an alpha wash composites for free. The look was retuned for
- * the cheaper form — wash lightened, photo saturation raised from 35% to 60% — and that colour
+ * the cheaper form — wash lightened, photo saturation raised from 35% to 60% — and that color
  * treatment is the one that was signed off, so keep the two halves together if changing either.
  */
 
@@ -787,7 +787,7 @@ onBeforeUnmount(clearTimers);
  * percentages of the element, so a short word crosses the same distance a long one does.
  *
  * `--now-playing-text-opacity` is the single knob for how far the letters sit into the
- * photograph. It multiplies with the colour alpha and the overlay blend, so small values here
+ * photograph. It multiplies with the color alpha and the overlay blend, so small values here
  * go a long way.
  */
 

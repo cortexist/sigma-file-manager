@@ -108,7 +108,7 @@ function pushValue(fields: Record<string, string[]>, key: string, rawValue: stri
 }
 
 /**
- * Parses an `artist.info` sidecar. Unrecognised lines are never dropped: anything before the
+ * Parses an `artist.info` sidecar. Unrecognized lines are never dropped: anything before the
  * first key becomes {@link ArtistInfo.lead}, so a file of plain prose still carries its text
  * through to the show.
  */

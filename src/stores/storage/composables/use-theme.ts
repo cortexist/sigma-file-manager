@@ -197,7 +197,7 @@ export function useTheme(
    *
    * 1. The user picked an accent — it wins over everything, which is the point of the setting.
    * 2. No pick, but the active theme defines `--primary` — the theme keeps it. This used to be
-   *    clobbered: the setting defaulted to a concrete colour rather than to "unset", so a
+   *    clobbered: the setting defaulted to a concrete color rather than to "unset", so a
    *    theme's accent was overwritten even by a user who had never opened the setting.
    * 3. Neither — fall back to the default, so the app looks the same as it always has instead
    *    of dropping through to whatever the stylesheet happens to define.

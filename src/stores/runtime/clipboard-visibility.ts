@@ -14,7 +14,7 @@ type FileClipboardOperationType = 'copy' | 'move' | '';
  *
  * Needed on its own because not every platform round-trips the operation: a Linux system
  * clipboard carries only a file list, so the paths are the only part of our own clipboard
- * that can be recognised when reading it back.
+ * that can be recognized when reading it back.
  */
 export function hasSameFileClipboardPaths(
   localItems: DirEntry[],

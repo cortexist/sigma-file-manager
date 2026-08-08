@@ -161,7 +161,7 @@ run, they take over the system clipboard.
 
 Fullscreen audio takes over the screen when you stop touching the machine, in the manner of the
 old Zune desktop software: artist photography with a slow pan, metadata thrown across the frame
-in capitals, and a colour wash that drifts through the Zune palette. Any movement or keypress
+in capitals, and a color wash that drifts through the Zune palette. Any movement or keypress
 hands the screen straight back.
 
 ![The Now Playing show](docs/now-playing.gif)
@@ -251,6 +251,6 @@ you have already browsed stays invisible until then.
 Timings live at the top of `src/components/ui/media-player/now-playing-show.vue`, and the
 ten-second delay is `SHOW_IDLE_MS` in `media-player.vue`.
 
-## Licence
+## License
 
 GNU GPLv3, unchanged from upstream. See [LICENSE.md](LICENSE.md).

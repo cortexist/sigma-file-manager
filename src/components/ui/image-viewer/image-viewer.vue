@@ -140,8 +140,8 @@ function clampOffsets(): void {
 
 /**
  * Zoom about a fixed point so the pixel under the cursor stays under the cursor. Anchoring
- * to the centre instead would slide the subject away exactly when someone is trying to look
- * at it. `anchor` is in container coordinates, measured from its centre.
+ * to the center instead would slide the subject away exactly when someone is trying to look
+ * at it. `anchor` is in container coordinates, measured from its center.
  */
 function applyScale(nextScale: number, anchor?: {
   x: number;
@@ -561,7 +561,7 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 
-/* A 20px image stretched over the pane: it reads as the picture's colours rather than as a
+/* A 20px image stretched over the pane: it reads as the picture's colors rather than as a
    broken preview, and covers the gap before the thumbnail arrives. */
 
 .image-viewer__placeholder {

@@ -161,7 +161,7 @@ describe('user settings theme sync', () => {
    * own copy of the settings. Without a broadcast, an already-open window — and Quick View
    * is prelaunched, so it usually is — kept showing the accent from whenever it started.
    */
-  it('broadcasts accent colour changes to secondary windows', async () => {
+  it('broadcasts accent color changes to secondary windows', async () => {
     const userSettingsStore = useUserSettingsStore();
 
     await userSettingsStore.init(createUserSettingsBootstrap('dark'));
@@ -175,7 +175,7 @@ describe('user settings theme sync', () => {
     );
   });
 
-  it('applies accent colour changes from other windows without writing them back', async () => {
+  it('applies accent color changes from other windows without writing them back', async () => {
     const userSettingsStore = useUserSettingsStore();
 
     await userSettingsStore.init(createUserSettingsBootstrap('dark'));

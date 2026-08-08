@@ -285,7 +285,7 @@ function onFocusIn(event: FocusEvent) {
     isFocusWithin.value = target.matches(':focus-visible');
   }
   catch {
-    // An engine without `:focus-visible` keeps the old behaviour rather than stranding
+    // An engine without `:focus-visible` keeps the old behavior rather than stranding
     // keyboard users with controls they cannot hold open.
     isFocusWithin.value = true;
   }
@@ -883,7 +883,7 @@ onBeforeUnmount(() => {
             :title="isLooping ? t('mediaPlayer.loopOff') : t('mediaPlayer.loop')"
             @click="toggleLoop"
           >
-            <!-- Glyph carries the state, so the toggle does not read on colour alone. -->
+            <!-- Glyph carries the state, so the toggle does not read on color alone. -->
             <component
               :is="isLooping ? Repeat1Icon : RepeatOffIcon"
               :size="18"
@@ -1083,7 +1083,7 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-/* The outcome of a capture is reported here, so it needs to read without colour alone —
+/* The outcome of a capture is reported here, so it needs to read without color alone —
    the glyph swaps to a tick or a warning triangle for the same couple of seconds. */
 
 .media-player__capture:disabled {

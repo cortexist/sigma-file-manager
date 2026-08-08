@@ -131,7 +131,7 @@ function selectAccentColor(value: string) {
 }
 
 /* Dark tick on pale swatches, light on saturated ones, is not worth a luminance calculation
-   here: a mixed-blend tick stays legible on every colour in the set. */
+   here: a mixed-blend tick stays legible on every color in the set. */
 
 .accent-color__check {
   color: white;

@@ -108,9 +108,9 @@ describe('useTheme', () => {
     );
   });
 
-  describe('accent colour priority', () => {
+  describe('accent color priority', () => {
     /**
-     * The setting used to default to a concrete colour, so this path was unreachable: a
+     * The setting used to default to a concrete color, so this path was unreachable: a
      * theme's accent was overwritten even for a user who had never opened the setting.
      */
     it('lets an unset accent defer to one supplied by the theme', () => {
