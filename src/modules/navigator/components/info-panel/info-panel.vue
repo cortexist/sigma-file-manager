@@ -36,6 +36,7 @@ const isDrawerOpen = ref(false);
       <InfoPanelPreview
         :selected-entry="props.selectedEntry"
         :is-current-dir="props.isCurrentDir"
+        compact
       />
       <InfoPanelHeader
         :selected-entry="props.selectedEntry"

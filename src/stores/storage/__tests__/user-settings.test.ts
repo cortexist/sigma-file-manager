@@ -212,3 +212,56 @@ describe('user settings theme sync', () => {
     expect(userSettingsStore.userSettings.theme).toBe('dark');
   });
 });
+
+/**
+ * An identity filter is not free: it still forces the page, and every image, through an
+ * offscreen compositing pass, which is expensive enough during a window resize to leave the
+ * window unpainted and — on this fork's target hardware — to hang the GPU.
+ */
+describe('body visual filters', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    document.documentElement.className = '';
+    document.documentElement.style.cssText = '';
+    lazyStoreSaveMock.mockReset();
+    lazyStoreSetMock.mockReset();
+    listenMock.mockReset().mockResolvedValue(() => {});
+    emitMock.mockReset().mockResolvedValue(undefined);
+    webviewSetZoomMock.mockReset();
+  });
+
+  it('resolves to none while brightness and contrast are at their defaults', async () => {
+    const userSettingsStore = useUserSettingsStore();
+
+    await userSettingsStore.init(createUserSettingsBootstrap('dark'));
+
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--sigma-body-filter')).toBe('none');
+    expect(style.getPropertyValue('--sigma-media-filter')).toBe('none');
+  });
+
+  it('writes real filters once either value is adjusted, and undoes them on images', async () => {
+    const userSettingsStore = useUserSettingsStore();
+
+    await userSettingsStore.init(createUserSettingsBootstrap('dark'));
+    userSettingsStore.userSettings.visualFilters.brightness = 125;
+    await nextTick();
+
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--sigma-body-filter')).toBe('brightness(125%) contrast(100%)');
+    // 10000 / 125 = 80: the inverse, so images are shown as authored.
+    expect(style.getPropertyValue('--sigma-media-filter')).toBe('contrast(100.000%) brightness(80.000%)');
+  });
+
+  it('returns to none when the adjustment is undone', async () => {
+    const userSettingsStore = useUserSettingsStore();
+
+    await userSettingsStore.init(createUserSettingsBootstrap('dark'));
+    userSettingsStore.userSettings.visualFilters.contrast = 140;
+    await nextTick();
+    userSettingsStore.userSettings.visualFilters.contrast = 100;
+    await nextTick();
+
+    expect(document.documentElement.style.getPropertyValue('--sigma-body-filter')).toBe('none');
+  });
+});

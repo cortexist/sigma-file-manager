@@ -60,13 +60,15 @@ const props = defineProps<ToasterProps>();
 }
 
 [data-sonner-toast][data-mounted='false'] .sigma-ui-toast-card {
-  backdrop-filter: blur(0);
+  /* `none`, not `blur(0)`: an identity blur still forces a backdrop readback. */
+  backdrop-filter: none;
   background-color: hsl(var(--background) / 0%);
 }
 
 [data-sonner-toast][data-mounted='false'] .sigma-ui-toast-static,
 [data-sonner-toast][data-mounted='false'] .sigma-ui-toast-progress {
-  backdrop-filter: blur(0);
+  /* `none`, not `blur(0)`: an identity blur still forces a backdrop readback. */
+  backdrop-filter: none;
   background-color: hsl(var(--background) / 0%);
 }
 

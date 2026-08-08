@@ -304,8 +304,28 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
     const brightness = clampVisualFilterValue(visualFilters.brightness);
     const contrast = clampVisualFilterValue(visualFilters.contrast);
 
+    // Still published for `.infusion-image`/`.infusion-video`, which carry a real blur and so
+    // are already paying for a filter pass whatever these are set to.
     document.documentElement.style.setProperty('--sigma-visual-filter-brightness', String(brightness));
     document.documentElement.style.setProperty('--sigma-visual-filter-contrast', String(contrast));
+
+    /*
+     * `none` rather than an identity filter when nothing is being adjusted. `brightness(100%)
+     * contrast(100%)` looks like a no-op but still forces every frame of the page — and every
+     * image — through an offscreen surface. See the note in `styles/main.css`.
+     */
+    const isAdjusted = brightness !== 100 || contrast !== 100;
+    const bodyFilter = isAdjusted
+      ? `brightness(${brightness}%) contrast(${contrast}%)`
+      : 'none';
+    // Images undo the body filter so they are shown as authored; with no body filter there is
+    // nothing to undo.
+    const mediaFilter = isAdjusted
+      ? `contrast(${(10000 / contrast).toFixed(3)}%) brightness(${(10000 / brightness).toFixed(3)}%)`
+      : 'none';
+
+    document.documentElement.style.setProperty('--sigma-body-filter', bodyFilter);
+    document.documentElement.style.setProperty('--sigma-media-filter', mediaFilter);
   }
 
   const defaultFontFamily = computed(

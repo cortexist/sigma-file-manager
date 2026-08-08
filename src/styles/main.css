@@ -28,18 +28,31 @@
     pointer-events: none;
   }
 
+  /*
+   * The brightness/contrast filters are held in variables that resolve to `none` while the
+   * settings sit at their defaults, rather than being written out as `brightness(100%)
+   * contrast(100%)`.
+   *
+   * Any filter other than `none` forces the engine to render the element into an offscreen
+   * surface and composite the result, and it cannot tell that identity values make that
+   * pointless. On `body` that means the whole document goes through an offscreen pass every
+   * frame; on `img`/`video` it means one pass per thumbnail. Both surfaces have to be
+   * reallocated at every step of a window resize, which is enough to leave unpainted stripes
+   * during a fast drag, and on Phoenix1 has been enough to time out the GPU ring outright.
+   *
+   * `applyBodyVisualFilters` in `stores/storage/user-settings.ts` sets these.
+   */
+
   body {
     overflow: hidden;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    filter: brightness(calc(var(--sigma-visual-filter-brightness, 100) * 1%))
-      contrast(calc(var(--sigma-visual-filter-contrast, 100) * 1%));
+    filter: var(--sigma-body-filter, none);
   }
 
   img,
   video {
-    filter: contrast(calc(100% * 100 / var(--sigma-visual-filter-contrast, 100)))
-      brightness(calc(100% * 100 / var(--sigma-visual-filter-brightness, 100)));
+    filter: var(--sigma-media-filter, none);
   }
 
   .infusion-image,

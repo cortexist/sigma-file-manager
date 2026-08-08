@@ -202,10 +202,13 @@ function getSectionRowStyle(row: FileBrowserGridSectionVirtualRow): Record<strin
   padding-inline: var(--file-browser-grid-section-header-bleed);
 }
 
+/* No `backdrop-filter` here: `--background-3` is opaque in both themes, so a blurred backdrop
+   would be entirely covered by it. The readback and the 32px blur were being computed on every
+   section header, on every frame, and then discarded. */
+
 .file-browser-grid-view__section-bar-wrapper {
   padding-top: 8px;
   padding-bottom: 2px;
-  backdrop-filter: blur(var(--backdrop-filter-blur));
   background-color: hsl(var(--background-3));
   color: hsl(var(--muted-foreground));
   font-size: 12px;
@@ -221,10 +224,12 @@ function getSectionRowStyle(row: FileBrowserGridSectionVirtualRow): Record<strin
   pointer-events: none;
 }
 
+/* Opaque for the same reason as the section bar above, and sticky, so it was paying for that
+   invisible blur on every scrolled frame. */
+
 .file-browser-grid-view__sticky-section-content {
   padding-top: 8px;
   padding-bottom: 2px;
-  backdrop-filter: blur(var(--backdrop-filter-blur));
   background-color: hsl(var(--background-3));
   color: hsl(var(--muted-foreground));
   font-size: 12px;

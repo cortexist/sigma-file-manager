@@ -11,7 +11,9 @@ import {
   FolderIcon,
   FolderOpenIcon,
   FileIcon,
+  FileVideoIcon,
   Loader2Icon,
+  Music2Icon,
 } from '@lucide/vue';
 import { useInfoPanelImagePreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-image-preview';
 import { useInfoPanelVideoPreview } from '@/modules/navigator/components/info-panel/composables/use-info-panel-video-preview';
@@ -19,6 +21,7 @@ import { MediaPlayer } from '@/components/ui/media-player';
 import { ImageViewer } from '@/components/ui/image-viewer';
 import { useAudioCovers } from '@/composables/use-audio-covers';
 import { useArtistShow } from '@/composables/use-artist-show';
+import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/composables/use-video-thumbnails';
 import UbuntuWslIcon from '@/components/icons/ubuntu-wsl-icon.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isWslPath } from '@/utils/normalize-path';
@@ -38,6 +41,12 @@ const INFO_PANEL_TEXT_PREVIEW_MAX_BYTES = 48 * 1024;
 const props = defineProps<{
   selectedEntry: DirEntry | null;
   isCurrentDir?: boolean;
+  /**
+   * Set where the panel is a strip along the top of a narrow window. At that size a player or
+   * a zoomable viewer is mostly control furniture over a thumbnail-sized picture, so this shows
+   * a still image and nothing else. The drawer keeps the real thing, having room for it.
+   */
+  compact?: boolean;
 }>();
 
 const {
@@ -58,6 +67,7 @@ const {
 
 const audioCovers = useAudioCovers();
 const artistShow = useArtistShow();
+const videoThumbnails = useVideoThumbnails();
 
 const textPreviewContent = ref('');
 const textPreviewLoading = ref(false);
@@ -104,10 +114,38 @@ const audioArtworkSrc = computed((): string | undefined => {
 watch(
   [() => props.selectedEntry?.path, infoPanelPreviewKind],
   ([path, kind]) => {
-    void artistShow.load(kind === 'audio' ? path : null);
+    // Nothing to feed while compact: there is no player, so no fullscreen show either.
+    void artistShow.load(!props.compact && kind === 'audio' ? path : null);
   },
   { immediate: true },
 );
+
+/**
+ * The still shown in place of the viewer and the player while compact. Undefined means there is
+ * no picture to show and the caller falls back to a glyph.
+ */
+const compactThumbnailSrc = computed((): string | undefined => {
+  const entry = props.selectedEntry;
+
+  if (!props.compact || !entry) {
+    return undefined;
+  }
+
+  if (isImageFile.value) {
+    return imageThumbnailSrc.value || imagePreviewPlaceholderSrc.value || imageOriginalSrc.value;
+  }
+
+  if (isVideoFile.value) {
+    void videoThumbnails.videoThumbnails.value;
+    return videoThumbnails.getVideoThumbnail(entry);
+  }
+
+  if (infoPanelPreviewKind.value === 'audio') {
+    return audioArtworkSrc.value;
+  }
+
+  return undefined;
+});
 
 const showWslDirectoryIcon = computed(() => {
   if (!props.selectedEntry?.is_dir) return false;
@@ -195,6 +233,24 @@ watch(
         :is="isCurrentDir ? FolderOpenIcon : FolderIcon"
         :size="48"
         class="info-panel-preview__icon--folder"
+      />
+    </div>
+    <!-- Compact: a still for anything playable or zoomable, with no controls over it. -->
+    <div
+      v-else-if="compact && (isImageFile || isVideoFile || infoPanelPreviewKind === 'audio')"
+      class="info-panel-preview__media-container"
+    >
+      <img
+        v-if="compactThumbnailSrc"
+        :src="compactThumbnailSrc"
+        :alt="selectedEntry.name"
+        class="info-panel-preview__compact-thumbnail animate-fade-in-x2"
+      >
+      <component
+        :is="infoPanelPreviewKind === 'audio' ? Music2Icon : FileVideoIcon"
+        v-else
+        :size="32"
+        class="info-panel-preview__icon"
       />
     </div>
     <div
@@ -309,6 +365,19 @@ watch(
 
 .info-panel-preview__icon--folder {
   color: hsl(var(--primary) / 50%);
+}
+
+.info-panel-preview__icon {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Scaled down rather than cropped, so a portrait picture is not reduced to a slice of itself in
+   a strip that is much wider than it is tall. */
+
+.info-panel-preview__compact-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .info-panel-preview__media-container {
