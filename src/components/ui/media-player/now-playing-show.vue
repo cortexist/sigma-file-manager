@@ -205,7 +205,7 @@ const SLOTS: Record<PieceRole, PieceSlot[]> = {
     },
     {
       position: {
-        left: '4%',
+        left: '64%',
         top: '5%',
         height: '72%',
       },
@@ -233,7 +233,7 @@ const SLOTS: Record<PieceRole, PieceSlot[]> = {
     {
       position: {
         right: '-5%',
-        bottom: '26%',
+        bottom: '56%',
       },
       from: 'right',
     },
@@ -255,23 +255,27 @@ const SLOTS: Record<PieceRole, PieceSlot[]> = {
      * The vertical pair. Reached only through the orientation constraint in `textPieces` —
      * never by the free draw — and sitting lower than the primary columns so the two read
      * as staggered, not aligned. Both stop short of the label's band at the frame's foot.
+     *
+     * Entries mirror the primary columns' (left-from-top, right-from-bottom), so whichever
+     * side the sub lands on it drifts *against* the headline — two columns passing each
+     * other, not one chasing the other with a lag.
      */
     {
       position: {
-        left: '9%',
+        left: '42%',
         bottom: '16%',
         height: '52%',
       },
-      from: 'bottom',
+      from: 'top',
       vertical: true,
     },
     {
       position: {
-        right: '9%',
+        right: '18%',
         bottom: '18%',
         height: '52%',
       },
-      from: 'top',
+      from: 'bottom',
       vertical: true,
     },
   ],
