@@ -251,6 +251,29 @@ const SLOTS: Record<PieceRole, PieceSlot[]> = {
       },
       from: 'bottom',
     },
+    /*
+     * The vertical pair. Reached only through the orientation constraint in `textPieces` —
+     * never by the free draw — and sitting lower than the primary columns so the two read
+     * as staggered, not aligned. Both stop short of the label's band at the frame's foot.
+     */
+    {
+      position: {
+        left: '9%',
+        bottom: '16%',
+        height: '52%',
+      },
+      from: 'bottom',
+      vertical: true,
+    },
+    {
+      position: {
+        right: '9%',
+        bottom: '18%',
+        height: '52%',
+      },
+      from: 'top',
+      vertical: true,
+    },
   ],
   label: [
     {
@@ -302,8 +325,30 @@ function noise(index: number, salt: number): number {
   return value - Math.floor(value);
 }
 
-function buildPiece(role: PieceRole, text: string, index: number, salt: number): TextPiece {
-  const slots = SLOTS[role];
+/** Which edge a placement hangs off, read from its position rather than declared twice. */
+function placementSide(position: Record<string, string>): 'left' | 'right' {
+  return 'left' in position ? 'left' : 'right';
+}
+
+interface PieceConstraint {
+  vertical: boolean;
+  side?: 'left' | 'right';
+}
+
+function buildPiece(
+  role: PieceRole,
+  text: string,
+  index: number,
+  salt: number,
+  constraint?: PieceConstraint,
+): TextPiece {
+  const all = SLOTS[role];
+  const eligible = constraint
+    ? all.filter(slot => Boolean(slot.vertical) === constraint.vertical
+      && (!constraint.side || placementSide(slot.position) === constraint.side))
+    : all;
+  // A constraint no slot can satisfy falls back to the free draw rather than to nothing.
+  const slots = eligible.length > 0 ? eligible : all;
   const slot = slots[Math.floor(noise(index, salt) * slots.length) % slots.length];
 
   return {
@@ -327,9 +372,11 @@ const textPieces = computed((): TextPiece[] => {
 
   const pieces: TextPiece[] = [];
   const headline = card.headline.join(' ');
+  let primary: TextPiece | null = null;
 
   if (headline) {
-    pieces.push(buildPiece('primary', headline, cardIndex.value, 1));
+    primary = buildPiece('primary', headline, cardIndex.value, 1);
+    pieces.push(primary);
   }
 
   // Prose keeps its capitalization and its line breaks; a biography set in cropped capitals
@@ -338,7 +385,22 @@ const textPieces = computed((): TextPiece[] => {
     pieces.push(buildPiece('prose', card.body, cardIndex.value, 2));
   }
   else if (card.sub) {
-    pieces.push(buildPiece('secondary', card.sub, cardIndex.value, 2));
+    /**
+     * The sub follows the headline's orientation — a rotated headline over a horizontal sub
+     * reads as a mistake rather than a composition. When both run vertically they take
+     * opposite edges, two staggered columns bracketing the photograph instead of stacking
+     * on one; horizontal headlines keep the free draw the sub always had.
+     */
+    const constraint: PieceConstraint | undefined = primary
+      ? {
+          vertical: primary.vertical,
+          side: primary.vertical
+            ? placementSide(primary.style) === 'left' ? 'right' : 'left'
+            : undefined,
+        }
+      : undefined;
+
+    pieces.push(buildPiece('secondary', card.sub, cardIndex.value, 2, constraint));
   }
 
   pieces.push(buildPiece('label', card.kicker, cardIndex.value, 3));
