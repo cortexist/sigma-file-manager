@@ -14,6 +14,7 @@
 //! GStreamer is already a runtime requirement of WebKitGTK, so this adds no new runtime
 //! dependency.
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gstreamer as gst;
@@ -124,7 +125,9 @@ fn decode_frame(path: &str, position: FramePosition) -> Result<DecodedFrame, Str
             .map_err(|error| format!("Failed to create audio sink: {error}"))?,
     );
 
-    let result = capture_frame(&playbin, &app_sink, position);
+    // Installed before the pipeline runs, so no tag message is posted unseen.
+    let cover = watch_for_cover(&playbin);
+    let result = capture_frame(&playbin, &app_sink, position, &cover);
 
     // Tear the pipeline down on every path, including the error ones.
     let _ = playbin.set_state(gst::State::Null);
@@ -225,11 +228,93 @@ fn seek_and_preroll(playbin: &gst::Element, seek: &SeekTarget) {
     let _ = playbin.state(STATE_CHANGE_TIMEOUT);
 }
 
+/// Decodes cover bytes into the packed RGB a decoded frame produces, so the two sources
+/// share every step after this one.
+///
+/// The encoding varies by container - PNG from an attached picture track, the WebP
+/// Matroska tends to carry - and is read from the bytes rather than trusted from the tag.
+fn cover_frame_from_bytes(bytes: &[u8]) -> Option<DecodedFrame> {
+    let cover = image::load_from_memory(bytes).ok()?.to_rgb8();
+    let (width, height) = (cover.width(), cover.height());
+
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    Some(DecodedFrame {
+        width,
+        height,
+        pixels: cover.into_raw(),
+    })
+}
+
+/// The cover carried by a tag message, if that message is the one carrying it.
+///
+/// Demuxers all hand it over the same way: qtdemux from an attached picture track,
+/// matroskademux from a cover attachment, the mp3 and mp4 parsers from their own boxes.
+/// Several tag messages arrive, one per stream, and only one of them has the picture.
+fn cover_bytes(tags: &gst::TagList) -> Option<Vec<u8>> {
+    let sample = tags
+        .get::<gst::tags::Image>()
+        .map(|tag| tag.get())
+        .or_else(|| tags.get::<gst::tags::PreviewImage>().map(|tag| tag.get()))?;
+
+    let buffer = sample.buffer()?;
+    let map = buffer.map_readable().ok()?;
+
+    Some(map.as_slice().to_vec())
+}
+
+/// Starts collecting the file's cover, keeping the first one that turns up.
+///
+/// A sync handler rather than a read of the bus afterwards, because when the tag is posted
+/// is not ours to decide: it can land after the state change completes, and polling for it
+/// would mean waiting on every file that has no cover at all to find out it has none. This
+/// sees each message as it is posted and costs nothing to leave running.
+///
+/// Must be installed before the pipeline starts, or the early messages are already gone.
+fn watch_for_cover(playbin: &gst::Element) -> Arc<Mutex<Option<Vec<u8>>>> {
+    let found: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+
+    if let Some(bus) = playbin.bus() {
+        let sink = found.clone();
+
+        bus.set_sync_handler(move |_, message| {
+            if let gst::MessageView::Tag(message) = message.view() {
+                if let Ok(mut slot) = sink.lock() {
+                    if slot.is_none() {
+                        *slot = cover_bytes(&message.tags());
+                    }
+                }
+            }
+
+            // Everything still reaches the bus; this handler only watches.
+            gst::BusSyncReply::Pass
+        });
+    }
+
+    found
+}
+
+fn collected_cover(cover: &Mutex<Option<Vec<u8>>>) -> Option<DecodedFrame> {
+    let bytes = cover.lock().ok()?.take()?;
+    cover_frame_from_bytes(&bytes)
+}
+
 fn capture_frame(
     playbin: &gst::Element,
     app_sink: &AppSink,
     position: FramePosition,
+    cover: &Mutex<Option<Vec<u8>>>,
 ) -> Result<DecodedFrame, String> {
+    // A picture the file carries beats any frame guessed out of it: it is what whoever made
+    // the file chose to stand for it, where a frame near the start is whatever the nearest
+    // keyframe happens to be - the black one a fade-in opens on, as often as not.
+    //
+    // Thumbnails only. A still capture is a request for one particular moment, and the
+    // cover is not that moment.
+    let wants_cover = matches!(position, FramePosition::Thumbnail);
+
     playbin
         .set_state(gst::State::Paused)
         .map_err(|error| format!("Failed to open video: {error}"))?;
@@ -237,6 +322,12 @@ fn capture_frame(
     // PAUSED completes once the first frame is decoded and held, which is what we sample.
     if let (Err(error), _, _) = playbin.state(STATE_CHANGE_TIMEOUT) {
         return Err(format!("Video did not open in time: {error}"));
+    }
+
+    if wants_cover {
+        if let Some(cover) = collected_cover(cover) {
+            return Ok(cover);
+        }
     }
 
     let target = seek_target(
@@ -249,10 +340,23 @@ fn capture_frame(
         seek_and_preroll(playbin, target);
     }
 
+    // Seeking and prerolling gave the demuxer more time, so a cover that had not been
+    // posted when the state change finished has certainly arrived by now. Cheaper to look
+    // twice than to wait for one that may not exist.
+    let prefer_cover = |sample: &gst::Sample| -> Result<DecodedFrame, String> {
+        if wants_cover {
+            if let Some(cover) = collected_cover(cover) {
+                return Ok(cover);
+            }
+        }
+
+        sample_to_frame(sample)
+    };
+
     if let Some(sample) =
         app_sink.try_pull_preroll(gst::ClockTime::from_nseconds(PULL_TIMEOUT.as_nanos() as u64))
     {
-        return sample_to_frame(&sample);
+        return prefer_cover(&sample);
     }
 
     // Nothing came back, which past the last frame happens at once: the pipeline is sitting
@@ -277,7 +381,7 @@ fn capture_frame(
         ))
         .ok_or_else(|| "Video produced no frame".to_string())?;
 
-    sample_to_frame(&sample)
+    prefer_cover(&sample)
 }
 
 fn sample_to_frame(sample: &gst::Sample) -> Result<DecodedFrame, String> {
@@ -326,33 +430,39 @@ fn sample_to_frame(sample: &gst::Sample) -> Result<DecodedFrame, String> {
     })
 }
 
-/// Scales to cover `target_width` by `target_height` and centre-crops the overflow, which
-/// is what the webview implementation did with `drawImage`.
-fn cover_crop(frame: DecodedFrame, target_width: u32, target_height: u32) -> RgbImage {
+/// Scales to fit inside `max_width` by `max_height`, keeping the picture's own shape.
+///
+/// Deliberately no cropping. The card these appear on fills its tile with `object-fit:
+/// cover`, so it crops to its own shape regardless; cropping here as well would throw the
+/// edges away before anything had the chance to use them. That second crop is what made a
+/// 16:9 cover look zoomed in next to the very same picture on an audio file, which reaches
+/// the card uncropped.
+///
+/// A picture already smaller than the bounds is left alone rather than blown up, since the
+/// card can scale it further at no cost in stored bytes.
+fn fit_within(frame: DecodedFrame, max_width: u32, max_height: u32) -> RgbImage {
     let image = RgbImage::from_raw(frame.width, frame.height, frame.pixels)
         .expect("frame buffer matches its dimensions");
 
-    let scale = f64::max(
-        target_width as f64 / frame.width as f64,
-        target_height as f64 / frame.height as f64,
-    );
-    let scaled_width = ((frame.width as f64 * scale).ceil() as u32).max(target_width);
-    let scaled_height = ((frame.height as f64 * scale).ceil() as u32).max(target_height);
-
-    let resized = imageops::resize(
-        &image,
-        scaled_width,
-        scaled_height,
-        imageops::FilterType::Triangle,
+    let scale = f64::min(
+        max_width as f64 / frame.width as f64,
+        max_height as f64 / frame.height as f64,
     );
 
-    let offset_x = (scaled_width - target_width) / 2;
-    let offset_y = (scaled_height - target_height) / 2;
+    if scale >= 1.0 {
+        return image;
+    }
 
-    imageops::crop_imm(&resized, offset_x, offset_y, target_width, target_height).to_image()
+    let width = ((frame.width as f64 * scale).round() as u32).max(1);
+    let height = ((frame.height as f64 * scale).round() as u32).max(1);
+
+    imageops::resize(&image, width, height, imageops::FilterType::Triangle)
 }
 
-/// Decodes a frame from `path` and encodes it as a JPEG of exactly the requested size.
+/// The picture standing for `path`, as a JPEG bounded by the requested size.
+///
+/// Its own cover when it has one, a frame near the start when it does not. The size is a
+/// bound rather than an exact shape: see `fit_within`.
 pub fn generate_video_thumbnail_jpeg(
     path: &str,
     target_width: u32,
@@ -363,7 +473,7 @@ pub fn generate_video_thumbnail_jpeg(
     }
 
     let frame = decode_frame(path, FramePosition::Thumbnail)?;
-    let thumbnail = cover_crop(frame, target_width, target_height);
+    let thumbnail = fit_within(frame, target_width, target_height);
 
     let mut encoded = Vec::new();
     JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY)
@@ -397,32 +507,69 @@ pub fn capture_video_frame_png(path: &str, position_seconds: f64) -> Result<Vec<
 mod tests {
     use super::*;
 
+    /// The card crops to its own shape; arriving with the whole picture is the point.
     #[test]
-    fn cover_crop_fills_the_target_exactly() {
+    fn a_wide_picture_keeps_its_shape() {
         let frame = DecodedFrame {
-            width: 100,
-            height: 50,
-            pixels: vec![7u8; 100 * 50 * 3],
+            width: 1280,
+            height: 720,
+            pixels: vec![7u8; 1280 * 720 * 3],
         };
 
-        let cropped = cover_crop(frame, 64, 64);
+        let fitted = fit_within(frame, 384, 271);
 
-        assert_eq!(cropped.width(), 64);
-        assert_eq!(cropped.height(), 64);
+        assert_eq!((fitted.width(), fitted.height()), (384, 216));
     }
 
     #[test]
-    fn cover_crop_handles_tall_sources() {
+    fn a_tall_picture_is_bounded_by_its_height() {
         let frame = DecodedFrame {
             width: 40,
             height: 300,
             pixels: vec![3u8; 40 * 300 * 3],
         };
 
-        let cropped = cover_crop(frame, 128, 96);
+        let fitted = fit_within(frame, 128, 96);
 
-        assert_eq!(cropped.width(), 128);
-        assert_eq!(cropped.height(), 96);
+        assert_eq!(fitted.height(), 96);
+        assert!(fitted.width() <= 128);
+    }
+
+    /// Scaling a small cover up would cost bytes for pixels it does not have.
+    #[test]
+    fn a_small_picture_is_left_alone() {
+        let frame = DecodedFrame {
+            width: 64,
+            height: 48,
+            pixels: vec![1u8; 64 * 48 * 3],
+        };
+
+        let fitted = fit_within(frame, 384, 271);
+
+        assert_eq!((fitted.width(), fitted.height()), (64, 48));
+    }
+
+    #[test]
+    fn a_cover_becomes_a_frame() {
+        let cover = RgbImage::from_pixel(8, 4, image::Rgb([10, 20, 30]));
+        let mut png = Vec::new();
+        PngEncoder::new(&mut png)
+            .write_image(cover.as_raw(), 8, 4, image::ExtendedColorType::Rgb8)
+            .expect("cover encodes");
+
+        let frame = cover_frame_from_bytes(&png).expect("cover decodes");
+
+        assert_eq!((frame.width, frame.height), (8, 4));
+        // Packed RGB, exactly as a decoded frame arrives.
+        assert_eq!(frame.pixels.len(), 8 * 4 * 3);
+        assert_eq!(&frame.pixels[..3], &[10, 20, 30]);
+    }
+
+    /// Nothing usable means no cover, not a failed thumbnail: the keyframe still follows.
+    #[test]
+    fn an_unreadable_cover_is_no_cover() {
+        assert!(cover_frame_from_bytes(b"not an image at all").is_none());
+        assert!(cover_frame_from_bytes(&[]).is_none());
     }
 
     #[test]
