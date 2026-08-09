@@ -134,6 +134,7 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
         autoplayVideoPreview: false,
       },
       showHiddenFiles: false,
+      openMediaInQuickView: true,
       splitViewMode: 'split',
       folderIconTheme: BUILTIN_NAVIGATOR_ICON_THEME_IDS.system,
       fileIconTheme: BUILTIN_NAVIGATOR_ICON_THEME_IDS.system,

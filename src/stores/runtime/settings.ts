@@ -153,6 +153,7 @@ export const useSettingsStore = defineStore('settings', () => {
       { default: StartupSection },
       { default: PerformanceSection },
       { default: FileViewSection },
+      { default: OpenMediaInQuickViewSection },
       { default: ThemeSection },
       { default: HomePageMediaBannerSection },
       { default: DriveCardSection },
@@ -176,6 +177,7 @@ export const useSettingsStore = defineStore('settings', () => {
       { default: TabAppearanceSection },
       { default: ExtensionsListSection },
       { default: DefaultFileManagerSection },
+      { default: DefaultMediaViewerSection },
     ] = await Promise.all([
       import('@/modules/settings/ui/categories/general/language.vue'),
       import('@/modules/settings/ui/categories/general/date-time.vue'),
@@ -184,6 +186,7 @@ export const useSettingsStore = defineStore('settings', () => {
       import('@/modules/settings/ui/categories/general/startup.vue'),
       import('@/modules/settings/ui/categories/general/performance.vue'),
       import('@/modules/settings/ui/categories/general/file-view.vue'),
+      import('@/modules/settings/ui/categories/general/open-media-in-quick-view.vue'),
       import('@/modules/settings/ui/categories/appearance/theme.vue'),
       import('@/modules/settings/ui/categories/appearance/home-page-media-banner.vue'),
       import('@/modules/settings/ui/categories/appearance/drive-card.vue'),
@@ -207,6 +210,7 @@ export const useSettingsStore = defineStore('settings', () => {
       import('@/modules/settings/ui/categories/tabs/tab-appearance.vue'),
       import('@/modules/settings/ui/categories/extensions/extensions-list.vue'),
       import('@/modules/settings/ui/categories/experimental/default-file-manager.vue'),
+      import('@/modules/settings/ui/categories/experimental/default-media-viewer.vue'),
     ]);
 
     allSections.value = [
@@ -261,6 +265,13 @@ export const useSettingsStore = defineStore('settings', () => {
         titleKey: 'settings.general.fileView.title',
         tags: 'settingsTags.fileView',
         component: markRaw(FileViewSection),
+        category: 'general',
+      },
+      {
+        key: 'openMediaInQuickView',
+        titleKey: 'settings.general.openMediaInQuickView.title',
+        tags: 'settingsTags.navigator',
+        component: markRaw(OpenMediaInQuickViewSection),
         category: 'general',
       },
       {
@@ -422,6 +433,13 @@ export const useSettingsStore = defineStore('settings', () => {
         titleKey: 'settings.experimental.defaultFileManager.title',
         tags: 'settingsTags.experimental',
         component: markRaw(DefaultFileManagerSection),
+        category: 'experimental',
+      },
+      {
+        key: 'defaultMediaViewer',
+        titleKey: 'settings.experimental.defaultMediaViewer.title',
+        tags: 'settingsTags.experimental',
+        component: markRaw(DefaultMediaViewerSection),
         category: 'experimental',
       },
     ];

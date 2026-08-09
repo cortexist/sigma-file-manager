@@ -219,6 +219,10 @@
         "enableBoxSelectionDescription": "Ziehen Sie auf leerem Bereich, um mehrere Elemente mit einem Auswahlrahmen auszuwählen. Halten Sie Strg oder Umschalttaste gedrückt, um zur Auswahl hinzuzufügen; Alt zum Invertieren.",
         "increaseFileViewGaps": "Abstände in der Dateiansicht vergrößern",
         "increaseFileViewGapsDescription": "Fügt Seitenabstände in der Listenansicht hinzu und vergrößert die Abstände in der Rasteransicht für einfachere Auswahl."
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -428,6 +432,10 @@
         "description": "Diese Option ändert die Systemregistrierung und kann unerwartete Nebenwirkungen auf Ihrem Gerät haben. Fahren Sie auf eigenes Risiko fort.",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "In der Microsoft Store-Version nicht verfügbar"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

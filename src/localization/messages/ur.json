@@ -248,6 +248,10 @@
         "enableBoxSelectionDescription": "خالی جگہ پر گھسیٹ کر انتخاب باکس سے متعدد آئٹمز منتخب کریں۔ انتخاب میں شامل کرنے کے لیے Ctrl یا Shift دبائے رکھیں؛ الٹنے کے لیے Alt۔",
         "increaseFileViewGaps": "فائل منظر کے فاصلے بڑھائیں",
         "increaseFileViewGapsDescription": "فہرست لے آؤٹ میں سائیڈ padding شامل کرتا ہے اور گرڈ لے آؤٹ میں فاصلے بڑھا کر نشانہ لگانا آسان بناتا ہے۔"
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -457,6 +461,10 @@
         "description": "یہ اختیار سسٹم رجسٹری بدلتا ہے اور غیر متوقع اثر کر سکتا ہے۔ اپنے خطرے پر آگے بڑھیں۔",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Microsoft Store ورژن میں دستیاب نہیں"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

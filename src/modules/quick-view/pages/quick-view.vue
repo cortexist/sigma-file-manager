@@ -33,6 +33,7 @@ import {
   getQuickViewDisplayUrl,
   isHttpOrHttpsUrl,
   fetchQuickViewSiblingPathsFromDisk,
+  OPEN_MEDIA_REQUEST_EVENT,
   QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
   QUICK_VIEW_LOAD_FILE_EVENT,
   QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
@@ -69,8 +70,16 @@ const QUICK_VIEW_TEXT_PREVIEW_MAX_BYTES = 4 * 1024 * 1024;
 /** Long enough for a cold window to map; short enough that the degraded path is not a hang. */
 const FIRST_PAINT_TIMEOUT_MS = 1500;
 
-/** See the first-load wait in `setupEventListeners`. */
+/** See the first-load wait in `applyLoadedFile`. */
 let hasAppliedFirstLoad = false;
+
+/**
+ * Whether this window is a whole session — launched to view one file, with no main window
+ * behind it — rather than a limb of the file manager. Decided once at mount by asking the
+ * backend; it changes where files come from (a command instead of main's events) and what
+ * closing means (quitting instead of hiding).
+ */
+let isStandaloneViewer = false;
 
 const currentFilePath = ref<string | null>(null);
 const resolvedSiblingPaths = ref<string[]>([]);
@@ -125,6 +134,7 @@ let markdownPreviewRequestId = 0;
 let unlistenLoadFile: UnlistenFn | null = null;
 let unlistenCloseRequested: UnlistenFn | null = null;
 let unlistenSiblingPathsChanged: UnlistenFn | null = null;
+let unlistenOpenMediaRequest: UnlistenFn | null = null;
 
 watch(
   resolvedSiblingPaths,
@@ -774,8 +784,19 @@ function resetQuickViewWindowState(shouldNotifyMainWindow = true) {
 }
 
 async function closeWindow() {
-  resetQuickViewWindowState(true);
+  resetQuickViewWindowState(!isStandaloneViewer);
   await nextTick();
+
+  /**
+   * A standalone viewer is the whole session, so dismissing it quits: hide first so the
+   * window vanishes immediately, then let the shared nothing-visible rule end the process.
+   * The auxiliary release path below would instead ask a main window that does not exist.
+   */
+  if (isStandaloneViewer) {
+    await getCurrentWindow().hide();
+    await invoke('exit_if_no_windows_left');
+    return;
+  }
 
   await releaseAuxiliaryWindow('quick-view');
 }
@@ -1154,6 +1175,33 @@ async function handleKeydown(event: KeyboardEvent) {
   }
 }
 
+async function applyLoadedFile(payload: {
+  path: string;
+  siblingPaths: string[] | null;
+}) {
+  /**
+   * The first file a fresh process receives arrives while this window is still being mapped —
+   * whoever called `show()` only knows the request was made. Building a media pipeline against
+   * a window that has no surface yet is how the first quick view of a session used to hang on
+   * a spinner, so the first load waits until frames are actually being produced. Every later
+   * load finds a window that has kept its surface, where this costs at most two frames.
+   */
+  if (!hasAppliedFirstLoad) {
+    hasAppliedFirstLoad = true;
+    await waitForFirstPaint(FIRST_PAINT_TIMEOUT_MS);
+  }
+
+  stashCurrentTextIfDirty();
+  currentFilePath.value = payload.path;
+  resolvedSiblingPaths.value = uniqueSiblingPaths(payload.siblingPaths ?? []);
+  siblingPathsProvidedByMain.value = payload.siblingPaths !== null;
+  isLoading.value = false;
+  await setQuickViewWindowTitle(payload.path);
+  await ensureResolvedSiblingPaths();
+  await nextTick();
+  scrollActiveThumbIntoView();
+}
+
 async function setupEventListeners() {
   const currentWindow = getCurrentWindow();
 
@@ -1162,30 +1210,24 @@ async function setupEventListeners() {
     siblingPaths: string[] | null;
   }>(
     QUICK_VIEW_LOAD_FILE_EVENT,
+    event => applyLoadedFile(event.payload),
+  );
+
+  unlistenOpenMediaRequest = await listen<{ path: string }>(
+    OPEN_MEDIA_REQUEST_EVENT,
     async (event) => {
-      /**
-       * The first file a fresh process receives arrives while this prelaunched window is
-       * still being mapped — the main window calls `show()` before sending it, but that
-       * only means the request was made. Building a media pipeline against a window that
-       * has no surface yet is how the first quick view of a session used to hang on a
-       * spinner, so the first load waits until frames are actually being produced. Every
-       * later load finds a window that has kept its surface through being hidden, where
-       * this costs at most two frames.
-       */
-      if (!hasAppliedFirstLoad) {
-        hasAppliedFirstLoad = true;
-        await waitForFirstPaint(FIRST_PAINT_TIMEOUT_MS);
+      // In a normal session the main window answers these; the viewer answers only for itself.
+      if (!isStandaloneViewer) {
+        return;
       }
 
-      stashCurrentTextIfDirty();
-      currentFilePath.value = event.payload.path;
-      resolvedSiblingPaths.value = uniqueSiblingPaths(event.payload.siblingPaths ?? []);
-      siblingPathsProvidedByMain.value = event.payload.siblingPaths !== null;
-      isLoading.value = false;
-      await setQuickViewWindowTitle(event.payload.path);
-      await ensureResolvedSiblingPaths();
-      await nextTick();
-      scrollActiveThumbIntoView();
+      await applyLoadedFile({
+        path: event.payload.path,
+        siblingPaths: null,
+      });
+      const currentWindow = getCurrentWindow();
+      await currentWindow.show();
+      await currentWindow.setFocus();
     },
   );
 
@@ -1280,6 +1322,27 @@ watch(currentFilePath, (path) => {
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown, true);
   await setupEventListeners();
+  void invoke('configure_webview_hide_pdf_more_settings').catch(() => {});
+
+  /**
+   * Launched to view one file: no main window exists, so nothing will send a load event.
+   * The window shows itself *before* loading — the first-paint wait inside `applyLoadedFile`
+   * needs frames to be produced, and a hidden window produces none.
+   */
+  const standaloneFile = await invoke<string | null>('standalone_launch_file');
+
+  if (standaloneFile) {
+    isStandaloneViewer = true;
+    const currentWindow = getCurrentWindow();
+    await currentWindow.show();
+    await currentWindow.setFocus();
+    await applyLoadedFile({
+      path: standaloneFile,
+      siblingPaths: null,
+    });
+    return;
+  }
+
   void emitTo(
     {
       kind: 'WebviewWindow',
@@ -1288,7 +1351,6 @@ onMounted(async () => {
     QUICK_VIEW_WINDOW_READY_EVENT,
     buildAuxiliaryWindowReadyPayload(),
   );
-  void invoke('configure_webview_hide_pdf_more_settings').catch(() => {});
   isLoading.value = false;
 });
 
@@ -1300,6 +1362,10 @@ onUnmounted(() => {
 
   if (unlistenLoadFile) {
     unlistenLoadFile();
+  }
+
+  if (unlistenOpenMediaRequest) {
+    unlistenOpenMediaRequest();
   }
 
   if (unlistenCloseRequested) {

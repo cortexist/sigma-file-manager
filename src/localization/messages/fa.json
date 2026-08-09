@@ -215,6 +215,10 @@
         "enableBoxSelectionDescription": "روی فضای خالی بکشید تا چند مورد را با کادر انتخاب کنید. Ctrl یا Shift را نگه دارید تا به انتخاب اضافه شود؛ Alt برای معکوس کردن.",
         "increaseFileViewGaps": "افزایش فاصله‌ها در نمای فایل",
         "increaseFileViewGapsDescription": "padding کناری در نمای فهرست اضافه می‌کند و فاصله‌ها در نمای شبکه‌ای را برای هدف‌گیری آسان‌تر افزایش می‌دهد."
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -424,6 +428,10 @@
         "description": "این گزینه رجیستری سیستم را تغییر می دهد و ممکن است عوارض جانبی غیرمنتظره ای روی دستگاه شما داشته باشد. با مسئولیت خود ادامه دهید.",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "در نسخه Microsoft Store در دسترس نیست"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

@@ -219,6 +219,10 @@
         "enableBoxSelectionDescription": "空白部分をドラッグして、選択ボックスで複数の項目を選択します。Ctrl または Shift を押しながらで追加、Alt を押しながらで反転します。",
         "increaseFileViewGaps": "ファイルビューの間隔を広げる",
         "increaseFileViewGapsDescription": "リスト表示の左右余白を追加し、グリッド表示の間隔を広げて選択しやすくします。"
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -428,6 +432,10 @@
         "description": "このオプションはシステム レジストリを変更するため、デバイスで予期しない副作用が発生する可能性があります。自己責任で続行してください。",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Microsoft Store 版では利用できません"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

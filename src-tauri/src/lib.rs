@@ -24,8 +24,10 @@ mod lan_share;
 mod link_operations;
 mod media_info;
 mod media_server;
+mod media_viewer_registration;
 mod open_with;
 mod process_runner;
+mod standalone_viewer;
 mod startup_storage_bootstrap;
 mod system_clipboard;
 mod system_icons;
@@ -41,6 +43,8 @@ mod window_manager;
 mod windows_installation;
 #[cfg(windows)]
 mod windows_print_view_webview;
+#[cfg(target_os = "linux")]
+mod xdg_associations;
 
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -138,6 +142,12 @@ fn handle_auxiliary_window_close_requested(window: &tauri::Window, api: &tauri::
         AUXILIARY_WINDOW_RELEASE_EVENT,
         serde_json::json!({ "label": label }),
     );
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenMediaRequest {
+    path: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -325,6 +335,22 @@ pub fn run() {
 
             #[cfg(not(windows))]
             {
+                // A second launch carrying a media file is a request to *view* it, wherever it
+                // came from — usually another application once sigma is the registered viewer.
+                // The running session decides who shows it: the main window routes it into
+                // Quick View, or a standalone viewer swaps its file.
+                if let Some(media_file) =
+                    standalone_viewer::media_file_from_args(&argv, Some(std::path::Path::new(&cwd)))
+                {
+                    let _ = app.emit(
+                        "open-media-request",
+                        OpenMediaRequest {
+                            path: media_file.to_string_lossy().into_owned(),
+                        },
+                    );
+                    return;
+                }
+
                 system_tray::focus_main_window(app);
                 let launch_context = build_launch_context(argv, Some(cwd), false, false);
                 let _ = app.emit("app-launch-args", launch_context);
@@ -354,9 +380,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             configure_webview_hide_pdf_more_settings,
             get_launch_context,
+            standalone_viewer::standalone_launch_file,
             startup_storage_bootstrap::get_startup_storage_bootstrap,
             default_file_manager::default_file_manager_available,
             default_file_manager::is_default_file_manager,
+            media_viewer_registration::media_viewer_registration_available,
+            media_viewer_registration::is_default_media_viewer,
+            media_viewer_registration::set_default_media_viewer,
             default_file_manager::set_default_file_manager,
             app_updater::check_for_updates,
             app_updater::download_release_installer,
@@ -548,6 +578,26 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     );
 
     let raw_args: Vec<String> = std::env::args().collect();
+
+    // A media-file launch gets a standalone Quick View and no file manager; anything else gets
+    // the main window. Both are `create: false` in the config, so this is the one place that
+    // decides what kind of session a launch becomes. The viewer page bootstraps itself from
+    // `standalone_launch_file`, and the existing nothing-visible exit rule makes closing the
+    // viewer quit the app.
+    let standalone_media_file =
+        standalone_viewer::media_file_from_args(&raw_args, std::env::current_dir().ok().as_deref());
+    let is_standalone_viewer = standalone_media_file.is_some();
+    app.manage(standalone_viewer::StandaloneLaunchFile(
+        standalone_media_file.map(|path| path.to_string_lossy().into_owned()),
+    ));
+    standalone_viewer::create_window_from_config(
+        app.handle(),
+        if is_standalone_viewer {
+            "quick-view"
+        } else {
+            "main"
+        },
+    )?;
 
     #[cfg(windows)]
     let should_hide_main_window_on_startup = {

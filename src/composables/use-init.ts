@@ -25,7 +25,7 @@ import { useExtensionsStore } from '@/stores/runtime/extensions';
 import { useArchiveJobsStore } from '@/stores/runtime/archive-jobs';
 import { useDeleteJobsStore } from '@/stores/runtime/delete-jobs';
 import { useCopyMoveJobsStore } from '@/stores/runtime/copy-move-jobs';
-import { useQuickViewStore } from '@/stores/runtime/quick-view';
+import { OPEN_MEDIA_REQUEST_EVENT, useQuickViewStore } from '@/stores/runtime/quick-view';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -74,6 +74,7 @@ export function useInit() {
   const { initAutoCheck } = useAppUpdater();
   useClipboardFocusSync();
   let appLaunchArgsUnlisten: UnlistenFn | null = null;
+  let openMediaRequestUnlisten: UnlistenFn | null = null;
   let auxiliaryWindowLifecycleUnlisten: UnlistenFn | null = null;
   const backgroundTasks = new Set<Promise<void>>();
 
@@ -235,6 +236,30 @@ export function useInit() {
   function unregisterAppLaunchArgsListener() {
     appLaunchArgsUnlisten?.();
     appLaunchArgsUnlisten = null;
+  }
+
+  /**
+   * A second app launch carrying a media file — usually another application opening it via
+   * sigma once sigma is the registered viewer. The backend already resolved the path; the
+   * file goes straight to Quick View rather than being revealed in a browser tab, and the
+   * main window deliberately stays as it was.
+   */
+  async function registerOpenMediaRequestListener() {
+    if (openMediaRequestUnlisten || !isMainWebviewWindow()) {
+      return;
+    }
+
+    openMediaRequestUnlisten = await listen<{ path: string }>(
+      OPEN_MEDIA_REQUEST_EVENT,
+      async (event) => {
+        await quickViewStore.openFileFromMainWindow(event.payload.path);
+      },
+    );
+  }
+
+  function unregisterOpenMediaRequestListener() {
+    openMediaRequestUnlisten?.();
+    openMediaRequestUnlisten = null;
   }
 
   function runInBackground(task: () => Promise<void>, errorMessage: string) {
@@ -449,6 +474,7 @@ export function useInit() {
     if (isMainWebviewWindow()) {
       registerShortcutHandlers();
       void registerAppLaunchArgsListener();
+      void registerOpenMediaRequestListener();
     }
   });
 
@@ -456,6 +482,7 @@ export function useInit() {
     if (isMainWebviewWindow()) {
       unregisterShortcutHandlers();
       unregisterAppLaunchArgsListener();
+      unregisterOpenMediaRequestListener();
     }
 
     appWindowStore.disposeMainWindowStateListeners();

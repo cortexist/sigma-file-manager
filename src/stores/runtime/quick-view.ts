@@ -153,6 +153,12 @@ export function getQuickViewDisplayUrl(pathOrUrl: string): string {
 
 export const QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT = 'quick-view:displayed-path-changed';
 export const QUICK_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file';
+/**
+ * A second app launch carrying a media file, resolved and re-emitted by the backend. In a
+ * normal session the main window answers by opening Quick View; a standalone viewer answers
+ * for itself by swapping its file.
+ */
+export const OPEN_MEDIA_REQUEST_EVENT = 'open-media-request';
 export const QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT = 'quick-view:sibling-paths-changed';
 export const PRINT_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file:print-view';
 

@@ -321,6 +321,8 @@ export type SplitViewMode = 'split' | 'linked';
 export type UserSettingsNavigator = {
   lastTabCloseBehavior: LastTabCloseBehavior;
   boldActiveTabTitle: boolean;
+  /** Opening a video, image, or audio file uses Quick View instead of the system's app. */
+  openMediaInQuickView: boolean;
   layout: NavigatorLayout;
   infoPanel: UserSettingsNavigatorInfoPanel;
   showHiddenFiles: boolean;

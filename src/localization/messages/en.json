@@ -248,6 +248,10 @@
         "enableBoxSelectionDescription": "Drag on empty space to select multiple items with a selection box. Hold Ctrl or Shift to add to the selection; hold Alt to invert.",
         "increaseFileViewGaps": "Increase file view gaps",
         "increaseFileViewGapsDescription": "Adds side padding in list layout and increases gaps in grid layout for easier targeting."
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -457,6 +461,10 @@
         "description": "This option modifies the system registry and can have unexpected side effects on your device. Continue at your own risk.",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Not available in the Microsoft Store version"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

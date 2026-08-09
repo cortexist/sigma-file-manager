@@ -219,6 +219,10 @@
         "enableBoxSelectionDescription": "Trascina su uno spazio vuoto per selezionare più elementi con un riquadro di selezione. Tieni premuto Ctrl o Maiusc per aggiungere alla selezione; Alt per invertire.",
         "increaseFileViewGaps": "Aumenta gli spazi nella vista file",
         "increaseFileViewGapsDescription": "Aggiunge padding laterale nella vista elenco e aumenta le distanze nella vista griglia per una selezione più facile."
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -428,6 +432,10 @@
         "description": "Questa opzione modifica il registro di sistema e può avere effetti collaterali imprevisti sul dispositivo. Continua a tuo rischio.",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Non disponibile nella versione Microsoft Store"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

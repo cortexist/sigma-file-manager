@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
 import { openPathDefault } from '@/utils/open-path-default';
+import { determineFileType, useQuickViewStore } from '@/stores/runtime/quick-view';
 import type { DirEntry, DirContents, ReadDirOptions } from '@/types/dir-entry';
 import type { Tab } from '@/types/workspaces';
 import { useWorkspacesStore } from '@/stores/storage/workspaces';
@@ -106,6 +107,7 @@ export function useFileBrowserNavigation(
   const workspacesStore = useWorkspacesStore();
   const userStatsStore = useUserStatsStore();
   const userSettingsStore = useUserSettingsStore();
+  const quickViewStore = useQuickViewStore();
   const dirSizesStore = useDirSizesStore();
   const navigatorIconsStore = useNavigatorIconsStore();
   const linkMetadataStore = useLinkMetadataStore();
@@ -775,8 +777,29 @@ export function useFileBrowserNavigation(
       return;
     }
 
-    await openPathDefault(navigableItemTarget.targetPath);
-    userStatsStore.recordItemOpen(navigableItemTarget.targetPath, true);
+    const { targetPath } = navigableItemTarget;
+
+    /**
+     * Media opens in Quick View rather than in whatever the system associates: a file manager
+     * that ships its own viewer should use it. Other kinds — documents, archives, executables —
+     * keep going to their applications, and if Quick View declines the file for any reason the
+     * system default remains the fallback rather than a dead end.
+     */
+    if (userSettingsStore.userSettings.navigator.openMediaInQuickView && isQuickViewMediaKind(targetPath)) {
+      if (await quickViewStore.openFileFromMainWindow(targetPath)) {
+        userStatsStore.recordItemOpen(targetPath, true);
+        return;
+      }
+    }
+
+    await openPathDefault(targetPath);
+    userStatsStore.recordItemOpen(targetPath, true);
+  }
+
+  function isQuickViewMediaKind(path: string): boolean {
+    const kind = determineFileType(path);
+
+    return kind === 'video' || kind === 'image' || kind === 'audio';
   }
 
   async function init() {

@@ -219,6 +219,10 @@
         "enableBoxSelectionDescription": "在空白区域拖动即可用选择框选中多个项目。按住 Ctrl 或 Shift 可添加到选择；按住 Alt 可反选。",
         "increaseFileViewGaps": "增大文件视图间距",
         "increaseFileViewGapsDescription": "增加列表布局的左右内边距以及网格布局的间距，便于选择。"
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -428,6 +432,10 @@
         "description": "此选项会修改系统注册表，并且可能会对您的设备产生意外的副作用。请自行承担风险后继续。",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Microsoft Store 版本不可用"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

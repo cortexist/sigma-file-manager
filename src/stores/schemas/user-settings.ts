@@ -16,7 +16,7 @@ import {
 import { BUILTIN_NAVIGATOR_ICON_THEME_IDS } from '@/types/icon-theme';
 
 export const USER_SETTINGS_SCHEMA_VERSION_KEY = '__schemaVersion';
-export const USER_SETTINGS_SCHEMA_VERSION = 24;
+export const USER_SETTINGS_SCHEMA_VERSION = 25;
 
 export const DEFAULT_GLOBAL_SEARCH_IGNORED_PATHS = [
   '/node_modules',
@@ -443,6 +443,10 @@ async function migrateUserSettingsStep(storage: StorageAdapter, fromVersion: num
       'navigator.increaseFileViewGaps',
       increasedGaps === true,
     );
+  }
+
+  if (fromVersion === 24 && toVersion === 25) {
+    await setDefaultBooleanIfMissing(storage, 'navigator.openMediaInQuickView', true);
   }
 
   if (fromVersion === 23 && toVersion === 24) {

@@ -248,6 +248,10 @@
         "enableBoxSelectionDescription": "Povlecite po praznem prostoru, da izberete več elementov s kvadratom izbire. Za dodajanje k izbiri držite Ctrl ali Shift; za obrat izbiro Alt.",
         "increaseFileViewGaps": "Povečaj razmike v pogledu datotek",
         "increaseFileViewGapsDescription": "Doda stranski odmik v seznamu in poveča razmike v mreži za lažje ciljanje."
+      },
+      "openMediaInQuickView": {
+        "title": "Open media in Quick View",
+        "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
       }
     },
     "actions": {
@@ -457,6 +461,10 @@
         "description": "Ta možnost spremeni sistemski register in lahko povzroči nepričakovane stranske učinke na vaši napravi. Nadaljujte na lastno odgovornost.",
         "descriptionLinux": "Sets this app as the handler for folders by writing a desktop entry and the XDG file association. Turning it off removes both.",
         "unavailableInMicrosoftStore": "Ni na voljo v različici iz trgovine Microsoft Store"
+      },
+      "defaultMediaViewer": {
+        "title": "Set Quick View as the default media viewer",
+        "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
       }
     },
     "accentColor": {

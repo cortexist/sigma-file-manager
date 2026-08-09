@@ -20,6 +20,7 @@ function createNavigatorSettings(overrides: Partial<UserSettingsNavigator> = {})
   return {
     lastTabCloseBehavior: 'createDefaultTab',
     boldActiveTabTitle: false,
+    openMediaInQuickView: true,
     splitViewMode: 'split',
     layout: {
       type: {
