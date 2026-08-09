@@ -269,13 +269,15 @@ const fileMediaUrl = computed((): string => {
 });
 
 /**
- * Offers the still-capture button for anything playing off the disk. A remote URL handed in
- * by an extension has no path for the native decoder to open, so those keep the plain player.
+ * The file on disk behind whatever is playing, which is what media details are read from and
+ * what the native frame decoder opens. A remote URL handed in by an extension has neither, so
+ * those keep a plain player. The element is only rendered for a matching `fileType`, so this
+ * does not need to check the kind itself.
  */
-const videoCaptureSourcePath = computed(() => {
+const playerSourcePath = computed(() => {
   const path = currentFilePath.value;
 
-  if (!path || fileType.value !== 'video' || isHttpOrHttpsUrl(path)) {
+  if (!path || isHttpOrHttpsUrl(path)) {
     return undefined;
   }
 
@@ -1338,7 +1340,8 @@ onUnmounted(() => {
           :src="fileMediaUrl"
           kind="video"
           class="quick-view__video"
-          :capture-source-path="videoCaptureSourcePath"
+          :source-path="playerSourcePath"
+          allow-frame-capture
           autoplay
         />
 
@@ -1346,6 +1349,7 @@ onUnmounted(() => {
           v-else-if="fileType === 'audio'"
           :src="fileMediaUrl"
           kind="audio"
+          :source-path="playerSourcePath"
           :poster="audioArtworkSrc"
           :now-playing="artistShow.show.value"
           class="quick-view__audio"

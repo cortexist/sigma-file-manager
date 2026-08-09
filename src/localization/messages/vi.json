@@ -1262,7 +1262,9 @@
     "captureFrame": "Sao chép khung hình hiện tại vào bảng nhớ tạm",
     "frameCopied": "Đã sao chép khung hình vào bảng nhớ tạm",
     "frameCaptureFailed": "Không thể sao chép khung hình",
-    "artwork": "Ảnh bìa album"
+    "artwork": "Ảnh bìa album",
+    "showInfo": "Show media details",
+    "hideInfo": "Hide media details"
   },
   "imageViewer": {
     "zoomIn": "Zoom in",
@@ -1270,5 +1272,21 @@
     "resetZoom": "Reset zoom",
     "fullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen"
+  },
+  "mediaInfo": {
+    "title": "Media details",
+    "container": "Container",
+    "resolution": "Resolution",
+    "encoding": "Encoding",
+    "audioEncoding": "Audio",
+    "frameRate": "Frame rate",
+    "bitrate": "Bitrate",
+    "channels": "Channels",
+    "sampleRate": "Sample rate",
+    "color": "Color",
+    "density": "Density",
+    "unavailable": "Details unavailable",
+    "loading": "Reading…",
+    "decoder": "Decoder"
   }
 }

@@ -77,6 +77,33 @@ async function requestExitIfNoWindowsLeft(): Promise<void> {
   }
 }
 
+/**
+ * Labels whose window has been on screen at least once since it was created.
+ *
+ * A window that has never been shown has no surface behind it, and so no GL context for a
+ * video sink to draw into. Handing it a media file in that state leaves the pipeline unable
+ * to preroll: it never reports a frame, so the player sits buffering and the spinner runs
+ * forever. Prelaunched windows spend their whole life in that state until first opened,
+ * which is why the first quick view of every session used to hang.
+ *
+ * Hiding a window keeps its surface, so a window stays usable once shown — that is why
+ * closing and reopening quick view cured it for the rest of the session. Destroying the
+ * window is what puts a label back to never-shown.
+ */
+const shownAuxiliaryWindows = new Set<AuxiliaryWindowLabel>();
+
+export function hasAuxiliaryWindowBeenShown(label: AuxiliaryWindowLabel): boolean {
+  return shownAuxiliaryWindows.has(label);
+}
+
+export function markAuxiliaryWindowShown(label: AuxiliaryWindowLabel): void {
+  shownAuxiliaryWindows.add(label);
+}
+
+function forgetAuxiliaryWindowShown(label: AuxiliaryWindowLabel): void {
+  shownAuxiliaryWindows.delete(label);
+}
+
 export function isAuxiliaryWindowPrelaunchEnabled(label: AuxiliaryWindowLabel): boolean {
   const userSettingsStore = useUserSettingsStore();
 
@@ -264,6 +291,8 @@ async function closeAuxiliaryWindow(
   catch {
   }
 
+  // Destroying takes the surface with it, unlike the hide above.
+  forgetAuxiliaryWindowShown(label);
   await waitUntilAuxiliaryWindowAbsent(label);
 }
 
@@ -299,6 +328,8 @@ async function createAuxiliaryWindow(
   generation: number,
 ): Promise<Window | null> {
   await ensureAuxiliaryWindowAbsent(label);
+  // A brand new window has never been on screen, whatever the one before it managed.
+  forgetAuxiliaryWindowShown(label);
 
   if (!isOperationCurrent(label, generation)) {
     return null;

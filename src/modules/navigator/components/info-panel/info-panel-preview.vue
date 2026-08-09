@@ -276,6 +276,11 @@ watch(
       <!-- Unkeyed for the same reason as the image viewer above. Switching the autoplay
            setting on used to need a remount to take effect; the player now watches the prop
            and starts playing itself, so the instance can persist across the selection. -->
+      <!--
+        Deliberately given no `source-path`, which is what withholds the details overlay: the
+        properties list directly below already states everything it would say, and the overlay
+        crowds a pane this narrow. See `sourcePath` on the player.
+      -->
       <MediaPlayer
         :src="playableMediaSrc"
         kind="video"
@@ -288,6 +293,7 @@ watch(
       v-else-if="infoPanelPreviewKind === 'audio'"
       class="info-panel-preview__media-container"
     >
+      <!-- No `source-path` for the same reason as the video preview above. -->
       <MediaPlayer
         :src="playableMediaSrc"
         kind="audio"

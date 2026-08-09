@@ -129,6 +129,9 @@ windows-sys = { version = "0.59", features = [
 gstreamer = "0.24.5"
 gstreamer-app = "0.24.5"
 gstreamer-video = "0.24.5"
+# Reads codec, resolution and rate details off a file with the same stack that draws its
+# thumbnail. See `media_info.rs`.
+gstreamer-pbutils = "0.24"
 # Used directly for the file clipboard so cut/copy can be published as the several MIME
 # targets other Linux file managers expect. `arboard` already pulls this in for its own
 # Wayland backend, but only ever offers `text/uri-list`, which has nowhere to record

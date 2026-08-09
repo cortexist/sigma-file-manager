@@ -1262,7 +1262,9 @@
     "captureFrame": "Копировать текущий кадр в буфер обмена",
     "frameCopied": "Кадр скопирован в буфер обмена",
     "frameCaptureFailed": "Не удалось скопировать кадр",
-    "artwork": "Обложка альбома"
+    "artwork": "Обложка альбома",
+    "showInfo": "Show media details",
+    "hideInfo": "Hide media details"
   },
   "imageViewer": {
     "zoomIn": "Zoom in",
@@ -1270,5 +1272,21 @@
     "resetZoom": "Reset zoom",
     "fullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen"
+  },
+  "mediaInfo": {
+    "title": "Media details",
+    "container": "Container",
+    "resolution": "Resolution",
+    "encoding": "Encoding",
+    "audioEncoding": "Audio",
+    "frameRate": "Frame rate",
+    "bitrate": "Bitrate",
+    "channels": "Channels",
+    "sampleRate": "Sample rate",
+    "color": "Color",
+    "density": "Density",
+    "unavailable": "Details unavailable",
+    "loading": "Reading…",
+    "decoder": "Decoder"
   }
 }

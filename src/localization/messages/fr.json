@@ -1262,7 +1262,9 @@
     "captureFrame": "Copier l’image actuelle dans le presse-papiers",
     "frameCopied": "Image copiée dans le presse-papiers",
     "frameCaptureFailed": "Impossible de copier l’image",
-    "artwork": "Pochette de l'album"
+    "artwork": "Pochette de l'album",
+    "showInfo": "Show media details",
+    "hideInfo": "Hide media details"
   },
   "imageViewer": {
     "zoomIn": "Zoom in",
@@ -1270,5 +1272,21 @@
     "resetZoom": "Reset zoom",
     "fullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen"
+  },
+  "mediaInfo": {
+    "title": "Media details",
+    "container": "Container",
+    "resolution": "Resolution",
+    "encoding": "Encoding",
+    "audioEncoding": "Audio",
+    "frameRate": "Frame rate",
+    "bitrate": "Bitrate",
+    "channels": "Channels",
+    "sampleRate": "Sample rate",
+    "color": "Color",
+    "density": "Density",
+    "unavailable": "Details unavailable",
+    "loading": "Reading…",
+    "decoder": "Decoder"
   }
 }

@@ -14,6 +14,8 @@ import { canonicalizePath, getParentDirectory } from '@/utils/normalize-path';
 import {
   emitAuxiliaryWindowEvent,
   findAuxiliaryWindow,
+  hasAuxiliaryWindowBeenShown,
+  markAuxiliaryWindowShown,
   releaseAuxiliaryWindow,
   runAuxiliaryWindowTask,
 } from '@/utils/auxiliary-windows';
@@ -235,17 +237,36 @@ export const useQuickViewStore = defineStore('quickView', () => {
     }
 
     const opened = await runAuxiliaryWindowTask('quick-view', async ({ window: quickWindow, isCurrent }) => {
-      return runAuxiliaryWindowSteps(isCurrent, [
-        () => quickWindow.setTitle(`Sigma File Manager | Quick View - ${getFileName(path)}`),
-        () => emitAuxiliaryWindowEvent('quick-view', QUICK_VIEW_LOAD_FILE_EVENT, {
+      function loadFile() {
+        return emitAuxiliaryWindowEvent('quick-view', QUICK_VIEW_LOAD_FILE_EVENT, {
           path,
           siblingPaths:
             siblingPaths === undefined || siblingPaths === null || siblingPaths.length === 0
               ? null
               : siblingPaths,
-        }),
+        });
+      }
+
+      async function showWindow() {
+        await quickWindow.show();
+        markAuxiliaryWindowShown('quick-view');
+      }
+
+      /**
+       * Handing the file over before showing is what makes the window appear with its content
+       * already in place, rather than filling in afterwards. It is only safe once the window
+       * has a surface: a prelaunched window has never been on screen, and a media pipeline
+       * built against it cannot preroll, leaving the player buffering behind a spinner that
+       * never clears. So the first open shows first and loads second, and every open after
+       * that — the window having kept its surface through being hidden — keeps the nicer
+       * order. See `hasAuxiliaryWindowBeenShown`.
+       */
+      const firstOpen = !hasAuxiliaryWindowBeenShown('quick-view');
+
+      return runAuxiliaryWindowSteps(isCurrent, [
+        () => quickWindow.setTitle(`Sigma File Manager | Quick View - ${getFileName(path)}`),
         () => quickWindow.center(),
-        () => quickWindow.show(),
+        ...(firstOpen ? [showWindow, loadFile] : [loadFile, showWindow]),
         () => quickWindow.setFocus(),
       ]);
     });
@@ -270,7 +291,11 @@ export const useQuickViewStore = defineStore('quickView', () => {
       return runAuxiliaryWindowSteps(isCurrent, [
         () => printWindow.setTitle(`Sigma File Manager | Print - ${getFileName(path)}`),
         () => printWindow.center(),
-        () => printWindow.show(),
+        // Already the safe order: nothing is loaded until the window has a surface.
+        async () => {
+          await printWindow.show();
+          markAuxiliaryWindowShown('print-view');
+        },
         () => printWindow.setFocus(),
         async () => {
           const didEmitLoadEvent = await emitAuxiliaryWindowEvent('print-view', PRINT_VIEW_LOAD_FILE_EVENT, {

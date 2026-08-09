@@ -29,12 +29,14 @@ import {
   Loader2Icon,
   CameraIcon,
   CheckIcon,
+  InfoIcon,
   TriangleAlertIcon,
 } from '@lucide/vue';
 import { Slider } from '@/components/ui/slider';
 import NowPlayingShow from './now-playing-show.vue';
 import type { NowPlayingCard } from '@/utils/artist-info';
 import { copyCurrentVideoFrameToClipboard } from '@/utils/video-frame-capture';
+import { readMediaInfo, summarizeMediaInfo, type MediaInfoRow } from '@/utils/media-info';
 
 const props = withDefaults(defineProps<{
   src: string;
@@ -53,22 +55,28 @@ const props = withDefaults(defineProps<{
     cards: NowPlayingCard[];
   } | null;
   /**
-   * The file on disk that `src` is playing. Supplying it offers the still-capture button,
-   * which copies the frame on screen to the system clipboard.
+   * The file on disk that `src` is playing, which is what the media details are read from and
+   * what a frame capture decodes. Callers playing something with no path — a remote URL handed
+   * in by an extension — leave it unset and get a player without either.
    *
-   * It is the path rather than a plain flag because Linux cannot read the frame out of the
-   * element and decodes it from the file instead; see `@/utils/video-frame-capture`. Callers
-   * playing something that has no path — a remote URL handed in by an extension — leave this
-   * unset and get a player without the button.
+   * Frame capture needs the path rather than a flag because Linux cannot read the frame out of
+   * the element and decodes it from the file instead; see `@/utils/video-frame-capture`.
    */
-  captureSourcePath?: string;
+  sourcePath?: string;
+  /**
+   * Whether to offer the frame-capture button. Separate from `sourcePath` because reading a
+   * file's details is worth doing wherever the player appears, while copying a frame is a
+   * deliberate affordance of the full viewer rather than of a preview pane.
+   */
+  allowFrameCapture?: boolean;
 }>(), {
   kind: 'video',
   autoplay: false,
   muted: false,
   poster: undefined,
   nowPlaying: null,
-  captureSourcePath: undefined,
+  sourcePath: undefined,
+  allowFrameCapture: false,
 });
 
 const { t } = useI18n();
@@ -107,19 +115,34 @@ const isShowVisible = ref(false);
 const isLooping = ref(false);
 /** `idle` between captures; the others are what the button reports back for a moment. */
 const frameCaptureState = ref<'idle' | 'busy' | 'copied' | 'failed'>('idle');
+const isInfoVisible = ref(false);
+const mediaInfoRows = ref<MediaInfoRow[]>([]);
+/** Distinguishes "nothing found" from "not looked yet", which read differently on screen. */
+const mediaInfoState = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle');
 
+/** Bumped per details read so a slow answer for the previous file can be discarded. */
+let mediaInfoRequest = 0;
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let showIdleTimer: ReturnType<typeof setTimeout> | undefined;
 let loopWatchTimer: ReturnType<typeof setInterval> | undefined;
 let frameCaptureFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
 let lastProgressAt = -1;
 /**
- * Autoplay is started from here rather than left to the `autoplay` attribute alone, because
- * the attribute only takes effect on the element's *first* load — the HTML spec clears the
- * can-autoplay flag once an element has played or been paused. Callers used to work around
- * that by keying the player on the file path so each file got a brand new element, but that
- * remounts the DOM node holding fullscreen, which dropped out of fullscreen on every
- * next-file. Playing explicitly on each new source lets the instance survive instead.
+ * Autoplay is started from here, and the elements deliberately carry no `autoplay` attribute.
+ *
+ * The attribute only takes effect on an element's *first* load — the HTML spec clears the
+ * can-autoplay flag once it has played or been paused. Callers used to work around that by
+ * keying the player on the file path so each file got a brand new element, but that remounts
+ * the DOM node holding fullscreen, which dropped out of fullscreen on every next-file. Playing
+ * explicitly on each new source lets the instance survive instead.
+ *
+ * The attribute is dropped rather than kept alongside, because it would duplicate this start
+ * on exactly one load — an element's first — and leave the first file opened in a process
+ * taking a different path from every file after it. One path is easier to reason about.
+ *
+ * It is not, however, the cause of the spinner that hangs the first video of a fresh process.
+ * That was the suspicion this removal was made on, and rebuilding disproved it: the hang
+ * survives with the attribute gone.
  */
 let shouldAutoplayNextLoad = props.autoplay;
 
@@ -191,8 +214,16 @@ const volumeIcon = computed(() => {
  * way while it is running. That also sidesteps having to define which frame a click during
  * playback would even mean.
  */
+/** Details are read from the file, so the offer stands wherever a path was supplied. */
+const canShowInfo = computed(() => Boolean(props.sourcePath));
+
+const infoToggleLabel = computed(() => (
+  isInfoVisible.value ? t('mediaPlayer.hideInfo') : t('mediaPlayer.showInfo')
+));
+
 const canCaptureFrame = computed(() => (
-  Boolean(props.captureSourcePath) && isVideo.value && !isPlaying.value && !hasError.value
+  props.allowFrameCapture
+  && Boolean(props.sourcePath) && isVideo.value && !isPlaying.value && !hasError.value
 ));
 
 const frameCaptureIcon = computed(() => {
@@ -324,6 +355,14 @@ async function togglePlay() {
   if (!media) return;
 
   if (media.paused) {
+    // Replaying a finished file means asking the engine for a rewind it drops on the floor,
+    // leaving the button showing pause over a frozen frame. Rewind explicitly instead, so
+    // replay stays one click rather than the pause-then-play dance that worked around it.
+    if (media.ended) {
+      restartFromStart(media);
+      return;
+    }
+
     try {
       await media.play();
     }
@@ -357,7 +396,7 @@ function toggleLoop() {
  */
 async function captureFrame() {
   const media = mediaRef.value;
-  const sourcePath = props.captureSourcePath;
+  const { sourcePath } = props;
 
   if (!(media instanceof HTMLVideoElement) || !sourcePath) return;
   if (frameCaptureState.value === 'busy') return;
@@ -377,6 +416,48 @@ async function captureFrame() {
   frameCaptureFeedbackTimer = setTimeout(() => {
     frameCaptureState.value = 'idle';
   }, FRAME_CAPTURE_FEEDBACK_MS);
+}
+
+/**
+ * Reads the details for whatever is open now.
+ *
+ * The file can change while a read is in flight — browsing a folder with the panel open does
+ * exactly that — so each read carries a token and a stale answer is dropped rather than shown
+ * against the wrong file.
+ */
+async function loadMediaInfo() {
+  const { sourcePath } = props;
+
+  if (!sourcePath) return;
+
+  const token = ++mediaInfoRequest;
+  mediaInfoState.value = 'loading';
+
+  try {
+    const info = await readMediaInfo(sourcePath);
+
+    if (token !== mediaInfoRequest) return;
+
+    mediaInfoRows.value = summarizeMediaInfo(info);
+    mediaInfoState.value = 'ready';
+  }
+  catch (error) {
+    if (token !== mediaInfoRequest) return;
+
+    // Expected wherever the backend cannot read the format; the panel says so and moves on.
+    console.error('Failed to read media details:', error);
+    mediaInfoRows.value = [];
+    mediaInfoState.value = 'failed';
+  }
+}
+
+function toggleInfo() {
+  isInfoVisible.value = !isInfoVisible.value;
+
+  // Nothing is read until someone asks to see it, and a failed read is worth retrying.
+  if (isInfoVisible.value && mediaInfoState.value !== 'ready') {
+    void loadMediaInfo();
+  }
 }
 
 function toggleMute() {
@@ -501,10 +582,14 @@ function startLoopWatch() {
  * while nothing advances, so the button claimed to be playing and the next click merely
  * paused it — two clicks to get moving again.
  *
+ * The same split happens on any `play()` issued from the ended state, which the spec defines
+ * as carrying an implicit rewind — there the engine performs the seek and drops the play in
+ * plain windowed mode too, so both callers have to rewind by hand.
+ *
  * `isPlaying` is reconciled from the element at the end rather than assumed, so the button
  * always describes what the pipeline is really doing.
  */
-function restartForLoop(media: HTMLMediaElement) {
+function restartFromStart(media: HTMLMediaElement) {
   let resumed = false;
 
   function resume() {
@@ -541,7 +626,7 @@ function onEnded() {
    * Restarting by hand keeps every round a normal play-through.
    */
   if (isLooping.value && media) {
-    restartForLoop(media);
+    restartFromStart(media);
     return;
   }
 
@@ -640,6 +725,15 @@ watch(() => props.src, () => {
   // inheriting a manual unmute from the previous one. Volume is deliberately not reset —
   // carrying it across files is what a player should do.
   isMuted.value = props.muted;
+
+  // The details belong to the file that has just been replaced. Whether the panel is open is
+  // a preference about the player, though, so that survives — it just refills for the new file.
+  mediaInfoRows.value = [];
+  mediaInfoState.value = 'idle';
+
+  if (isInfoVisible.value) {
+    void loadMediaInfo();
+  }
 });
 
 /**
@@ -700,7 +794,6 @@ onBeforeUnmount(() => {
       v-if="isVideo"
       ref="mediaRef"
       :src="src"
-      :autoplay="autoplay"
       class="media-player__surface"
       playsinline
       @click="togglePlay"
@@ -722,7 +815,6 @@ onBeforeUnmount(() => {
       v-else
       ref="mediaRef"
       :src="src"
-      :autoplay="autoplay"
       class="media-player__audio-element"
       @loadedmetadata="onLoadedMetadata"
       @timeupdate="onTimeUpdate"
@@ -777,6 +869,42 @@ onBeforeUnmount(() => {
       aria-hidden="true"
     >
       <Loader2Icon :size="32" />
+    </div>
+
+    <!--
+      Sits above the controls rather than beside them so it never fights the transport row for
+      width, and is `aria-live` because the numbers arrive after the panel does.
+    -->
+    <div
+      v-if="isInfoVisible"
+      class="media-player__info"
+      aria-live="polite"
+    >
+      <p class="media-player__info-title">
+        {{ t('mediaInfo.title') }}
+      </p>
+      <dl
+        v-if="mediaInfoRows.length > 0"
+        class="media-player__info-rows"
+      >
+        <template
+          v-for="row in mediaInfoRows"
+          :key="row.labelKey"
+        >
+          <dt class="media-player__info-label">
+            {{ t(row.labelKey) }}
+          </dt>
+          <dd class="media-player__info-value">
+            {{ row.value }}
+          </dd>
+        </template>
+      </dl>
+      <p
+        v-else
+        class="media-player__info-empty"
+      >
+        {{ t(mediaInfoState === 'loading' ? 'mediaInfo.loading' : 'mediaInfo.unavailable') }}
+      </p>
     </div>
 
     <div
@@ -875,6 +1003,18 @@ onBeforeUnmount(() => {
             />
           </button>
           <button
+            v-if="canShowInfo"
+            type="button"
+            class="media-player__button media-player__info-toggle"
+            :class="{ 'media-player__button--active': isInfoVisible }"
+            :aria-pressed="isInfoVisible"
+            :aria-label="infoToggleLabel"
+            :title="infoToggleLabel"
+            @click="toggleInfo"
+          >
+            <InfoIcon :size="18" />
+          </button>
+          <button
             type="button"
             class="media-player__button"
             :class="{ 'media-player__button--active': isLooping }"
@@ -966,6 +1106,62 @@ onBeforeUnmount(() => {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Anchored to the bottom-right above the control bar, so it covers as little of the picture as
+   it can and never overlaps the transport row. Scrolls rather than growing, since a file with
+   several streams would otherwise push the panel over the whole frame. */
+
+.media-player__info {
+  position: absolute;
+  right: 12px;
+  bottom: 76px;
+  max-width: min(320px, calc(100% - 24px));
+  max-height: 45%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 76%);
+  color: white;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+  overflow-y: auto;
+}
+
+.media-player__info-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.media-player__info-rows {
+  display: grid;
+  margin: 0;
+  gap: 2px 12px;
+  grid-template-columns: auto 1fr;
+}
+
+/* The label column stays on one line so the values keep a straight edge to read down. The
+   decoder name is the exception that would break that, and it is last precisely so its wrap
+   costs nothing above it. */
+
+.media-player__info-label {
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.media-player__info-value {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.media-player__info-empty {
+  margin: 0;
+  opacity: 0.7;
 }
 
 .media-player__controls {

@@ -25,10 +25,22 @@ vi.mock('@/utils/video-frame-capture', () => ({
     copyCurrentVideoFrameToClipboard(...args),
 }));
 
+const readMediaInfo = vi.fn();
+
+// Only the backend call is stubbed; the real summarizer still formats what comes back, so the
+// rows asserted below are the ones a user would read.
+vi.mock('@/utils/media-info', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/media-info')>(),
+  readMediaInfo: (...args: unknown[]) => readMediaInfo(...args),
+}));
+
 const CAPTURE_PATH = '/home/user/Videos/first.mp4';
 
 const FIRST_SRC = 'media://first.mp4';
 const SECOND_SRC = 'media://second.mp4';
+
+/** Several controls share the button class, and fullscreen — not play — comes first. */
+const PLAY_BUTTON = '[aria-label="mediaPlayer.play"]';
 
 let play: ReturnType<typeof vi.fn>;
 
@@ -68,6 +80,14 @@ describe('MediaPlayer', () => {
     HTMLMediaElement.prototype.pause = vi.fn() as unknown as HTMLMediaElement['pause'];
     copyCurrentVideoFrameToClipboard.mockReset();
     copyCurrentVideoFrameToClipboard.mockResolvedValue(undefined);
+    readMediaInfo.mockReset();
+    readMediaInfo.mockResolvedValue({
+      container: null,
+      durationMs: null,
+      video: [],
+      audio: [],
+      image: null,
+    });
   });
 
   /**
@@ -116,6 +136,25 @@ describe('MediaPlayer', () => {
       await loadMetadata(wrapper);
 
       expect(play).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * The elements used to carry the `autoplay` attribute on top of the explicit start above,
+     * which duplicated it on exactly one load — an element's first — so the first file opened
+     * in a process took a different path from every file after it. One start per load.
+     */
+    it('leaves the elements carrying no autoplay attribute of their own', async () => {
+      const video = mountPlayer({ autoplay: true });
+      await loadMetadata(video);
+
+      expect(video.get('video').attributes('autoplay')).toBeUndefined();
+      expect(play).toHaveBeenCalledTimes(1);
+
+      const audio = mountPlayer({
+        autoplay: true,
+        kind: 'audio',
+      });
+      expect(audio.get('audio').attributes('autoplay')).toBeUndefined();
     });
 
     it('does not start playback when autoplay is off', async () => {
@@ -182,7 +221,10 @@ describe('MediaPlayer', () => {
 
     // Only a stopped video has a frame anyone is looking at.
     it('shows the button while stopped and hides it during playback', async () => {
-      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      const wrapper = mountPlayer({
+        sourcePath: CAPTURE_PATH,
+        allowFrameCapture: true,
+      });
       await loadMetadata(wrapper);
       expect(wrapper.find('.media-player__capture').exists()).toBe(true);
 
@@ -194,7 +236,10 @@ describe('MediaPlayer', () => {
     });
 
     it('copies the frame on screen and reports back on the button', async () => {
-      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      const wrapper = mountPlayer({
+        sourcePath: CAPTURE_PATH,
+        allowFrameCapture: true,
+      });
       await loadMetadata(wrapper);
 
       await wrapper.get('.media-player__capture').trigger('click');
@@ -209,7 +254,10 @@ describe('MediaPlayer', () => {
     it('reports a failed copy instead of claiming the frame was captured', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       copyCurrentVideoFrameToClipboard.mockRejectedValue(new Error('no frame'));
-      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      const wrapper = mountPlayer({
+        sourcePath: CAPTURE_PATH,
+        allowFrameCapture: true,
+      });
       await loadMetadata(wrapper);
 
       await wrapper.get('.media-player__capture').trigger('click');
@@ -220,7 +268,10 @@ describe('MediaPlayer', () => {
     });
 
     it('drops the previous outcome when the next file opens', async () => {
-      const wrapper = mountPlayer({ captureSourcePath: CAPTURE_PATH });
+      const wrapper = mountPlayer({
+        sourcePath: CAPTURE_PATH,
+        allowFrameCapture: true,
+      });
       await loadMetadata(wrapper);
       await wrapper.get('.media-player__capture').trigger('click');
       await flushPromises();
@@ -229,6 +280,155 @@ describe('MediaPlayer', () => {
 
       expect(wrapper.get('.media-player__capture').attributes('title'))
         .toBe('mediaPlayer.captureFrame');
+    });
+  });
+
+  describe('media details', () => {
+    const INFO_TOGGLE = '.media-player__info-toggle';
+
+    const H264 = {
+      container: null,
+      durationMs: 47_563,
+      video: [{
+        codec: 'H.264 (Main Profile)',
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        bitrateBps: null,
+        decoder: 'VA-API H.264 Decoder in AMD Radeon 780M Graphics',
+      }],
+      audio: [],
+      image: null,
+    };
+
+    /** Unlike frame capture, this is offered for audio too — anything with a file behind it. */
+    it('is offered wherever a file backs the source, and not otherwise', async () => {
+      const withoutPath = mountPlayer();
+      await loadMetadata(withoutPath);
+      expect(withoutPath.find(INFO_TOGGLE).exists()).toBe(false);
+
+      const audio = mountPlayer({
+        kind: 'audio',
+        sourcePath: CAPTURE_PATH,
+      });
+      expect(audio.find(INFO_TOGGLE).exists()).toBe(true);
+    });
+
+    it('reads nothing until asked, then lists what the file is made of', async () => {
+      readMediaInfo.mockResolvedValue(H264);
+      const wrapper = mountPlayer({ sourcePath: CAPTURE_PATH });
+      await loadMetadata(wrapper);
+
+      // Every preview in a folder listing mounts one of these; none should read a file
+      // nobody has asked about.
+      expect(readMediaInfo).not.toHaveBeenCalled();
+      expect(wrapper.find('.media-player__info').exists()).toBe(false);
+
+      await wrapper.get(INFO_TOGGLE).trigger('click');
+      await flushPromises();
+
+      expect(readMediaInfo).toHaveBeenCalledWith(CAPTURE_PATH);
+      const panel = wrapper.get('.media-player__info').text();
+      expect(panel).toContain('1920 × 1080');
+      expect(panel).toContain('H.264 (Main Profile)');
+      expect(panel).toContain('30 fps');
+      // Which GPU — or the CPU — the file would land on, and last so it can wrap freely.
+      expect(panel).toContain('VA-API H.264 Decoder in AMD Radeon 780M Graphics');
+      expect(panel.trimEnd().endsWith('AMD Radeon 780M Graphics')).toBe(true);
+    });
+
+    it('says so rather than sitting blank when the file cannot be read', async () => {
+      readMediaInfo.mockRejectedValue(new Error('unsupported'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const wrapper = mountPlayer({ sourcePath: CAPTURE_PATH });
+      await loadMetadata(wrapper);
+
+      await wrapper.get(INFO_TOGGLE).trigger('click');
+      await flushPromises();
+
+      expect(wrapper.get('.media-player__info').text()).toContain('mediaInfo.unavailable');
+    });
+
+    /** Browsing with the panel open has to refill it, not leave the previous file's numbers. */
+    it('re-reads when the source changes while open', async () => {
+      readMediaInfo.mockResolvedValue(H264);
+      const wrapper = mountPlayer({ sourcePath: CAPTURE_PATH });
+      await loadMetadata(wrapper);
+      await wrapper.get(INFO_TOGGLE).trigger('click');
+      await flushPromises();
+
+      await wrapper.setProps({
+        src: SECOND_SRC,
+        sourcePath: '/home/user/Videos/second.mp4',
+      });
+      await flushPromises();
+
+      expect(readMediaInfo).toHaveBeenCalledTimes(2);
+      expect(readMediaInfo).toHaveBeenLastCalledWith('/home/user/Videos/second.mp4');
+    });
+  });
+
+  describe('replaying a file that has finished', () => {
+    /** jsdom never really plays, so the finished state has to be described to the element. */
+    function stubFinished(wrapper: VueWrapper, duration = 120) {
+      const media = stubMediaElement(wrapper, duration);
+      let time = duration;
+
+      Object.defineProperty(media, 'currentTime', {
+        configurable: true,
+        get: () => time,
+        set: (next: number) => {
+          time = next;
+        },
+      });
+      Object.defineProperty(media, 'ended', {
+        configurable: true,
+        get: () => time >= duration,
+      });
+      Object.defineProperty(media, 'paused', {
+        configurable: true,
+        value: true,
+      });
+
+      return media;
+    }
+
+    /**
+     * The regression this guards: `play()` on an ended element carries an implicit rewind by
+     * spec, and WebKitGTK takes that seek while dropping the play. The clock snapped back to
+     * 0:00 and the button flipped to pause over a frame that never moved, so replaying took a
+     * pause-then-play. Rewinding by hand and waiting for the seek keeps it to one click.
+     */
+    it('rewinds first and starts playing only once the seek lands', async () => {
+      const wrapper = mountPlayer();
+      const media = stubFinished(wrapper);
+
+      await wrapper.get('video').trigger('loadedmetadata');
+      await wrapper.get('video').trigger('ended');
+
+      await wrapper.get(PLAY_BUTTON).trigger('click');
+
+      expect(media.currentTime).toBe(0);
+      expect(play).not.toHaveBeenCalled();
+
+      media.dispatchEvent(new Event('seeked'));
+      await flushPromises();
+
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+
+    /** Mid-file playback must not pay the rewind's cost — pressing play resumes where it is. */
+    it('resumes in place when the file has not finished', async () => {
+      const wrapper = mountPlayer();
+      const media = stubFinished(wrapper);
+      media.currentTime = 30;
+
+      await wrapper.get('video').trigger('loadedmetadata');
+      await wrapper.get(PLAY_BUTTON).trigger('click');
+      await flushPromises();
+
+      expect(media.currentTime).toBe(30);
+      expect(play).toHaveBeenCalledTimes(1);
     });
   });
 });

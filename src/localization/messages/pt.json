@@ -1262,7 +1262,9 @@
     "captureFrame": "Copiar o quadro atual para a área de transferência",
     "frameCopied": "Quadro copiado para a área de transferência",
     "frameCaptureFailed": "Não foi possível copiar o quadro",
-    "artwork": "Capa do álbum"
+    "artwork": "Capa do álbum",
+    "showInfo": "Show media details",
+    "hideInfo": "Hide media details"
   },
   "imageViewer": {
     "zoomIn": "Zoom in",
@@ -1270,5 +1272,21 @@
     "resetZoom": "Reset zoom",
     "fullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen"
+  },
+  "mediaInfo": {
+    "title": "Media details",
+    "container": "Container",
+    "resolution": "Resolution",
+    "encoding": "Encoding",
+    "audioEncoding": "Audio",
+    "frameRate": "Frame rate",
+    "bitrate": "Bitrate",
+    "channels": "Channels",
+    "sampleRate": "Sample rate",
+    "color": "Color",
+    "density": "Density",
+    "unavailable": "Details unavailable",
+    "loading": "Reading…",
+    "decoder": "Decoder"
   }
 }

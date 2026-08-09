@@ -1262,7 +1262,9 @@
     "captureFrame": "کپی فریم فعلی در بریده‌دان",
     "frameCopied": "فریم در بریده‌دان کپی شد",
     "frameCaptureFailed": "کپی کردن فریم ممکن نشد",
-    "artwork": "تصویر آلبوم"
+    "artwork": "تصویر آلبوم",
+    "showInfo": "Show media details",
+    "hideInfo": "Hide media details"
   },
   "imageViewer": {
     "zoomIn": "Zoom in",
@@ -1270,5 +1272,21 @@
     "resetZoom": "Reset zoom",
     "fullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen"
+  },
+  "mediaInfo": {
+    "title": "Media details",
+    "container": "Container",
+    "resolution": "Resolution",
+    "encoding": "Encoding",
+    "audioEncoding": "Audio",
+    "frameRate": "Frame rate",
+    "bitrate": "Bitrate",
+    "channels": "Channels",
+    "sampleRate": "Sample rate",
+    "color": "Color",
+    "density": "Density",
+    "unavailable": "Details unavailable",
+    "loading": "Reading…",
+    "decoder": "Decoder"
   }
 }

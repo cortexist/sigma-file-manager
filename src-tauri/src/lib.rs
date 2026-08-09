@@ -21,6 +21,7 @@ mod image_thumbnails;
 mod input_simulation;
 mod lan_share;
 mod link_operations;
+mod media_info;
 mod media_server;
 mod open_with;
 mod process_runner;
@@ -415,6 +416,7 @@ pub fn run() {
             image_thumbnails::generate_image_thumbnail,
             image_thumbnails::extract_audio_cover,
             image_thumbnails::get_cached_video_thumbnail,
+            media_info::media_info,
             open_with::get_associated_programs,
             open_with::open_with_program,
             open_with::open_with_default,

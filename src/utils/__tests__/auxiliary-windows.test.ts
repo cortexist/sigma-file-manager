@@ -144,6 +144,62 @@ describe('auxiliary-windows', () => {
     expect(closeMock).not.toHaveBeenCalled();
   });
 
+  /**
+   * A window with no surface behind it has no GL context, and a media pipeline built against
+   * one cannot preroll — the spinner that hung the first quick view of every session. Hiding
+   * keeps the surface and destroying does not, which is exactly why closing and reopening
+   * quick view used to cure it until the app was restarted.
+   */
+  describe('tracking whether a window has been on screen', () => {
+    it('does not consider a window shown until it is', async () => {
+      const { hasAuxiliaryWindowBeenShown, markAuxiliaryWindowShown }
+        = await import('@/utils/auxiliary-windows');
+
+      expect(hasAuxiliaryWindowBeenShown('quick-view')).toBe(false);
+      markAuxiliaryWindowShown('quick-view');
+      expect(hasAuxiliaryWindowBeenShown('quick-view')).toBe(true);
+      // Labels are tracked apart; showing one says nothing about the other.
+      expect(hasAuxiliaryWindowBeenShown('print-view')).toBe(false);
+    });
+
+    it('keeps a prelaunched window shown when it is only hidden', async () => {
+      const quickViewWindow = createQuickViewWindowStub();
+      getAllWindowsMock.mockResolvedValue([quickViewWindow]);
+
+      const { hasAuxiliaryWindowBeenShown, markAuxiliaryWindowShown, releaseAuxiliaryWindow }
+        = await import('@/utils/auxiliary-windows');
+
+      markAuxiliaryWindowShown('quick-view');
+      await releaseAuxiliaryWindow('quick-view');
+
+      expect(hideMock).toHaveBeenCalledTimes(1);
+      expect(destroyMock).not.toHaveBeenCalled();
+      expect(hasAuxiliaryWindowBeenShown('quick-view')).toBe(true);
+    });
+
+    it('forgets a window that is destroyed', async () => {
+      performanceSettings.prelaunchQuickViewWindow = false;
+      const quickViewWindow = createQuickViewWindowStub();
+      getAllWindowsMock
+        .mockResolvedValueOnce([quickViewWindow])
+        .mockResolvedValue([]);
+
+      const { hasAuxiliaryWindowBeenShown, markAuxiliaryWindowShown, releaseAuxiliaryWindow }
+        = await import('@/utils/auxiliary-windows');
+
+      markAuxiliaryWindowShown('quick-view');
+
+      vi.useFakeTimers();
+      const releasePromise = releaseAuxiliaryWindow('quick-view');
+      await vi.advanceTimersByTimeAsync(200);
+      await releasePromise;
+      vi.useRealTimers();
+
+      expect(destroyMock).toHaveBeenCalledTimes(1);
+      expect(hasAuxiliaryWindowBeenShown('quick-view')).toBe(false);
+    });
+  });
+
   it('requests main release when closing from an auxiliary webview', async () => {
     getCurrentWebviewWindowMock.mockReturnValue({ label: 'quick-view' });
 
