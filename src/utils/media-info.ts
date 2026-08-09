@@ -30,12 +30,39 @@ export interface MediaInfoAudioStream {
   decoder: string | null;
 }
 
+export interface MediaExif {
+  camera: string | null;
+  lens: string | null;
+  takenAt: string | null;
+  exposureTime: string | null;
+  fNumber: string | null;
+  iso: string | null;
+  focalLength: string | null;
+  /** Signed decimal degrees, south and west negative. Usually stripped before sharing. */
+  latitude: number | null;
+  longitude: number | null;
+  software: string | null;
+}
+
 export interface MediaInfoImage {
   format: string | null;
   width: number;
   height: number;
   color: string | null;
   dpi: number | null;
+  exif: MediaExif | null;
+}
+
+export interface MediaTags {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  albumArtist: string | null;
+  composer: string | null;
+  genre: string | null;
+  trackNumber: number | null;
+  year: number | null;
+  encoder: string | null;
 }
 
 export interface MediaInfo {
@@ -44,6 +71,7 @@ export interface MediaInfo {
   video: MediaInfoVideoStream[];
   audio: MediaInfoAudioStream[];
   image: MediaInfoImage | null;
+  tags: MediaTags | null;
 }
 
 /** A label and its value, ready to render. Translation keys, resolved by the caller. */
@@ -96,6 +124,21 @@ export function formatChannels(channels: number): string | null {
   return `${channels} channels`;
 }
 
+/**
+ * Decimal degrees, which is the form that can be pasted straight into a map. Six places is
+ * about a tenth of a metre — past the point any camera's fix is meaningful, and short enough
+ * to read. A latitude without its longitude locates nothing, so both must be present.
+ */
+export function formatCoordinates(
+  latitude: number | null,
+  longitude: number | null,
+): string | null {
+  if (latitude === null || longitude === null) return null;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+}
+
 export function formatDpi(dpi: number | null): string | null {
   if (dpi === null || dpi <= 0) return null;
   return `${Math.round(dpi)} DPI`;
@@ -110,7 +153,64 @@ function pushRow(rows: MediaInfoRow[], labelKey: string, value: string | null): 
 }
 
 /**
- * Flattens whatever the file turned out to be into rows worth showing.
+ * What the camera recorded, ahead of what the file is made of — for a photograph the body and
+ * the exposure are the recognisable part, the way a title and artist are for a recording.
+ *
+ * The values arrive already in EXIF's own display forms ("1/1600 s", "f/3.6", "23 mm"), so
+ * there is nothing to format here.
+ */
+function pushExifRows(rows: MediaInfoRow[], exif: MediaExif | null): void {
+  if (!exif) return;
+
+  pushRow(rows, 'mediaInfo.camera', exif.camera);
+  pushRow(rows, 'mediaInfo.lens', exif.lens);
+  pushRow(rows, 'mediaInfo.takenAt', exif.takenAt);
+  // Where and when the shot was taken belong together, ahead of how it was exposed.
+  pushRow(rows, 'mediaInfo.location', formatCoordinates(exif.latitude, exif.longitude));
+  pushRow(rows, 'mediaInfo.exposure', exif.exposureTime);
+  pushRow(rows, 'mediaInfo.aperture', exif.fNumber);
+  pushRow(rows, 'mediaInfo.iso', exif.iso);
+  pushRow(rows, 'mediaInfo.focalLength', exif.focalLength);
+}
+
+/** What the file says about itself, ahead of what it is made of — it is what people recognise. */
+function pushTagRows(rows: MediaInfoRow[], tags: MediaTags | null): void {
+  if (!tags) return;
+
+  pushRow(rows, 'mediaInfo.title', tags.title);
+  pushRow(rows, 'mediaInfo.artist', tags.artist);
+  pushRow(rows, 'mediaInfo.album', tags.album);
+  // Only worth a row of its own when it differs from the track artist.
+  pushRow(
+    rows,
+    'mediaInfo.albumArtist',
+    tags.albumArtist && tags.albumArtist !== tags.artist ? tags.albumArtist : null,
+  );
+  pushRow(rows, 'mediaInfo.composer', tags.composer);
+  pushRow(rows, 'mediaInfo.trackNumber', tags.trackNumber === null ? null : String(tags.trackNumber));
+  pushRow(rows, 'mediaInfo.year', tags.year === null ? null : String(tags.year));
+  pushRow(rows, 'mediaInfo.genre', tags.genre);
+}
+
+/**
+ * The decoder that would handle this file, which is a fact about this machine and its installed
+ * plugins rather than about the file. It belongs beside playback controls, not in a list of the
+ * file's own properties, so it is kept out of `summarizeMediaInfo` and added by the player.
+ */
+export function describeDecoderRow(info: MediaInfo): MediaInfoRow | null {
+  const decoder = info.video[0]?.decoder ?? info.audio[0]?.decoder ?? null;
+
+  if (!decoder) return null;
+
+  return {
+    labelKey: 'mediaInfo.decoder',
+    value: decoder,
+  };
+}
+
+/**
+ * Flattens whatever the file turned out to be into rows worth showing — everything here is a
+ * property the file itself carries.
  *
  * Absent fields produce no row rather than a row reading "unknown": a panel of blanks tells the
  * reader less than a shorter panel does. Only the first stream of each kind is described, since
@@ -121,12 +221,16 @@ export function summarizeMediaInfo(info: MediaInfo): MediaInfoRow[] {
 
   if (info.image) {
     const { image } = info;
+    pushExifRows(rows, image.exif);
     pushRow(rows, 'mediaInfo.resolution', formatResolution(image.width, image.height));
     pushRow(rows, 'mediaInfo.encoding', image.format);
     pushRow(rows, 'mediaInfo.color', image.color);
     pushRow(rows, 'mediaInfo.density', formatDpi(image.dpi));
+    pushRow(rows, 'mediaInfo.encodedWith', image.exif?.software ?? null);
     return rows;
   }
+
+  pushTagRows(rows, info.tags);
 
   const [video] = info.video;
   const [audio] = info.audio;
@@ -154,14 +258,8 @@ export function summarizeMediaInfo(info: MediaInfo): MediaInfoRow[] {
     }
   }
 
-  /**
-   * Last, because it is the one value long enough to wrap — "VA-API H.264 Decoder in AMD Radeon
-   * 780M Graphics" — and at the end it wraps without pushing anything else around.
-   *
-   * The picture is what people are asking about when they want to know whether a file lands on
-   * a GPU, so a video's decoder wins; an audio-only file reports its own.
-   */
-  pushRow(rows, 'mediaInfo.decoder', video?.decoder ?? audio?.decoder ?? null);
+  // The software that wrote the file, last because it is provenance rather than content.
+  pushRow(rows, 'mediaInfo.encodedWith', info.tags?.encoder ?? null);
 
   return rows;
 }

@@ -36,7 +36,12 @@ import { Slider } from '@/components/ui/slider';
 import NowPlayingShow from './now-playing-show.vue';
 import type { NowPlayingCard } from '@/utils/artist-info';
 import { copyCurrentVideoFrameToClipboard } from '@/utils/video-frame-capture';
-import { readMediaInfo, summarizeMediaInfo, type MediaInfoRow } from '@/utils/media-info';
+import {
+  describeDecoderRow,
+  readMediaInfo,
+  summarizeMediaInfo,
+  type MediaInfoRow,
+} from '@/utils/media-info';
 
 const props = withDefaults(defineProps<{
   src: string;
@@ -438,7 +443,13 @@ async function loadMediaInfo() {
 
     if (token !== mediaInfoRequest) return;
 
-    mediaInfoRows.value = summarizeMediaInfo(info);
+    // The decoder is a fact about this machine rather than about the file, so it is not part of
+    // the file's properties. It belongs here, beside the controls that will use it, and last
+    // because it is the one value long enough to wrap.
+    const decoder = describeDecoderRow(info);
+    const properties = summarizeMediaInfo(info);
+
+    mediaInfoRows.value = decoder ? [...properties, decoder] : properties;
     mediaInfoState.value = 'ready';
   }
   catch (error) {
@@ -881,7 +892,7 @@ onBeforeUnmount(() => {
       aria-live="polite"
     >
       <p class="media-player__info-title">
-        {{ t('mediaInfo.title') }}
+        {{ t('mediaInfo.heading') }}
       </p>
       <dl
         v-if="mediaInfoRows.length > 0"

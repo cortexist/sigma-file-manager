@@ -512,8 +512,14 @@ mod tests {
     #[test]
     fn plain_paths_round_trip_through_a_file_uri() {
         let path = "/home/user/Pictures/photo.jpg";
-        assert_eq!(path_to_file_uri(path), "file:///home/user/Pictures/photo.jpg");
-        assert_eq!(file_uri_to_path(&path_to_file_uri(path)).as_deref(), Some(path));
+        assert_eq!(
+            path_to_file_uri(path),
+            "file:///home/user/Pictures/photo.jpg"
+        );
+        assert_eq!(
+            file_uri_to_path(&path_to_file_uri(path)).as_deref(),
+            Some(path)
+        );
     }
 
     /// Characters that would otherwise truncate or corrupt the path in the receiving file
@@ -531,7 +537,11 @@ mod tests {
         ] {
             let uri = path_to_file_uri(path);
             assert!(!uri.contains(' '), "space left unescaped in {uri}");
-            assert_eq!(file_uri_to_path(&uri).as_deref(), Some(path), "failed for {path}");
+            assert_eq!(
+                file_uri_to_path(&uri).as_deref(),
+                Some(path),
+                "failed for {path}"
+            );
         }
     }
 
@@ -588,7 +598,10 @@ mod tests {
         assert_eq!(read.paths, cut_paths);
 
         let body = gnome_target_body();
-        assert!(body.starts_with("cut\n"), "expected a cut verb, got: {body:?}");
+        assert!(
+            body.starts_with("cut\n"),
+            "expected a cut verb, got: {body:?}"
+        );
         assert!(
             body.contains("file:///tmp/sfm%20clipboard%20test/a%20b.txt"),
             "got: {body:?}"
@@ -642,7 +655,10 @@ mod tests {
 
         let read = read_system_clipboard_files_sync().expect("failed to read clipboard");
         assert_eq!(read.operation, "move");
-        assert_eq!(read.paths, vec!["/tmp/from nautilus/report.pdf".to_string()]);
+        assert_eq!(
+            read.paths,
+            vec!["/tmp/from nautilus/report.pdf".to_string()]
+        );
 
         // A bare uri-list carries no verb, so it must be treated as a copy rather than
         // inheriting the cut above.
@@ -650,7 +666,10 @@ mod tests {
 
         let read = read_system_clipboard_files_sync().expect("failed to read clipboard");
         assert_eq!(read.operation, "copy");
-        assert_eq!(read.paths, vec!["/tmp/from nautilus/report.pdf".to_string()]);
+        assert_eq!(
+            read.paths,
+            vec!["/tmp/from nautilus/report.pdf".to_string()]
+        );
 
         let _ = super::clear_system_clipboard_files_sync();
     }

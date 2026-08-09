@@ -352,10 +352,7 @@ mod tests {
                 .unwrap();
             assert_eq!(response.status(), 206);
             assert_eq!(response.headers()["content-range"], "bytes 1000-1099/4096");
-            assert_eq!(
-                response.bytes().await.unwrap().as_ref(),
-                &body[1000..=1099]
-            );
+            assert_eq!(response.bytes().await.unwrap().as_ref(), &body[1000..=1099]);
 
             // Open-ended range runs to the end of the file.
             let response = client

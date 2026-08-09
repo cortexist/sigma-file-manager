@@ -451,7 +451,15 @@ fn cache_video_thumbnail_file(
 ) -> Result<String, String> {
     let thumbnail = decode_video_thumbnail_data_url(&thumbnail_data_url)?;
 
-    store_video_thumbnail_bytes(cache_dir, path, modified_time, size, width, height, thumbnail)
+    store_video_thumbnail_bytes(
+        cache_dir,
+        path,
+        modified_time,
+        size,
+        width,
+        height,
+        thumbnail,
+    )
 }
 
 /// Writes an already-encoded JPEG into the thumbnail cache.
@@ -836,8 +844,7 @@ mod tests {
         thumbnail_cache_stats, validate_image_thumbnail_source, validate_video_thumbnail_size,
         IMAGE_PREVIEW_MAX_DIMENSION, MAX_ORIGINAL_IMAGE_THUMBNAIL_SOURCE_SIZE_BYTES,
         MAX_THUMBNAIL_CACHE_ITEM_COUNT, MAX_THUMBNAIL_CACHE_SIZE_BYTES,
-        MAX_THUMBNAIL_SOURCE_FILE_SIZE_BYTES, MAX_THUMBNAIL_SOURCE_PIXELS,
-        THUMBNAIL_MAX_DIMENSION,
+        MAX_THUMBNAIL_SOURCE_FILE_SIZE_BYTES, MAX_THUMBNAIL_SOURCE_PIXELS, THUMBNAIL_MAX_DIMENSION,
     };
     use std::fs;
     use std::fs::File;
@@ -930,7 +937,9 @@ mod tests {
     /// raising the image-preview ceiling must not widen what they may submit.
     #[test]
     fn video_thumbnail_size_validation_keeps_the_grid_cap() {
-        assert!(validate_video_thumbnail_size(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION).is_ok());
+        assert!(
+            validate_video_thumbnail_size(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION).is_ok()
+        );
         assert!(validate_video_thumbnail_size(THUMBNAIL_MAX_DIMENSION + 1, 100).is_err());
         assert!(validate_video_thumbnail_size(100, IMAGE_PREVIEW_MAX_DIMENSION).is_err());
     }

@@ -4,7 +4,7 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 -->
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, watch } from 'vue';
 import { LoaderCircleIcon, XIcon, RefreshCwIcon } from '@lucide/vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -27,8 +27,7 @@ import {
   getDirEntryLinksDisplay,
   getDirEntryLinkStatusKey,
 } from '@/utils/dir-entry-link-metadata';
-import { determineFileType } from '@/stores/runtime/quick-view';
-import { readMediaInfo, summarizeMediaInfo, type MediaInfoRow } from '@/utils/media-info';
+import { useInfoPanelMediaInfo } from './composables/use-info-panel-media-info';
 const props = withDefaults(defineProps<{
   selectedEntry: DirEntry | null;
   orientation?: 'vertical' | 'compact';
@@ -61,42 +60,7 @@ const { clockRef: relativeDateClock } = useRelativeDateDisplayClock(() => {
   return !!(entry.modified_time || entry.created_time);
 });
 
-/**
- * What the selected file is made of, listed alongside its size and dates.
- *
- * Read per selection rather than cached: the panel follows the cursor through a folder, and a
- * stale answer against the wrong file would be worse than a missing one. Each read carries a
- * token so an answer that arrives after the selection moved on is dropped. Anything that is not
- * a recording or a still is never asked about at all.
- */
-const mediaInfoRows = ref<MediaInfoRow[]>([]);
-let mediaInfoRequest = 0;
-
-watch(() => props.selectedEntry?.path, async (path) => {
-  const token = ++mediaInfoRequest;
-  mediaInfoRows.value = [];
-
-  if (!path) return;
-
-  const kind = determineFileType(path);
-
-  if (kind !== 'video' && kind !== 'audio' && kind !== 'image') return;
-
-  try {
-    const info = await readMediaInfo(path);
-
-    if (token === mediaInfoRequest) {
-      mediaInfoRows.value = summarizeMediaInfo(info);
-    }
-  }
-  catch {
-    // A format the backend cannot read simply contributes no rows; the rest of the panel
-    // is unaffected and saying "unavailable" here would be noise beside the size and dates.
-    if (token === mediaInfoRequest) {
-      mediaInfoRows.value = [];
-    }
-  }
-}, { immediate: true });
+const { rows: mediaInfoRows } = useInfoPanelMediaInfo(() => props.selectedEntry?.path);
 
 function formatPropertyDate(timestamp: number, relativeDisplay = true): string {
   return formatRelativeDateDisplay({

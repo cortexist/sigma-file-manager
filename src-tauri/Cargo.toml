@@ -42,6 +42,9 @@ base64 = "0.22"
 png = "0.18"
 file_icon_provider = "1.0.1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "tiff", "ico"] }
+# What a camera recorded about a shot. The `image` crate reads pixels and dimensions but
+# exposes no EXIF, and this is the same reader most Rust tooling uses. See `media_info.rs`.
+kamadak-exif = "0.6"
 lru = "0.18"
 once_cell = "1.21"
 dirs = "6"

@@ -740,7 +740,7 @@
   "calculating": "در حال محاسبه",
   "path": "مسیر",
   "created": "ایجاد شده",
-  "modified": "مطالب اصلاح شده",
+  "modified": "تغییر یافته",
   "yes": "آره",
   "password": "کلمه عبور",
   "error": "خطا",
@@ -1287,6 +1287,23 @@
     "density": "Density",
     "unavailable": "Details unavailable",
     "loading": "Reading…",
-    "decoder": "Decoder"
+    "decoder": "Decoder",
+    "heading": "Media details",
+    "artist": "Artist",
+    "album": "Album",
+    "albumArtist": "Album artist",
+    "composer": "Composer",
+    "genre": "Genre",
+    "trackNumber": "Track",
+    "year": "Year",
+    "encodedWith": "Encoded with",
+    "camera": "Camera",
+    "lens": "Lens",
+    "takenAt": "Taken",
+    "exposure": "Exposure",
+    "aperture": "Aperture",
+    "iso": "ISO",
+    "focalLength": "Focal length",
+    "location": "Location"
   }
 }

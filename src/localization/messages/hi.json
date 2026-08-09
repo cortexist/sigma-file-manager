@@ -774,7 +774,7 @@
   "calculating": "गिना जा रहा है",
   "path": "पथ",
   "created": "बनाया था",
-  "modified": "संशोधित सामग्री",
+  "modified": "संशोधित",
   "yes": "हाँ",
   "password": "पासवर्ड",
   "error": "गलती",
@@ -1287,6 +1287,23 @@
     "density": "Density",
     "unavailable": "Details unavailable",
     "loading": "Reading…",
-    "decoder": "Decoder"
+    "decoder": "Decoder",
+    "heading": "Media details",
+    "artist": "Artist",
+    "album": "Album",
+    "albumArtist": "Album artist",
+    "composer": "Composer",
+    "genre": "Genre",
+    "trackNumber": "Track",
+    "year": "Year",
+    "encodedWith": "Encoded with",
+    "camera": "Camera",
+    "lens": "Lens",
+    "takenAt": "Taken",
+    "exposure": "Exposure",
+    "aperture": "Aperture",
+    "iso": "ISO",
+    "focalLength": "Focal length",
+    "location": "Location"
   }
 }

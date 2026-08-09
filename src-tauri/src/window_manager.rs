@@ -59,15 +59,19 @@ fn is_tiling_compositor() -> bool {
         return true;
     }
 
-    ["XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION"]
-        .iter()
-        .filter_map(|key| std::env::var(key).ok())
-        .any(|value| {
-            value
-                .to_ascii_lowercase()
-                .split(':')
-                .any(|name| TILING_COMPOSITORS.contains(&name.trim()))
-        })
+    [
+        "XDG_CURRENT_DESKTOP",
+        "XDG_SESSION_DESKTOP",
+        "DESKTOP_SESSION",
+    ]
+    .iter()
+    .filter_map(|key| std::env::var(key).ok())
+    .any(|value| {
+        value
+            .to_ascii_lowercase()
+            .split(':')
+            .any(|name| TILING_COMPOSITORS.contains(&name.trim()))
+    })
 }
 
 /// Anything unrecognised keeps the full set, so an unknown desktop never loses buttons.

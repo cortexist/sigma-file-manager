@@ -74,7 +74,9 @@ fn executable_path() -> Result<PathBuf, String> {
 /// Quotes an `Exec=` program per the desktop entry spec, which needs it for
 /// anything containing a space or one of the reserved characters.
 fn quote_exec(path: &str) -> String {
-    const RESERVED: [char; 12] = [' ', '\t', '\n', '"', '\'', '\\', '>', '<', '~', '|', '&', ';'];
+    const RESERVED: [char; 12] = [
+        ' ', '\t', '\n', '"', '\'', '\\', '>', '<', '~', '|', '&', ';',
+    ];
     if !path.contains(RESERVED) {
         return path.to_string();
     }
@@ -119,11 +121,14 @@ fn write_desktop_entry() -> Result<(), String> {
 }
 
 fn run_xdg_mime(args: &[&str]) -> Result<String, String> {
-    let output = Command::new("xdg-mime").args(args).output().map_err(|error| {
-        format!(
+    let output = Command::new("xdg-mime")
+        .args(args)
+        .output()
+        .map_err(|error| {
+            format!(
             "Failed to run xdg-mime: {error}. Install xdg-utils to set the default file manager."
         )
-    })?;
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -178,7 +183,9 @@ fn without_entry(contents: &str, entry_id: &str) -> Option<String> {
 
         let is_association = ASSOCIATION_SECTIONS.contains(&section.as_str())
             && trimmed.starts_with(DIRECTORY_MIME)
-            && trimmed[DIRECTORY_MIME.len()..].trim_start().starts_with('=');
+            && trimmed[DIRECTORY_MIME.len()..]
+                .trim_start()
+                .starts_with('=');
 
         if !is_association {
             out.push(line.to_string());
@@ -305,7 +312,10 @@ mod tests {
 
     #[test]
     fn a_plain_path_is_left_alone() {
-        assert_eq!(quote_exec("/usr/bin/sigma-file-manager"), "/usr/bin/sigma-file-manager");
+        assert_eq!(
+            quote_exec("/usr/bin/sigma-file-manager"),
+            "/usr/bin/sigma-file-manager"
+        );
     }
 
     #[test]
@@ -337,7 +347,10 @@ mod tests {
         let before =
             "[Default Applications]\ninode/directory=sigma-file-manager.desktop;nemo.desktop;\n";
         let after = without_entry(before, DESKTOP_FILE_NAME).expect("should have changed");
-        assert_eq!(after, "[Default Applications]\ninode/directory=nemo.desktop;\n");
+        assert_eq!(
+            after,
+            "[Default Applications]\ninode/directory=nemo.desktop;\n"
+        );
     }
 
     #[test]

@@ -9,6 +9,13 @@ export const UI_CONSTANTS = {
   DOUBLE_CLICK_DELAY: 300,
   WORKSPACE_MAX_PANE_COUNT: 2,
   WORKSPACE_SAVE_DEBOUNCE_MS: 500,
+  /**
+   * How long the selection must settle before the info panel reads a file's media details.
+   * Each read decodes enough of the file to answer, so holding an arrow key through a folder
+   * of videos must not start one per entry. Long enough to outlast key repeat, short enough
+   * that a deliberate single selection still feels immediate.
+   */
+  INFO_PANEL_MEDIA_INFO_DEBOUNCE_MS: 150,
   DRAG_ACTIVATION_THRESHOLD: 8,
   DRAG_OVERLAY_OFFSET_X: 16,
   DRAG_OVERLAY_OFFSET_Y: 16,
