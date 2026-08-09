@@ -78,9 +78,12 @@ fn should_keep_running_without_windows(_app: &tauri::AppHandle) -> bool {
 /// at all. The window being closed is excluded by label because it has only just been hidden
 /// and may still report itself as visible.
 ///
-/// No window's label is privileged. The main and auxiliary windows can each outlive the
-/// other, so only the absence of every other visible window ends the process.
-fn should_exit_after_close<I, S>(windows: I, closing_label: &str, keep_running: bool) -> bool
+/// Auxiliary windows can outlive the main window here — that is what a standalone viewer
+/// session is — so only the absence of every other visible window ends the process. The one
+/// asymmetry lives in the close handler, not in this rule: closing the *main* window hides
+/// the session's auxiliary windows first, so dismissing the file manager ends the session
+/// rather than leaving a forgotten viewer keeping the app alive.
+fn should_exit_after_close<I, S>(windows: I, closing_labels: &[&str], keep_running: bool) -> bool
 where
     I: IntoIterator<Item = (S, bool)>,
     S: AsRef<str>,
@@ -91,8 +94,13 @@ where
 
     !windows
         .into_iter()
-        .any(|(label, is_visible)| label.as_ref() != closing_label && is_visible)
+        .any(|(label, is_visible)| !closing_labels.contains(&label.as_ref()) && is_visible)
 }
+
+/// Every window the main session owns. Closing the main window closes all of them, which is
+/// also why they are all excluded from the exit check at that moment: each was hidden a
+/// breath ago and may still report itself visible.
+const SESSION_WINDOW_LABELS: [&str; 3] = ["main", "quick-view", "print-view"];
 
 /// Lets the frontend re-run the check after hiding a window itself.
 ///
@@ -103,11 +111,11 @@ where
 /// whatever it hid.
 #[tauri::command]
 fn exit_if_no_windows_left(app: tauri::AppHandle) {
-    exit_if_last_window_closed(&app, "");
+    exit_if_last_window_closed(&app, &[]);
 }
 
-/// Quits once the last visible window goes away. Called after the closing window is hidden.
-fn exit_if_last_window_closed(app: &tauri::AppHandle, closing_label: &str) {
+/// Quits once the last visible window goes away. Called after the closing windows are hidden.
+fn exit_if_last_window_closed(app: &tauri::AppHandle, closing_labels: &[&str]) {
     let windows: Vec<(String, bool)> = app
         .webview_windows()
         .into_iter()
@@ -116,7 +124,7 @@ fn exit_if_last_window_closed(app: &tauri::AppHandle, closing_label: &str) {
 
     if should_exit_after_close(
         windows,
-        closing_label,
+        closing_labels,
         should_keep_running_without_windows(app),
     ) {
         app.exit(0);
@@ -538,11 +546,29 @@ pub fn run() {
                     // disappear immediately either way.
                     let _ = window.hide();
                     api.prevent_close();
+
+                    // The session's satellites go with their owner. A viewer window opened
+                    // through this session — possibly sitting forgotten on another workspace
+                    // after an external open — would otherwise keep the app running after the
+                    // user has dismissed it, with a launcher click resurrecting the main
+                    // window: an app that cannot be closed. The standalone viewer is not
+                    // affected; that session has no main window to close.
+                    for label in &SESSION_WINDOW_LABELS[1..] {
+                        if let Some(auxiliary) = window.app_handle().get_webview_window(label) {
+                            let _ = auxiliary.hide();
+                        }
+                    }
                 } else {
                     handle_auxiliary_window_close_requested(window, api);
                 }
 
-                exit_if_last_window_closed(window.app_handle(), window.label());
+                let own_label = [window.label()];
+                let closing_labels: &[&str] = if window.label() == "main" {
+                    &SESSION_WINDOW_LABELS
+                } else {
+                    &own_label
+                };
+                exit_if_last_window_closed(window.app_handle(), closing_labels);
             }
             if let tauri::WindowEvent::Destroyed = event {
                 if window.label() == "main" {
@@ -689,7 +715,7 @@ mod window_lifetime_tests {
     fn quits_when_the_only_window_is_closed() {
         assert!(should_exit_after_close(
             windows(&[("main", true)]),
-            "main",
+            &["main"],
             false
         ));
     }
@@ -700,16 +726,33 @@ mod window_lifetime_tests {
     fn quits_when_the_only_other_window_is_a_hidden_prelaunched_one() {
         assert!(should_exit_after_close(
             windows(&[("main", true), ("quick-view", false), ("print-view", false)]),
-            "main",
+            &["main"],
             false
         ));
     }
 
+    /// Closing the main window closes the whole session, viewer included. The viewer was
+    /// hidden a breath before this check and may still report itself visible — counting it
+    /// would leave a windowless process running, which is how "sigma cannot be closed" was
+    /// reported: a viewer forgotten on another workspace kept the app alive, and every
+    /// launcher click resurrected the main window.
     #[test]
-    fn keeps_running_when_quick_view_outlives_the_main_window() {
+    fn closing_the_main_session_quits_over_a_viewer_still_reporting_visible() {
+        assert!(should_exit_after_close(
+            windows(&[("main", true), ("quick-view", true)]),
+            &super::SESSION_WINDOW_LABELS,
+            false
+        ));
+    }
+
+    /// The rule itself stays symmetric: a caller closing *only* the main window leaves a
+    /// visible viewer running. The session sweep is the close handler's decision, made by
+    /// passing every session label, not something baked in here.
+    #[test]
+    fn keeps_running_when_only_main_is_closed_and_a_viewer_is_visible() {
         assert!(!should_exit_after_close(
             windows(&[("main", true), ("quick-view", true)]),
-            "main",
+            &["main"],
             false
         ));
     }
@@ -718,7 +761,7 @@ mod window_lifetime_tests {
     fn keeps_running_when_the_main_window_outlives_quick_view() {
         assert!(!should_exit_after_close(
             windows(&[("main", true), ("quick-view", true)]),
-            "quick-view",
+            &["quick-view"],
             false
         ));
     }
@@ -729,7 +772,7 @@ mod window_lifetime_tests {
     fn quits_when_the_last_visible_window_closes_over_a_hidden_main() {
         assert!(should_exit_after_close(
             windows(&[("main", false), ("quick-view", true)]),
-            "quick-view",
+            &["quick-view"],
             false
         ));
     }
@@ -738,7 +781,7 @@ mod window_lifetime_tests {
     fn counts_the_print_view_as_a_window_worth_staying_for() {
         assert!(!should_exit_after_close(
             windows(&[("main", true), ("print-view", true)]),
-            "main",
+            &["main"],
             false
         ));
     }
@@ -749,7 +792,7 @@ mod window_lifetime_tests {
     fn stays_alive_while_something_asks_it_to() {
         assert!(!should_exit_after_close(
             windows(&[("main", true)]),
-            "main",
+            &["main"],
             true
         ));
     }
@@ -760,7 +803,7 @@ mod window_lifetime_tests {
     fn ignores_the_closing_window_even_if_it_still_reports_visible() {
         assert!(should_exit_after_close(
             windows(&[("main", true)]),
-            "main",
+            &["main"],
             false
         ));
     }
