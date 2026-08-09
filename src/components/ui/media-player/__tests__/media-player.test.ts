@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
-// Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
+// Copyright © 2026 Cortexist, LLC. All rights reserved.
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import {
@@ -43,6 +43,7 @@ const SECOND_SRC = 'media://second.mp4';
 const PLAY_BUTTON = '[aria-label="mediaPlayer.play"]';
 
 let play: ReturnType<typeof vi.fn>;
+let load: ReturnType<typeof vi.fn>;
 
 function mountPlayer(props: Record<string, unknown> = {}) {
   return mount(MediaPlayer, {
@@ -76,8 +77,10 @@ async function loadMetadata(wrapper: VueWrapper) {
 describe('MediaPlayer', () => {
   beforeEach(() => {
     play = vi.fn(() => Promise.resolve());
+    load = vi.fn();
     HTMLMediaElement.prototype.play = play as unknown as HTMLMediaElement['play'];
     HTMLMediaElement.prototype.pause = vi.fn() as unknown as HTMLMediaElement['pause'];
+    HTMLMediaElement.prototype.load = load as unknown as HTMLMediaElement['load'];
     copyCurrentVideoFrameToClipboard.mockReset();
     copyCurrentVideoFrameToClipboard.mockResolvedValue(undefined);
     readMediaInfo.mockReset();
@@ -365,6 +368,126 @@ describe('MediaPlayer', () => {
 
       expect(readMediaInfo).toHaveBeenCalledTimes(2);
       expect(readMediaInfo).toHaveBeenLastCalledWith('/home/user/Videos/second.mp4');
+    });
+  });
+
+  describe('stalled playback', () => {
+    /** An element claiming to play with its clock frozen at `time`. */
+    function stubStalled(wrapper: VueWrapper, time = 0) {
+      const media = stubMediaElement(wrapper);
+      let clock = time;
+
+      Object.defineProperty(media, 'paused', {
+        configurable: true,
+        value: false,
+      });
+      Object.defineProperty(media, 'ended', {
+        configurable: true,
+        value: false,
+      });
+      Object.defineProperty(media, 'currentTime', {
+        configurable: true,
+        get: () => clock,
+        set: (next: number) => {
+          clock = next;
+        },
+      });
+
+      return media;
+    }
+
+    /**
+     * The regression this guards: WebKitGTK can leave the element reporting `paused === false`
+     * while the clock never advances — the first quick view of a cold-launched session does it
+     * every time, and loads have done it intermittently. Pause/play recovers nothing; only a
+     * pipeline rebuild does, which is what closing and reopening the viewer performs by hand.
+     */
+    it('rebuilds the pipeline when the clock freezes while claiming to play', async () => {
+      vi.useFakeTimers();
+
+      try {
+        const wrapper = mountPlayer();
+        stubStalled(wrapper);
+        await wrapper.get('video').trigger('loadedmetadata');
+        await wrapper.get('video').trigger('play');
+
+        // Frozen, but not yet past the grace period.
+        await vi.advanceTimersByTimeAsync(2500);
+        expect(load).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(load).toHaveBeenCalledTimes(1);
+
+        // The rebuilt pipeline reports metadata; playback is asked to resume.
+        play.mockClear();
+        await wrapper.get('video').trigger('loadedmetadata');
+        expect(play).toHaveBeenCalledTimes(1);
+      }
+      finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('resumes where the clock stood rather than from the start', async () => {
+      vi.useFakeTimers();
+
+      try {
+        const wrapper = mountPlayer();
+        const media = stubStalled(wrapper, 12.5);
+        await wrapper.get('video').trigger('loadedmetadata');
+        await wrapper.get('video').trigger('play');
+
+        await vi.advanceTimersByTimeAsync(4000);
+        expect(load).toHaveBeenCalledTimes(1);
+
+        media.currentTime = 0;
+        await wrapper.get('video').trigger('loadedmetadata');
+        expect(media.currentTime).toBe(12.5);
+      }
+      finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('leaves a healthy pipeline alone', async () => {
+      vi.useFakeTimers();
+
+      try {
+        const wrapper = mountPlayer();
+        const media = stubStalled(wrapper);
+        await wrapper.get('video').trigger('loadedmetadata');
+        await wrapper.get('video').trigger('play');
+
+        // The clock advances a little on every watchdog reading.
+        for (let tick = 0; tick < 20; tick++) {
+          media.currentTime += 0.25;
+          await vi.advanceTimersByTimeAsync(500);
+        }
+
+        expect(load).not.toHaveBeenCalled();
+      }
+      finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /** A file nothing can play must settle, not rebuild in a loop forever. */
+    it('gives up after the recovery cap', async () => {
+      vi.useFakeTimers();
+
+      try {
+        const wrapper = mountPlayer();
+        stubStalled(wrapper);
+        await wrapper.get('video').trigger('loadedmetadata');
+        await wrapper.get('video').trigger('play');
+
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        expect(load).toHaveBeenCalledTimes(2);
+      }
+      finally {
+        vi.useRealTimers();
+      }
     });
   });
 

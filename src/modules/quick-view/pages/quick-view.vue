@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later
 License: GNU GPLv3 or later. See the license file in the project root for more information.
 Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
+Copyright © 2026 Cortexist, LLC (modifications). All rights reserved.
 -->
 
 <script setup lang="ts">
@@ -60,10 +61,16 @@ import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/
 import { useHorizontalFixedVirtualList } from '@/composables/use-horizontal-fixed-virtual-list';
 import { useAudioCovers } from '@/composables/use-audio-covers';
 import { useArtistShow } from '@/composables/use-artist-show';
+import { waitForFirstPaint } from '@/utils/first-paint';
 
 const { t } = useI18n();
 
 const QUICK_VIEW_TEXT_PREVIEW_MAX_BYTES = 4 * 1024 * 1024;
+/** Long enough for a cold window to map; short enough that the degraded path is not a hang. */
+const FIRST_PAINT_TIMEOUT_MS = 1500;
+
+/** See the first-load wait in `setupEventListeners`. */
+let hasAppliedFirstLoad = false;
 
 const currentFilePath = ref<string | null>(null);
 const resolvedSiblingPaths = ref<string[]>([]);
@@ -1156,6 +1163,20 @@ async function setupEventListeners() {
   }>(
     QUICK_VIEW_LOAD_FILE_EVENT,
     async (event) => {
+      /**
+       * The first file a fresh process receives arrives while this prelaunched window is
+       * still being mapped — the main window calls `show()` before sending it, but that
+       * only means the request was made. Building a media pipeline against a window that
+       * has no surface yet is how the first quick view of a session used to hang on a
+       * spinner, so the first load waits until frames are actually being produced. Every
+       * later load finds a window that has kept its surface through being hidden, where
+       * this costs at most two frames.
+       */
+      if (!hasAppliedFirstLoad) {
+        hasAppliedFirstLoad = true;
+        await waitForFirstPaint(FIRST_PAINT_TIMEOUT_MS);
+      }
+
       stashCurrentTextIfDirty();
       currentFilePath.value = event.payload.path;
       resolvedSiblingPaths.value = uniqueSiblingPaths(event.payload.siblingPaths ?? []);

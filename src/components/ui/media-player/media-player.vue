@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later
 License: GNU GPLv3 or later. See the license file in the project root for more information.
-Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
+Copyright © 2026 Cortexist, LLC. All rights reserved.
 -->
 
 <!--
@@ -42,6 +42,7 @@ import {
   summarizeMediaInfo,
   type MediaInfoRow,
 } from '@/utils/media-info';
+import { newStallWatch, observePlayback, rebuildWedgedPipeline } from './playback-stall';
 
 const props = withDefaults(defineProps<{
   src: string;
@@ -95,6 +96,15 @@ const LOOP_WRAP_LEAD_SECONDS = 0.2;
 const LOOP_WATCH_INTERVAL_MS = 100;
 /** How long the capture button reports the outcome of a capture before going back to idle. */
 const FRAME_CAPTURE_FEEDBACK_MS = 2000;
+const STALL_WATCH_INTERVAL_MS = 500;
+/**
+ * Long enough that a slow cold start prerolls before the watchdog reaches for it, short
+ * enough that a genuinely wedged pipeline recovers before the spinner reads as a hang.
+ */
+const STALL_WATCH_OPTIONS = {
+  graceMs: 3000,
+  maxRecoveries: 2,
+};
 
 const containerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLMediaElement | null>(null);
@@ -130,6 +140,8 @@ let mediaInfoRequest = 0;
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let showIdleTimer: ReturnType<typeof setTimeout> | undefined;
 let loopWatchTimer: ReturnType<typeof setInterval> | undefined;
+let stallWatchTimer: ReturnType<typeof setInterval> | undefined;
+let stallWatch = newStallWatch();
 let frameCaptureFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
 let lastProgressAt = -1;
 /**
@@ -144,10 +156,6 @@ let lastProgressAt = -1;
  * The attribute is dropped rather than kept alongside, because it would duplicate this start
  * on exactly one load — an element's first — and leave the first file opened in a process
  * taking a different path from every file after it. One path is easier to reason about.
- *
- * It is not, however, the cause of the spinner that hangs the first video of a fresh process.
- * That was the suspicion this removal was made on, and rebuilding disproved it: the hang
- * survives with the attribute gone.
  */
 let shouldAutoplayNextLoad = props.autoplay;
 
@@ -559,6 +567,39 @@ function stopLoopWatch() {
   loopWatchTimer = undefined;
 }
 
+function stopStallWatch() {
+  if (stallWatchTimer === undefined) return;
+  clearInterval(stallWatchTimer);
+  stallWatchTimer = undefined;
+}
+
+/** Watches for the frozen-clock stall while the element claims to be playing. */
+function startStallWatch() {
+  stopStallWatch();
+
+  stallWatchTimer = setInterval(() => {
+    const media = mediaRef.value;
+    if (!media) return;
+
+    const verdict = observePlayback(
+      stallWatch,
+      {
+        paused: media.paused,
+        ended: media.ended,
+        currentTime: media.currentTime,
+      },
+      STALL_WATCH_INTERVAL_MS,
+      STALL_WATCH_OPTIONS,
+    );
+
+    stallWatch = verdict.watch;
+
+    if (verdict.recover) {
+      rebuildWedgedPipeline(media);
+    }
+  }, STALL_WATCH_INTERVAL_MS);
+}
+
 /**
  * While looping, wrap fractionally before the end rather than letting the file finish.
  *
@@ -719,6 +760,16 @@ watch([isLooping, isPlaying], ([looping, playing]) => {
   stopLoopWatch();
 });
 
+// The stall this hunts reports `paused === false`, so `isPlaying` is exactly when to look.
+watch(isPlaying, (playing) => {
+  if (playing) {
+    startStallWatch();
+    return;
+  }
+
+  stopStallWatch();
+});
+
 // A new source is a different file: reset everything derived from the old one. The instance
 // itself is kept across files so that fullscreen survives; see `shouldAutoplayNextLoad`.
 watch(() => props.src, () => {
@@ -736,6 +787,9 @@ watch(() => props.src, () => {
   // inheriting a manual unmute from the previous one. Volume is deliberately not reset —
   // carrying it across files is what a player should do.
   isMuted.value = props.muted;
+
+  // A new file gets a fresh recovery budget; the old file's stalls say nothing about it.
+  stallWatch = newStallWatch();
 
   // The details belong to the file that has just been replaced. Whether the panel is open is
   // a preference about the player, though, so that survives — it just refills for the new file.
@@ -775,6 +829,7 @@ onBeforeUnmount(() => {
   clearTimeout(showIdleTimer);
   clearTimeout(frameCaptureFeedbackTimer);
   stopLoopWatch();
+  stopStallWatch();
 
   if (typeof document !== 'undefined') {
     document.removeEventListener('fullscreenchange', syncFullscreenState);
