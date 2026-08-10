@@ -1324,6 +1324,12 @@
     "cancel": "Cancel",
     "selectFolder": "Select folder",
     "parentDirectory": "Parent directory",
-    "listingFailed": "This folder could not be read"
+    "listingFailed": "This folder could not be read",
+    "defaultSaveTitle": "Save",
+    "save": "Save",
+    "replace": "Replace",
+    "replaceWarning": "A file with this name exists",
+    "fileNamePlaceholder": "File name",
+    "showHiddenFiles": "Show hidden files"
   }
 }

@@ -15,8 +15,8 @@ use std::io::Write;
 
 pub const FILE_PICKER_CLI_FLAG: &str = "--file-picker";
 
-/// What the caller asked for, reduced to what the skeleton honors. Filters and save-mode
-/// are accepted upstream and not yet surfaced here.
+/// What the caller asked for, reduced to what the picker honors. Filters are accepted
+/// upstream and not yet surfaced here.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PickerRequest {
@@ -26,6 +26,10 @@ pub struct PickerRequest {
     /// Picking a directory rather than files.
     pub directory: bool,
     pub current_folder: Option<String>,
+    /// Choosing a destination that may not exist yet, rather than an existing file. Brings
+    /// the filename field, and existing names demand an explicit replace.
+    pub save: bool,
+    pub suggested_name: Option<String>,
 }
 
 /// The request this process was launched for; `None` in every other kind of session.

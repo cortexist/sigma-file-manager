@@ -18,6 +18,23 @@ use crate::xdg_associations;
 const DESKTOP_FILE_NAME: &str = "sigma-file-manager.desktop";
 const DIRECTORY_MIME: &str = "inode/directory";
 
+/// "Show in Folder" never consults MIME defaults: browsers call the `FileManager1` DBus name
+/// and whoever activation resolves it to wins. A user-level service file outranks the system
+/// file manager's, which is what actually redirects those clicks here.
+const FILE_MANAGER1_SERVICE: &str = "dbus-1/services/org.freedesktop.FileManager1.service";
+
+fn file_manager1_service_path() -> Result<PathBuf, String> {
+    Ok(xdg_associations::data_home()?.join(FILE_MANAGER1_SERVICE))
+}
+
+fn file_manager1_service_contents(executable: &str) -> String {
+    format!(
+        "[D-BUS Service]\n\
+         Name=org.freedesktop.FileManager1\n\
+         Exec={executable} --sigma-autostart\n"
+    )
+}
+
 fn desktop_entry_contents(executable: &str) -> String {
     format!(
         "[Desktop Entry]\n\
@@ -61,9 +78,32 @@ pub fn set_default(enabled: bool) -> Result<bool, String> {
             &desktop_entry_contents(&executable.to_string_lossy()),
         )?;
         xdg_associations::run_xdg_mime(&["default", DESKTOP_FILE_NAME, DIRECTORY_MIME])?;
+
+        let service_path = file_manager1_service_path()?;
+        if let Some(parent) = service_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
+        }
+        std::fs::write(
+            &service_path,
+            file_manager1_service_contents(&executable.to_string_lossy()),
+        )
+        .map_err(|error| format!("Failed to write {}: {error}", service_path.display()))?;
     } else {
         xdg_associations::remove_association(DESKTOP_FILE_NAME, &[DIRECTORY_MIME])?;
         xdg_associations::remove_desktop_entry(DESKTOP_FILE_NAME)?;
+
+        let service_path = file_manager1_service_path()?;
+        match std::fs::remove_file(&service_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "Failed to remove {}: {error}",
+                    service_path.display()
+                ))
+            }
+        }
     }
 
     let now_default = is_default()?;

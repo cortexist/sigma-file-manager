@@ -17,6 +17,7 @@ mod dir_size;
 mod dir_watcher;
 mod extensions;
 mod file_chooser_registration;
+mod file_manager1;
 mod file_operations;
 mod file_picker;
 mod global_search;
@@ -387,17 +388,51 @@ fn get_launch_context() -> LaunchContext {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // A portal backend must not consume the portals it provides: with GTK_USE_PORTAL=1 in the
+    // session environment, any GTK dialog in any sigma process would route through
+    // xdg-desktop-portal back into sigma itself. Forced off before GTK reads the environment.
+    #[cfg(target_os = "linux")]
+    std::env::set_var("GTK_USE_PORTAL", "0");
+
+    let raw_args: Vec<String> = std::env::args().collect();
+
+    // The portal-service launch serves file dialogs and nothing else: claim the backend name,
+    // spawn a picker process per request — no Tauri, no GTK, no windows, no webviews. An
+    // application asking for a file dialog must never boot a file-manager session; this is
+    // the same standalone rule the viewer and picker processes follow. Never returns.
+    #[cfg(target_os = "linux")]
+    if portal_file_chooser::launched_as_portal_service(&raw_args) {
+        portal_file_chooser::run_service();
+    }
+
     // A picker process is one dialog answering one request; the single-instance lock must not
     // apply, or a second concurrent dialog would forward its request to the first and exit.
-    let picker_request =
-        file_picker::picker_request_from_args(&std::env::args().collect::<Vec<_>>());
+    let picker_request = file_picker::picker_request_from_args(&raw_args);
     let is_picker_process = picker_request.is_some();
+
+    // The portal role is claimed here, before any GTK or webview work, because
+    // xdg-desktop-portal blocks its own startup waiting for this bus name (25-second
+    // activation timeout, after which the session simply has no FileChooser), while GTK init
+    // below can synchronously call into the still-blocked xdg-desktop-portal. Claiming first
+    // breaks the cycle; a duplicate claim from a doomed second instance only queues and
+    // evaporates with the process, since the name is requested without replacement flags.
+    #[cfg(target_os = "linux")]
+    if !is_picker_process
+        && standalone_viewer::media_file_from_args(
+            &raw_args,
+            std::env::current_dir().ok().as_deref(),
+        )
+        .is_none()
+    {
+        portal_file_chooser::start();
+    }
 
     let builder = tauri::Builder::default()
         .manage(startup_storage_bootstrap::StartupStorageBootstrapState::default())
         .manage(BackgroundResidency::default())
         .manage(QuickViewOwnership::default())
-        .manage(file_picker::PickerSession(picker_request));
+        .manage(file_picker::PickerSession(picker_request))
+        .manage(file_manager1::PendingShowRequests::default());
 
     let builder = if is_picker_process {
         builder
@@ -499,6 +534,7 @@ pub fn run() {
             system_tray::update_tray_shortcut,
             dismiss_main_window_to_background,
             exit_if_no_windows_left,
+            file_manager1::drain_show_in_folder_requests,
             file_picker::file_picker_finish,
             file_picker::file_picker_request,
             set_quick_view_ownership,
@@ -749,11 +785,12 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         standalone_viewer::adopt_process_identity("sigma-quick-view");
     }
 
-    // The portal backend belongs to the session: the process that is resident, single, and
-    // able to spawn picker processes on demand.
+    // FileManager1 — the interface behind every "Show in Folder" click — belongs to the
+    // process that is resident and single. (The portal file-chooser role is claimed much
+    // earlier, in `run`, before GTK init; see the note there.)
     #[cfg(target_os = "linux")]
     if !is_standalone_viewer {
-        portal_file_chooser::start();
+        file_manager1::start(app.handle().clone());
     }
 
     standalone_viewer::create_window_from_config(

@@ -26,6 +26,7 @@ import { useArchiveJobsStore } from '@/stores/runtime/archive-jobs';
 import { useDeleteJobsStore } from '@/stores/runtime/delete-jobs';
 import { useCopyMoveJobsStore } from '@/stores/runtime/copy-move-jobs';
 import { OPEN_MEDIA_REQUEST_EVENT, useQuickViewStore } from '@/stores/runtime/quick-view';
+import { getParentDirectory } from '@/utils/normalize-path';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -49,6 +50,8 @@ import { warmPathComparisonVolumeCache } from '@/utils/path-comparison-volume-ca
 import { preloadNavigatorRoute } from '@/utils/open-navigator-directory';
 
 const APP_LAUNCH_ARGS_EVENT = 'app-launch-args';
+/** "Show in Folder" requests from other applications, via the FileManager1 DBus service. */
+const SHOW_IN_FOLDER_EVENT = 'file-manager:show';
 const STARTUP_BACKGROUND_REFRESH_TIMEOUT_MS = 1500;
 const STARTUP_DIR_ENTRY_TIMEOUT_MS = 2000;
 
@@ -75,6 +78,7 @@ export function useInit() {
   useClipboardFocusSync();
   let appLaunchArgsUnlisten: UnlistenFn | null = null;
   let openMediaRequestUnlisten: UnlistenFn | null = null;
+  let showInFolderUnlisten: UnlistenFn | null = null;
   let auxiliaryWindowLifecycleUnlisten: UnlistenFn | null = null;
   const backgroundTasks = new Set<Promise<void>>();
 
@@ -262,6 +266,74 @@ export function useInit() {
   function unregisterOpenMediaRequestListener() {
     openMediaRequestUnlisten?.();
     openMediaRequestUnlisten = null;
+  }
+
+  interface ShowInFolderRequest {
+    items: string[];
+    folders: string[];
+  }
+
+  /**
+   * "Show in Folder" from another application — the `FileManager1` DBus interface, routed
+   * through the backend. Items are revealed the way CLI file arguments are: the folder opens
+   * with the file selected. This is a click that expects a window, so the main window shows
+   * even from background residency.
+   */
+  async function applyShowInFolderRequest(request: ShowInFolderRequest) {
+    const targets = [
+      ...request.folders.map(path => ({
+        directoryPath: path,
+        focusPath: null as string | null,
+      })),
+      ...request.items.map(path => ({
+        directoryPath: getParentDirectory(path) ?? path,
+        focusPath: path,
+      })),
+    ];
+
+    if (targets.length === 0) {
+      return;
+    }
+
+    await router.push({ name: 'navigator' });
+
+    for (const target of targets) {
+      await workspacesStore.openOrFocusTabGroup(target.directoryPath);
+
+      if (target.focusPath) {
+        workspacesStore.setPendingLaunchReveal(target.directoryPath, target.focusPath);
+      }
+    }
+
+    const currentWindow = getCurrentWindow();
+    await currentWindow.show();
+    await currentWindow.setFocus();
+  }
+
+  async function registerShowInFolderListener() {
+    if (showInFolderUnlisten || !isMainWebviewWindow()) {
+      return;
+    }
+
+    showInFolderUnlisten = await listen<ShowInFolderRequest>(
+      SHOW_IN_FOLDER_EVENT,
+      async (event) => {
+        await applyShowInFolderRequest(event.payload);
+      },
+    );
+
+    // Anything that arrived while this window was still booting — a DBus-activated cold
+    // start, most likely — is waiting in the backend's queue.
+    const pending = await invoke<ShowInFolderRequest[]>('drain_show_in_folder_requests');
+
+    for (const request of pending) {
+      await applyShowInFolderRequest(request);
+    }
+  }
+
+  function unregisterShowInFolderListener() {
+    showInFolderUnlisten?.();
+    showInFolderUnlisten = null;
   }
 
   function runInBackground(task: () => Promise<void>, errorMessage: string) {
@@ -477,6 +549,7 @@ export function useInit() {
       registerShortcutHandlers();
       void registerAppLaunchArgsListener();
       void registerOpenMediaRequestListener();
+      void registerShowInFolderListener();
     }
   });
 
@@ -485,6 +558,7 @@ export function useInit() {
       unregisterShortcutHandlers();
       unregisterAppLaunchArgsListener();
       unregisterOpenMediaRequestListener();
+      unregisterShowInFolderListener();
     }
 
     appWindowStore.disposeMainWindowStateListeners();

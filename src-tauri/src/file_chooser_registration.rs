@@ -15,10 +15,10 @@
 //!      compositor, say — must keep whatever routing they had. When the file has to be
 //!      created from scratch, `default=*` is written alongside, preserving the "any installed
 //!      backend" behavior the absence of the file meant.
-//!   3. A DBus activation service file, so a dialog request can start sigma when it is not
-//!      already running. The exec carries `--sigma-autostart`, the existing start-quietly
-//!      flag; whether the main window stays hidden then follows the user's own startup
-//!      setting, which is the closest honest behavior without inventing a new launch mode.
+//!   3. A DBus activation service file, so a dialog request can start the backend when it is
+//!      not already running. The exec carries `--sigma-portal-service`: the activated process
+//!      claims the name and serves pickers headlessly — no windows, no webviews — so an
+//!      application's file dialog never boots a file-manager session.
 //!
 //! The portal daemon reads all of this at startup, so applying either direction ends with a
 //! best-effort `systemctl --user try-restart xdg-desktop-portal`.
@@ -80,7 +80,8 @@ mod imp {
         format!(
             "[D-BUS Service]\n\
              Name={BUS_NAME}\n\
-             Exec={executable} --sigma-autostart\n"
+             Exec={executable} {}\n",
+            crate::portal_file_chooser::PORTAL_SERVICE_CLI_FLAG
         )
     }
 
@@ -273,6 +274,12 @@ mod imp {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn the_activation_service_launches_the_headless_portal_service() {
+            let contents = dbus_service_contents("/usr/bin/sigma-file-manager");
+            assert!(contents.contains("Exec=/usr/bin/sigma-file-manager --sigma-portal-service\n"));
+        }
 
         #[test]
         fn a_missing_conf_is_created_with_the_wildcard_default() {
