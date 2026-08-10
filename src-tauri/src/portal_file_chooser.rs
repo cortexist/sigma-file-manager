@@ -313,30 +313,90 @@ pub fn start() {
     });
 }
 
-/// The headless portal service: claims the backend name and serves dialogs for the life of
-/// the session. The picker process a request spawns is the only UI this process ever causes.
+/// The headless portal service: claims the backend name and serves dialogs. The picker
+/// process a request spawns is the only UI this process ever causes.
 ///
-/// Blocks its caller forever, so nothing after it in `run()` — Tauri, GTK, windows — ever
-/// happens. `eprintln!` rather than `log`: no logger is initialized on this path, and stderr
-/// is what the journal captures for a DBus-activated unit.
+/// Blocks its caller until the service has no reason to exist, so nothing after it in
+/// `run()` — Tauri, GTK, windows — ever happens. `eprintln!` rather than `log`: no logger is
+/// initialized on this path, and stderr is what the journal captures for a DBus-activated
+/// unit.
 pub fn run_service() -> ! {
     // Its own process identity, like the viewer and picker: status indicators must not
     // report the file manager running when only the dialog service is resident.
     crate::standalone_viewer::adopt_process_identity("sigma-portal");
 
-    match tauri::async_runtime::block_on(build_connection()) {
-        Ok(_connection) => {
-            eprintln!("File chooser portal service serving as {BUS_NAME}");
-            // Held for the life of the session; dropping it would drop the bus name.
-            tauri::async_runtime::block_on(std::future::pending::<()>());
-            unreachable!("a pending future never resolves");
-        }
+    let exit_code = tauri::async_runtime::block_on(serve());
+    std::process::exit(exit_code);
+}
+
+/// Serves until the bus name is lost or the connection dies, then returns the exit code.
+///
+/// Exiting instead of lingering is what keeps the fleet clean: a service that does not own
+/// the name is useless (observed 2026-08-10 — ownership moved while the old service parked
+/// forever, one 50 MB orphan per activation), and DBus activation starts a fresh one the
+/// next time a dialog needs it.
+async fn serve() -> i32 {
+    use futures_util::StreamExt;
+    use zbus::fdo::{DBusProxy, RequestNameFlags, RequestNameReply};
+
+    let connection = zbus::connection::Builder::session()
+        .and_then(|builder| builder.serve_at(OBJECT_PATH, FileChooserBackend));
+    let connection = match connection {
+        Ok(builder) => builder.build().await,
+        Err(error) => Err(error),
+    };
+    let connection = match connection {
+        Ok(connection) => connection,
         Err(error) => {
             eprintln!("File chooser portal service not started: {error}");
-            // A nonzero exit ends the activation attempt; the next dialog request retries.
-            std::process::exit(1);
+            return 1;
+        }
+    };
+
+    // Subscribed before the claim so a loss in between is never missed.
+    let mut name_lost = match DBusProxy::new(&connection).await {
+        Ok(proxy) => match proxy.receive_name_lost().await {
+            Ok(stream) => stream,
+            Err(error) => {
+                eprintln!("File chooser portal service not started: {error}");
+                return 1;
+            }
+        },
+        Err(error) => {
+            eprintln!("File chooser portal service not started: {error}");
+            return 1;
+        }
+    };
+
+    match connection
+        .request_name_with_flags(BUS_NAME, RequestNameFlags::DoNotQueue.into())
+        .await
+    {
+        Ok(RequestNameReply::PrimaryOwner) => {}
+        Ok(_) => {
+            // A resident session already serves dialogs; this activation was redundant.
+            eprintln!("File chooser portal service: {BUS_NAME} already has an owner");
+            return 0;
+        }
+        Err(error) => {
+            eprintln!("File chooser portal service failed to claim {BUS_NAME}: {error}");
+            return 1;
         }
     }
+
+    eprintln!("File chooser portal service serving as {BUS_NAME}");
+
+    while let Some(signal) = name_lost.next().await {
+        if let Ok(args) = signal.args() {
+            if args.name.as_str() == BUS_NAME {
+                eprintln!("File chooser portal service lost {BUS_NAME}; exiting for reactivation");
+                return 0;
+            }
+        }
+    }
+
+    eprintln!("File chooser portal service bus connection closed; exiting");
+    1
 }
 
 async fn build_connection() -> zbus::Result<zbus::Connection> {
