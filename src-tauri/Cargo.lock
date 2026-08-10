@@ -5407,6 +5407,7 @@ dependencies = [
  "file_icon_provider",
  "flate2",
  "futures-util",
+ "glib 0.18.5",
  "globset",
  "gstreamer",
  "gstreamer-app",

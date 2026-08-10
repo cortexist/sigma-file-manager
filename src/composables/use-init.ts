@@ -252,7 +252,9 @@ export function useInit() {
     openMediaRequestUnlisten = await listen<{ path: string }>(
       OPEN_MEDIA_REQUEST_EVENT,
       async (event) => {
-        await quickViewStore.openFileFromMainWindow(event.payload.path);
+        // The external caller becomes quick view's owner: this viewing session outlives the
+        // main window, which only sweeps content it put up itself.
+        await quickViewStore.openFileFromMainWindow(event.payload.path, null, 'external');
       },
     );
   }

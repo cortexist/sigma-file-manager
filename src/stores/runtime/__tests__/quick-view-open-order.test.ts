@@ -45,9 +45,11 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: async () => vi.fn() }));
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ label: 'main' }),
 }));
+const invokeMock = vi.fn(async () => undefined);
+
 vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: (value: string) => value,
-  invoke: async () => undefined,
+  invoke: (...args: unknown[]) => invokeMock(...(args as [])),
 }));
 vi.mock('@/components/ui/toaster', () => ({
   toast: { custom: vi.fn() },
@@ -61,6 +63,7 @@ describe('quick view open ordering', () => {
   beforeEach(() => {
     order.length = 0;
     setActivePinia(createPinia());
+    invokeMock.mockClear();
     hasAuxiliaryWindowBeenShownMock.mockReset();
     markAuxiliaryWindowShownMock.mockReset();
   });
@@ -93,5 +96,26 @@ describe('quick view open ordering', () => {
     await useQuickViewStore().openFileFromMainWindow(VIDEO);
 
     expect(order).toEqual(['setTitle', 'center', 'load', 'show', 'setFocus']);
+  });
+
+  /**
+   * Quick view belongs to its last caller. The backend keeps the answer because that is
+   * where closing the main window decides what to sweep: its own content goes with it, a
+   * viewing session another application started does not.
+   */
+  it('records who owns the content on every open', async () => {
+    hasAuxiliaryWindowBeenShownMock.mockReturnValue(true);
+    const { useQuickViewStore } = await import('@/stores/runtime/quick-view');
+    const store = useQuickViewStore();
+
+    await store.openFileFromMainWindow(VIDEO);
+    expect(invokeMock).toHaveBeenCalledWith('set_quick_view_ownership', { external: false });
+
+    await store.openFileFromMainWindow(VIDEO, null, 'external');
+    expect(invokeMock).toHaveBeenLastCalledWith('set_quick_view_ownership', { external: true });
+
+    // Sigma opening something afterwards takes the window back.
+    await store.openFileFromMainWindow(VIDEO);
+    expect(invokeMock).toHaveBeenLastCalledWith('set_quick_view_ownership', { external: false });
   });
 });

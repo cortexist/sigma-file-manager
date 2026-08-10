@@ -76,7 +76,7 @@ fn desktop_entry_contents(executable: &str) -> String {
          Categories=AudioVideo;Viewer;Graphics;\n\
          MimeType={mimes};\n\
          StartupNotify=true\n\
-         StartupWMClass=sigma-file-manager\n",
+         StartupWMClass=sigma-quick-view\n",
         exec = xdg_associations::quote_exec(executable),
         mimes = MEDIA_MIME_TYPES.join(";"),
     )

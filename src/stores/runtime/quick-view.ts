@@ -235,6 +235,13 @@ export const useQuickViewStore = defineStore('quickView', () => {
   async function openFileFromMainWindow(
     path: string,
     siblingPaths?: string[] | null,
+    /**
+     * Who is putting this content up. Quick view belongs to its *last caller*: content opened
+     * from sigma's own browsing is swept when the main window closes, while content another
+     * application handed over survives it — sigma has no business closing a viewing session
+     * it did not start. The backend keeps the answer because the sweep happens there.
+     */
+    caller: 'main' | 'external' = 'main',
   ): Promise<boolean> {
     const type = determineFileType(path);
 
@@ -242,6 +249,8 @@ export const useQuickViewStore = defineStore('quickView', () => {
       showUnsupportedFileToast(getFileName(path), 'quickView');
       return false;
     }
+
+    void invoke('set_quick_view_ownership', { external: caller === 'external' }).catch(() => {});
 
     const opened = await runAuxiliaryWindowTask('quick-view', async ({ window: quickWindow, isCurrent }) => {
       function loadFile() {

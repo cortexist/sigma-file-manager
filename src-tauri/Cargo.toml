@@ -129,6 +129,9 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Already in the tree via the GTK stack; used directly to give the standalone viewer its own
+# Wayland identity. See `standalone_viewer.rs`.
+glib = "0.18"
 gstreamer = "0.24.5"
 gstreamer-app = "0.24.5"
 gstreamer-video = "0.24.5"

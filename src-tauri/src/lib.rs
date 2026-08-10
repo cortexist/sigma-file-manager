@@ -53,19 +53,54 @@ const SIGMA_AUTOSTART_CLI_FLAG: &str = "--sigma-autostart";
 const AUXILIARY_WINDOW_RELEASE_EVENT: &str = "auxiliary-window:release";
 const PRINT_VIEW_NATIVE_CLOSE_REQUESTED_EVENT: &str = "print-view:native-close-requested";
 
-/// Reasons the app should outlive its last window.
+/// Set while the user has dismissed the main window to the background — its own titlebar
+/// close button, or an autostart configured to begin hidden. A resident session survives the
+/// nothing-visible exit checks; the launcher, whose next activation focuses the main window,
+/// is the way back. Ending the session for real is the window manager's close (the sweep in
+/// the `CloseRequested` handler), which never sets this.
+#[derive(Default)]
+struct BackgroundResidency(std::sync::atomic::AtomicBool);
+
+impl BackgroundResidency {
+    fn set(&self, resident: bool) {
+        self.0.store(resident, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn active(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// Reasons the app should outlive its last window; the lifetime rule lives in one place
+/// instead of being re-derived at each close site.
 ///
-/// Nothing returns `true` yet, and that is deliberate: the app now quits once the user closes
-/// everything. It exists so the lifetime rule lives in one place instead of being re-derived
-/// at each close site.
-///
-/// The intended first caller is a mini player — keeping audio or video going after the windows
-/// are gone, surfaced from the tray or a status bar. Anything else that must outlive the
-/// windows (a running copy job, say) belongs here too. Whatever registers a reason is also
-/// responsible for giving the user a way back to a window, since quitting will no longer
-/// happen on its own.
-fn should_keep_running_without_windows(_app: &tauri::AppHandle) -> bool {
-    false
+/// Background residency is the first reason: the main window dismissed by its own close
+/// button rather than by the window manager. A future mini player — audio continuing after
+/// the windows are gone — belongs here too, as would a running copy job. Whatever registers
+/// a reason is also responsible for giving the user a way back to a window, since quitting
+/// will no longer happen on its own.
+fn should_keep_running_without_windows(app: &tauri::AppHandle) -> bool {
+    app.state::<BackgroundResidency>().active()
+}
+
+/// The main window's own close button: hide, and stay resident for an instant next open.
+/// The window manager's close on the same window ends the whole session instead, which
+/// keeps the two gestures the user has distinct — dismiss versus quit.
+#[tauri::command]
+fn dismiss_main_window_to_background(app: tauri::AppHandle) {
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.hide();
+    }
+
+    // Dismissing sigma dismisses what sigma put up — its own quick view content goes to the
+    // background with it. A viewer serving another application's file is not sigma's to hide.
+    if !app.state::<QuickViewOwnership>().is_external() {
+        if let Some(quick_view) = app.get_webview_window("quick-view") {
+            let _ = quick_view.hide();
+        }
+    }
+
+    app.state::<BackgroundResidency>().set(true);
 }
 
 /// Whether closing `closing_label` leaves the user with nothing, so the app should quit.
@@ -97,10 +132,45 @@ where
         .any(|(label, is_visible)| !closing_labels.contains(&label.as_ref()) && is_visible)
 }
 
-/// Every window the main session owns. Closing the main window closes all of them, which is
-/// also why they are all excluded from the exit check at that moment: each was hidden a
+/// Every window the main session can own. Closing the main window closes the owned ones,
+/// which is also why they are excluded from the exit check at that moment: each was hidden a
 /// breath ago and may still report itself visible.
 const SESSION_WINDOW_LABELS: [&str; 3] = ["main", "quick-view", "print-view"];
+
+/// Quick view belongs to its *last caller*. Content sigma's own browsing put up is the main
+/// window's to sweep; content another application handed over is a viewing session sigma did
+/// not start and must not end — the viewer stays, and the process stays with it, when the
+/// main window closes. Ownership flips on every load, so whoever spoke last owns the window.
+#[derive(Default)]
+struct QuickViewOwnership {
+    external: std::sync::atomic::AtomicBool,
+}
+
+impl QuickViewOwnership {
+    fn set_external(&self, external: bool) {
+        self.external
+            .store(external, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn is_external(&self) -> bool {
+        self.external.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+#[tauri::command]
+fn set_quick_view_ownership(app: tauri::AppHandle, external: bool) {
+    app.state::<QuickViewOwnership>().set_external(external);
+}
+
+/// Which windows closing the main window takes with it: its own satellites, never a viewer
+/// currently serving another application.
+fn session_closing_labels(quick_view_owned_externally: bool) -> &'static [&'static str] {
+    if quick_view_owned_externally {
+        &["main", "print-view"]
+    } else {
+        &SESSION_WINDOW_LABELS
+    }
+}
 
 /// Lets the frontend re-run the check after hiding a window itself.
 ///
@@ -315,6 +385,8 @@ fn get_launch_context() -> LaunchContext {
 pub fn run() {
     tauri::Builder::default()
         .manage(startup_storage_bootstrap::StartupStorageBootstrapState::default())
+        .manage(BackgroundResidency::default())
+        .manage(QuickViewOwnership::default())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             #[cfg(windows)]
             {
@@ -401,7 +473,9 @@ pub fn run() {
             app_updater::app_updates_managed_externally,
             system_tray::reload_webview,
             system_tray::update_tray_shortcut,
+            dismiss_main_window_to_background,
             exit_if_no_windows_left,
+            set_quick_view_ownership,
             dir_reader::read_dir,
             dir_reader::read_dir_with_timeout,
             dir_reader::get_dir_entry_with_timeout,
@@ -547,13 +621,17 @@ pub fn run() {
                     let _ = window.hide();
                     api.prevent_close();
 
-                    // The session's satellites go with their owner. A viewer window opened
-                    // through this session — possibly sitting forgotten on another workspace
-                    // after an external open — would otherwise keep the app running after the
-                    // user has dismissed it, with a launcher click resurrecting the main
-                    // window: an app that cannot be closed. The standalone viewer is not
-                    // affected; that session has no main window to close.
-                    for label in &SESSION_WINDOW_LABELS[1..] {
+                    // The satellites this session owns go with it — but only those. A quick
+                    // view serving another application's file is that caller's viewing
+                    // session, not sigma's to end; it stays up, and the visible-window rule
+                    // below keeps the process alive to serve it. See `QuickViewOwnership`.
+                    let quick_view_external = window
+                        .app_handle()
+                        .state::<QuickViewOwnership>()
+                        .is_external();
+                    let session_labels = session_closing_labels(quick_view_external);
+
+                    for label in &session_labels[1..] {
                         if let Some(auxiliary) = window.app_handle().get_webview_window(label) {
                             let _ = auxiliary.hide();
                         }
@@ -564,11 +642,26 @@ pub fn run() {
 
                 let own_label = [window.label()];
                 let closing_labels: &[&str] = if window.label() == "main" {
-                    &SESSION_WINDOW_LABELS
+                    session_closing_labels(
+                        window
+                            .app_handle()
+                            .state::<QuickViewOwnership>()
+                            .is_external(),
+                    )
                 } else {
                     &own_label
                 };
                 exit_if_last_window_closed(window.app_handle(), closing_labels);
+            }
+            // The main window coming back on screen ends residency, whichever path showed it —
+            // launcher relaunch, tray, launch args — since all of them focus it.
+            if let tauri::WindowEvent::Focused(true) = event {
+                if window.label() == "main" {
+                    window
+                        .app_handle()
+                        .state::<BackgroundResidency>()
+                        .set(false);
+                }
             }
             if let tauri::WindowEvent::Destroyed = event {
                 if window.label() == "main" {
@@ -616,6 +709,12 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     app.manage(standalone_viewer::StandaloneLaunchFile(
         standalone_media_file.map(|path| path.to_string_lossy().into_owned()),
     ));
+
+    // Before the window exists, so its surface is stamped with the viewer's own identity.
+    if is_standalone_viewer {
+        standalone_viewer::adopt_viewer_identity();
+    }
+
     standalone_viewer::create_window_from_config(
         app.handle(),
         if is_standalone_viewer {
@@ -645,6 +744,11 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         if let Some(main_window) = app.get_webview_window("main") {
             let _ = main_window.show();
         }
+    } else {
+        // An autostart that begins hidden is resident from its first breath. Without this the
+        // first quick-view open-and-close would trip the nothing-visible exit and quietly end
+        // a session the user set up to wait in the background.
+        app.state::<BackgroundResidency>().set(true);
     }
 
     #[cfg(feature = "devtools")]
@@ -804,6 +908,33 @@ mod window_lifetime_tests {
         assert!(should_exit_after_close(
             windows(&[("main", true)]),
             &["main"],
+            false
+        ));
+    }
+
+    /// Quick view belongs to its last caller: sigma sweeps its own content on close, but a
+    /// viewer serving another application's file is left out of the sweep — and being left
+    /// out means a visible one keeps the process alive to serve it.
+    #[test]
+    fn an_externally_owned_viewer_is_not_swept_and_keeps_the_app_alive() {
+        let closing = super::session_closing_labels(true);
+
+        assert!(!closing.contains(&"quick-view"));
+        assert!(!should_exit_after_close(
+            windows(&[("main", true), ("quick-view", true)]),
+            closing,
+            false
+        ));
+    }
+
+    #[test]
+    fn a_session_owned_viewer_is_swept_with_the_main_window() {
+        let closing = super::session_closing_labels(false);
+
+        assert!(closing.contains(&"quick-view"));
+        assert!(should_exit_after_close(
+            windows(&[("main", true), ("quick-view", true)]),
+            closing,
             false
         ));
     }

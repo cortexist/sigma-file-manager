@@ -5,6 +5,7 @@ Copyright © 2026 Cortexist, LLC (modifications). All rights reserved.
 -->
 
 <script setup lang="ts">
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MinusIcon, SquareIcon, XIcon } from '@lucide/vue';
 import { useI18n } from 'vue-i18n';
@@ -60,11 +61,22 @@ function closeWindow() {
     return;
   }
 
-  // `close()` rather than `hide()`, even though the window does end up merely hidden: this
-  // asks Tauri to close it, which fires `CloseRequested` on the Rust side, and that handler
-  // owns both the hiding and the decision about whether any window is left. Hiding directly
-  // from here skipped that decision entirely, so closing the last window from the app's own
-  // titlebar left the process running with nothing on screen.
+  /**
+   * The app's own close button and the window manager's close are two different gestures,
+   * and the main window keeps them distinct. This button *dismisses*: the window hides and
+   * the process stays resident in the background, so the next open — launcher, tray, another
+   * app handing over a file — is instant. The window manager's close (Super+Q, `wlr` kill)
+   * goes through `CloseRequested` on the Rust side instead, which ends the whole session.
+   * Residency is registered backend-side so the nothing-visible exit checks know the
+   * windowless process is deliberate rather than leaked.
+   */
+  if (appWindow.label === 'main') {
+    void invoke('dismiss_main_window_to_background');
+    return;
+  }
+
+  // Any other window's close button asks Tauri to close it, so the `CloseRequested` handler
+  // owns both the hiding and the decision about whether anything is left on screen.
   void appWindow.close();
 }
 </script>
