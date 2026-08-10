@@ -178,6 +178,7 @@ export const useSettingsStore = defineStore('settings', () => {
       { default: ExtensionsListSection },
       { default: DefaultFileManagerSection },
       { default: DefaultMediaViewerSection },
+      { default: DefaultFileChooserSection },
     ] = await Promise.all([
       import('@/modules/settings/ui/categories/general/language.vue'),
       import('@/modules/settings/ui/categories/general/date-time.vue'),
@@ -211,6 +212,7 @@ export const useSettingsStore = defineStore('settings', () => {
       import('@/modules/settings/ui/categories/extensions/extensions-list.vue'),
       import('@/modules/settings/ui/categories/experimental/default-file-manager.vue'),
       import('@/modules/settings/ui/categories/experimental/default-media-viewer.vue'),
+      import('@/modules/settings/ui/categories/experimental/default-file-chooser.vue'),
     ]);
 
     allSections.value = [
@@ -440,6 +442,13 @@ export const useSettingsStore = defineStore('settings', () => {
         titleKey: 'settings.experimental.defaultMediaViewer.title',
         tags: 'settingsTags.experimental',
         component: markRaw(DefaultMediaViewerSection),
+        category: 'experimental',
+      },
+      {
+        key: 'defaultFileChooser',
+        titleKey: 'settings.experimental.defaultFileChooser.title',
+        tags: 'settingsTags.experimental',
+        component: markRaw(DefaultFileChooserSection),
         category: 'experimental',
       },
     ];

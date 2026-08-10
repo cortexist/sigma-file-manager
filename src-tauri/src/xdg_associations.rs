@@ -23,14 +23,14 @@ fn home_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "HOME is not set, so the desktop entry has nowhere to live".to_string())
 }
 
-fn data_home() -> Result<PathBuf, String> {
+pub fn data_home() -> Result<PathBuf, String> {
     match std::env::var_os("XDG_DATA_HOME") {
         Some(value) if !value.is_empty() => Ok(PathBuf::from(value)),
         _ => Ok(home_dir()?.join(".local/share")),
     }
 }
 
-fn config_home() -> Result<PathBuf, String> {
+pub fn config_home() -> Result<PathBuf, String> {
     match std::env::var_os("XDG_CONFIG_HOME") {
         Some(value) if !value.is_empty() => Ok(PathBuf::from(value)),
         _ => Ok(home_dir()?.join(".config")),
@@ -52,7 +52,25 @@ pub fn executable_path() -> Result<PathBuf, String> {
             return Ok(PathBuf::from(appimage));
         }
     }
-    std::env::current_exe().map_err(|error| format!("Failed to locate the executable: {error}"))
+
+    let path = std::env::current_exe()
+        .map_err(|error| format!("Failed to locate the executable: {error}"))?;
+
+    // A binary replaced on disk while this process runs — an update, a dev install — makes
+    // `/proc/self/exe` read "…/name (deleted)". Anything that spawns or registers that path
+    // gets ENOENT, silently. The path minus the marker is the *current* installed binary,
+    // which is exactly what a spawn or an association should be using anyway.
+    Ok(strip_deleted_marker(path))
+}
+
+fn strip_deleted_marker(path: PathBuf) -> PathBuf {
+    match path
+        .to_str()
+        .and_then(|text| text.strip_suffix(" (deleted)"))
+    {
+        Some(stripped) => PathBuf::from(stripped),
+        None => path,
+    }
 }
 
 /// Quotes an `Exec=` program per the desktop entry spec, which needs it for
@@ -230,6 +248,22 @@ mod tests {
 
     const ENTRY: &str = "sigma-file-manager.desktop";
     const DIRECTORY: [&str; 1] = ["inode/directory"];
+
+    /// A resident session outliving an app update reads its own path as "… (deleted)"; the
+    /// picker spawns and desktop registrations must get the living binary instead.
+    #[test]
+    fn a_replaced_binary_resolves_to_its_current_path() {
+        assert_eq!(
+            strip_deleted_marker(PathBuf::from(
+                "/home/z/.local/bin/sigma-file-manager (deleted)"
+            )),
+            PathBuf::from("/home/z/.local/bin/sigma-file-manager")
+        );
+        assert_eq!(
+            strip_deleted_marker(PathBuf::from("/home/z/.local/bin/sigma-file-manager")),
+            PathBuf::from("/home/z/.local/bin/sigma-file-manager")
+        );
+    }
 
     #[test]
     fn a_plain_path_is_left_alone() {

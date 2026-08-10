@@ -16,6 +16,7 @@ mod dir_reader;
 mod dir_size;
 mod dir_watcher;
 mod extensions;
+mod file_chooser_registration;
 mod file_operations;
 mod file_picker;
 mod global_search;
@@ -458,7 +459,10 @@ pub fn run() {
             use tauri_plugin_window_state::StateFlags;
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
-                .with_denylist(&["quick-view"])
+                // A dialog's size is a design decision, not a preference to remember: the
+                // picker once ran tiled, the plugin memorized the tile's dimensions, and
+                // every floating dialog after that restored as a full-height tower.
+                .with_denylist(&["quick-view", "file-picker"])
                 .build()
         })
         .plugin(tauri_plugin_opener::init())
@@ -484,6 +488,9 @@ pub fn run() {
             media_viewer_registration::media_viewer_registration_available,
             media_viewer_registration::is_default_media_viewer,
             media_viewer_registration::set_default_media_viewer,
+            file_chooser_registration::file_chooser_registration_available,
+            file_chooser_registration::is_default_file_chooser,
+            file_chooser_registration::set_default_file_chooser,
             default_file_manager::set_default_file_manager,
             app_updater::check_for_updates,
             app_updater::download_release_installer,

@@ -432,6 +432,10 @@
       "defaultMediaViewer": {
         "title": "Set Quick View as the default media viewer",
         "description": "Opens images, videos, and audio from other applications in a standalone Quick View window, by registering a desktop entry and the XDG associations. Turning it off removes both; the system then falls back to its other installed handlers."
+      },
+      "defaultFileChooser": {
+        "title": "Set Sigma as the system file-open dialog",
+        "description": "Applications that request a file dialog through the desktop portal get Sigma's picker instead of the GTK one. Registers a portal backend and preference; turning it off restores the previous routing. Only affects apps that use the portal."
       }
     },
     "accentColor": {
