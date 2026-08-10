@@ -13,7 +13,7 @@ import {
 } from 'vue';
 import type { DirEntry } from '@/types/dir-entry';
 import normalizePath from '@/utils/normalize-path';
-import { computeVerticalVirtualRange } from '@/composables/use-vertical-virtual-list';
+import { buildSectionedVirtualRows, computeVerticalVirtualRange } from '@/composables/use-vertical-virtual-list';
 import { groupFileBrowserEntries } from '../file-browser-entry-groups';
 import { getFileBrowserGridGap } from '../utils/file-browser-layout-gaps';
 import { getElementContentBoxWidth } from '../utils/file-browser-content-box';
@@ -171,60 +171,6 @@ function createListRows(
   });
 }
 
-function createGridSectionRows(
-  section: GridSectionDefinition,
-  columnCount: number,
-  offset: number,
-  gridGap: number,
-): {
-  rows: FileBrowserVirtualRow[];
-  offset: number;
-} {
-  if (section.entries.length === 0) {
-    return {
-      rows: [],
-      offset,
-    };
-  }
-
-  const rows: FileBrowserVirtualRow[] = [
-    {
-      type: 'grid-section',
-      key: `grid-section:${section.key}`,
-      sectionKey: section.key,
-      variant: section.variant,
-      count: section.entries.length,
-      stickyIndex: section.stickyIndex,
-      start: offset,
-      size: GRID_SECTION_HEADER_HEIGHT + gridGap,
-    },
-  ];
-
-  offset += GRID_SECTION_HEADER_HEIGHT + gridGap;
-
-  for (let entryIndex = 0, rowIndex = 0; entryIndex < section.entries.length; entryIndex += columnCount, rowIndex += 1) {
-    const rowEntries = section.entries.slice(entryIndex, entryIndex + columnCount);
-
-    rows.push({
-      type: 'grid-items',
-      key: `grid-items:${section.key}:${rowIndex}:${rowEntries.map(entry => entry.path).join('|')}`,
-      sectionKey: section.key,
-      variant: section.variant,
-      entries: rowEntries,
-      rowIndex,
-      start: offset,
-      size: section.entryHeight + gridGap,
-    });
-
-    offset += section.entryHeight + gridGap;
-  }
-
-  return {
-    rows,
-    offset,
-  };
-}
-
 function createGridRows(
   entries: readonly DirEntry[],
   columnCount: number,
@@ -262,16 +208,47 @@ function createGridRows(
     },
   ];
 
-  let offset = 0;
-  const rows: FileBrowserVirtualRow[] = [];
+  const variantsBySection = new Map(sections.map(section => [section.key, section.variant]));
+  const stickyIndexesBySection = new Map(sections.map(section => [section.key, section.stickyIndex]));
 
-  for (const section of sections) {
-    const result = createGridSectionRows(section, columnCount, offset, gridGap);
-    rows.push(...result.rows);
-    offset = result.offset;
-  }
+  return buildSectionedVirtualRows(
+    sections.map(section => ({
+      key: section.key,
+      items: section.entries,
+      itemHeight: section.entryHeight,
+      columnCount,
+    })),
+    {
+      headerHeight: GRID_SECTION_HEADER_HEIGHT,
+      gap: gridGap,
+    },
+  ).map((row): FileBrowserVirtualRow => {
+    const variant = variantsBySection.get(row.key) ?? 'other';
 
-  return rows;
+    if (row.type === 'section') {
+      return {
+        type: 'grid-section',
+        key: `grid-section:${row.key}`,
+        sectionKey: row.key,
+        variant,
+        count: row.count,
+        stickyIndex: stickyIndexesBySection.get(row.key) ?? 0,
+        start: row.start,
+        size: row.size,
+      };
+    }
+
+    return {
+      type: 'grid-items',
+      key: `grid-items:${row.key}:${row.rowIndex}:${row.items.map(entry => entry.path).join('|')}`,
+      sectionKey: row.key,
+      variant,
+      entries: row.items,
+      rowIndex: row.rowIndex,
+      start: row.start,
+      size: row.size,
+    };
+  });
 }
 
 export function createFileBrowserVirtualRows(options: {

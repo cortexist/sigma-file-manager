@@ -191,7 +191,14 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
     },
     userDirectories: {},
     infusion: {
-      enabled: true,
+      /*
+       * Off by default: a blurred full-viewport layer over every window is the most expensive
+       * thing the app draws that never stops drawing, and on integrated GPUs it is a standing
+       * load rather than a momentary one. It stays a first-class feature — one switch turns it
+       * on, and every window (main, quick view, file dialogs) picks it up — but a file manager
+       * has to be dependable before it is pretty.
+       */
+      enabled: false,
       sameSettingsForAllPages: true,
       selectedPageToCustomize: '',
       pauseVideoWhenIdle: true,

@@ -741,7 +741,14 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     // none of the app's furniture — no tray, no storage preload, no media-arg interpretation.
     if app.state::<file_picker::PickerSession>().0.is_some() {
         standalone_viewer::adopt_process_identity("sigma-file-picker");
-        standalone_viewer::create_window_from_config(app.handle(), "file-picker")?;
+        let picker_window = standalone_viewer::create_window_from_config(app.handle(), "file-picker")?;
+
+        // This process returns before the shared devtools hook below, and the dialog suppresses
+        // its context menu like every other window, so without this the picker has no way in.
+        #[cfg(feature = "devtools")]
+        picker_window.open_devtools();
+        let _ = &picker_window;
+
         return Ok(());
     }
 

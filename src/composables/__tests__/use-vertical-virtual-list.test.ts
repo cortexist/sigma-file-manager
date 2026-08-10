@@ -13,6 +13,7 @@ import {
   type Ref,
 } from 'vue';
 import {
+  buildSectionedVirtualRows,
   computeVerticalVirtualRange,
   createVerticalVirtualItems,
   useVerticalVirtualList,
@@ -108,6 +109,99 @@ describe('createVerticalVirtualItems', () => {
         start: 60,
       },
     ]);
+  });
+});
+
+describe('buildSectionedVirtualRows', () => {
+  const sections = [
+    {
+      key: 'dirs' as const,
+      items: ['a', 'b', 'c'],
+      itemHeight: 52,
+      columnCount: 2,
+    },
+    {
+      key: 'files' as const,
+      items: ['d'],
+      itemHeight: 120,
+      columnCount: 2,
+    },
+  ];
+
+  it('chunks each section into rows and accumulates offsets across sections', () => {
+    const rows = buildSectionedVirtualRows(sections, {
+      headerHeight: 40,
+      gap: 10,
+    });
+
+    expect(rows.map(row => row.type)).toEqual(['section', 'items', 'items', 'section', 'items']);
+    // header 50, two dir rows of 62, header 50, one file row of 130.
+    expect(rows.map(row => row.size)).toEqual([50, 62, 62, 50, 130]);
+    expect(rows.map(row => row.start)).toEqual([0, 50, 112, 174, 224]);
+  });
+
+  it('splits items across columns and leaves the last row short', () => {
+    const rows = buildSectionedVirtualRows(sections, {
+      headerHeight: 40,
+      gap: 10,
+    });
+    const dirRows = rows.filter(row => row.type === 'items' && row.key === 'dirs');
+
+    expect(dirRows.map(row => (row.type === 'items' ? row.items : []))).toEqual([['a', 'b'], ['c']]);
+  });
+
+  /** The file dialog's list view: one column, no gutter. */
+  it('lays a single column out as a plain list', () => {
+    const rows = buildSectionedVirtualRows(
+      [{
+        key: 'files' as const,
+        items: ['a', 'b', 'c'],
+        itemHeight: 32,
+        columnCount: 1,
+      }],
+      { headerHeight: 40 },
+    );
+
+    expect(rows.map(row => row.size)).toEqual([40, 32, 32, 32]);
+    expect(rows.map(row => row.start)).toEqual([0, 40, 72, 104]);
+  });
+
+  it('omits an empty section entirely, header included', () => {
+    const rows = buildSectionedVirtualRows(
+      [
+        {
+          key: 'dirs' as const,
+          items: [],
+          itemHeight: 52,
+          columnCount: 2,
+        },
+        {
+          key: 'files' as const,
+          items: ['a'],
+          itemHeight: 32,
+          columnCount: 2,
+        },
+      ],
+      { headerHeight: 40 },
+    );
+
+    expect(rows.map(row => row.key)).toEqual(['files', 'files']);
+    expect(rows[0].start).toBe(0);
+  });
+
+  it('drops header rows when no header height is given', () => {
+    const rows = buildSectionedVirtualRows(
+      [{
+        key: 'files' as const,
+        items: ['a', 'b'],
+        itemHeight: 32,
+        columnCount: 1,
+      }],
+      { headerHeight: 0 },
+    );
+
+    expect(rows.every(row => row.type === 'items')).toBe(true);
+    expect(rows.map(row => row.start)).toEqual([0, 32]);
   });
 });
 

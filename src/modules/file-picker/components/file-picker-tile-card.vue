@@ -23,8 +23,9 @@ const props = defineProps<{
   inert: boolean;
 }>();
 
-const showsArtwork = computed(() =>
-  !!props.thumbnailSrc && (props.variant === 'image' || props.variant === 'video'));
+// Any non-directory card with artwork goes full-bleed — the navigator's rule, which is how
+// an audio file's embedded cover renders on an 'other' card there.
+const showsArtwork = computed(() => !!props.thumbnailSrc && props.variant !== 'dir');
 
 const metaText = computed(() => {
   if (props.entry.is_dir) {
@@ -45,9 +46,9 @@ const metaText = computed(() => {
       [`file-picker-tile-card--${variant}`]: true,
       'file-picker-tile-card--artwork': showsArtwork,
       'file-picker-tile-card--hidden': entry.is_hidden,
-      'file-picker-tile-card--selected': selected,
       'file-picker-tile-card--inert': inert,
     }"
+    :data-selected="selected || undefined"
   >
     <template v-if="variant === 'dir'">
       <FileBrowserEntryIcon
@@ -85,6 +86,12 @@ const metaText = computed(() => {
         <span class="file-picker-tile-card__meta">{{ metaText }}</span>
       </span>
     </template>
+
+    <!-- The navigator's overlay stack: selection and hover paint above any artwork. -->
+    <span class="file-picker-tile-card__overlay-container">
+      <span class="file-picker-tile-card__overlay file-picker-tile-card__overlay--selected" />
+      <span class="file-picker-tile-card__overlay file-picker-tile-card__overlay--hover" />
+    </span>
   </button>
 </template>
 
@@ -93,11 +100,14 @@ const metaText = computed(() => {
   position: relative;
   display: flex;
   overflow: hidden;
-  height: var(--navigator-grid-view-entry-height);
+
+  /* Both heights come from the page root so the virtual list agrees; see file-picker.vue. */
+  height: var(--file-picker-tile-file-height, var(--navigator-grid-view-entry-height));
   flex-direction: column;
   padding: 0;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
+
   /* Shaded with the rest of the dialog; see `--file-picker-surface-shade` on the page root. */
   background: var(--file-picker-card-surface, hsl(var(--background-2)));
   color: inherit;
@@ -107,17 +117,44 @@ const metaText = computed(() => {
   user-select: none;
 }
 
-.file-picker-tile-card:hover {
-  background: hsl(var(--foreground) / 5%);
+/* The navigator's grid-card overlays, verbatim: radius one inside the card's 8px border. */
+.file-picker-tile-card__overlay-container {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
 }
 
-.file-picker-tile-card--selected {
+.file-picker-tile-card__overlay {
+  position: absolute;
+  border-radius: 7px;
+  inset: 0;
+  pointer-events: none;
+}
+
+.file-picker-tile-card__overlay--selected {
   background-color: hsl(var(--secondary) / 20%);
   box-shadow: inset 0 0 0 2px hsl(var(--primary) / 60%);
+  opacity: 0;
 }
 
-.file-picker-tile-card--artwork.file-picker-tile-card--selected {
+.file-picker-tile-card[data-selected] .file-picker-tile-card__overlay--selected {
+  opacity: 1;
+}
+
+.file-picker-tile-card--artwork[data-selected] .file-picker-tile-card__overlay--selected {
   background-color: hsl(var(--secondary) / 50%);
+}
+
+.file-picker-tile-card__overlay--hover {
+  background-color: hsl(var(--foreground) / 5%);
+  opacity: 0;
+  transition: opacity var(--hover-transition-duration-out) var(--hover-transition-easing-out);
+}
+
+.file-picker-tile-card:hover .file-picker-tile-card__overlay--hover {
+  opacity: 1;
+  transition: opacity var(--hover-transition-duration-in);
 }
 
 .file-picker-tile-card--hidden {
@@ -129,7 +166,7 @@ const metaText = computed(() => {
 }
 
 .file-picker-tile-card--dir {
-  height: var(--navigator-grid-view-dir-entry-height);
+  height: var(--file-picker-tile-dir-height, var(--navigator-grid-view-dir-entry-height));
   flex-direction: row;
   align-items: center;
   padding: 8px 12px;

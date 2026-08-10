@@ -52,6 +52,100 @@ export function createVerticalVirtualItems<Item>(
   });
 }
 
+/** One group of items laid out together, optionally under a header row of its own. */
+export interface SectionedVirtualSection<SectionKey extends string, Item> {
+  key: SectionKey;
+  items: readonly Item[];
+  /** Height of one row of items, before the gap. */
+  itemHeight: number;
+  /** Items per row; 1 lays the section out as a plain list. */
+  columnCount: number;
+}
+
+export interface SectionedVirtualRowsOptions {
+  /** Height of a section header, before the gap. Zero omits header rows entirely. */
+  headerHeight: number;
+  /** Added to every row's height — the gutter below it. */
+  gap?: number;
+}
+
+export type SectionedVirtualRow<SectionKey extends string, Item>
+  = | (VerticalVirtualPositionedItem & {
+    type: 'section';
+    key: SectionKey;
+    /** How many items the section holds, for a count badge. */
+    count: number;
+    /** Position among the sections that actually rendered. */
+    sectionIndex: number;
+  })
+  | (VerticalVirtualPositionedItem & {
+    type: 'items';
+    key: SectionKey;
+    items: Item[];
+    rowIndex: number;
+  });
+
+/**
+ * Lays sections of items out as positioned rows: a header, then the items chunked into rows
+ * of `columnCount`, per section, accumulating offsets as it goes. Empty sections contribute
+ * nothing, header and all.
+ *
+ * Both browsing surfaces build their rows from this — the navigator's grid sections and the
+ * file dialog's folders/files sections — so the offset arithmetic that a virtual list depends
+ * on being exactly right exists once. Callers map the result onto their own row types; what
+ * is shared is the geometry, not the presentation.
+ */
+export function buildSectionedVirtualRows<SectionKey extends string, Item>(
+  sections: readonly SectionedVirtualSection<SectionKey, Item>[],
+  options: SectionedVirtualRowsOptions,
+): SectionedVirtualRow<SectionKey, Item>[] {
+  const gap = options.gap ?? 0;
+  const rows: SectionedVirtualRow<SectionKey, Item>[] = [];
+  let start = 0;
+  let sectionIndex = 0;
+
+  for (const section of sections) {
+    if (section.items.length === 0) {
+      continue;
+    }
+
+    if (options.headerHeight > 0) {
+      const size = options.headerHeight + gap;
+
+      rows.push({
+        type: 'section',
+        key: section.key,
+        count: section.items.length,
+        sectionIndex,
+        start,
+        size,
+      });
+
+      start += size;
+    }
+
+    const columnCount = Math.max(1, Math.floor(section.columnCount));
+    const size = section.itemHeight + gap;
+
+    for (let itemIndex = 0, rowIndex = 0; itemIndex < section.items.length; itemIndex += columnCount, rowIndex += 1) {
+      rows.push({
+        type: 'items',
+        key: section.key,
+        items: section.items.slice(itemIndex, itemIndex + columnCount),
+        rowIndex,
+        start,
+        size,
+      });
+
+      start += size;
+    }
+
+    sectionIndex += 1;
+  }
+
+  return rows;
+}
+
 export function computeVerticalVirtualRange<PositionedItem extends VerticalVirtualPositionedItem>(options: {
   items: readonly PositionedItem[];
   overscanPx: number;

@@ -46,6 +46,7 @@ import { ScrollBar } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Toaster } from '@/components/ui/toaster';
 import FileBrowserEntryIcon from '@/modules/navigator/components/file-browser/file-browser-entry-icon.vue';
+import FileBrowserGridSectionBar from '@/modules/navigator/components/file-browser/file-browser-grid-section-bar.vue';
 import FileBrowserToolbarNavButtons from '@/modules/navigator/components/file-browser/file-browser-toolbar-nav-buttons.vue';
 import FileBrowserToolbarAddressBar from '@/modules/navigator/components/file-browser/file-browser-toolbar-address-bar.vue';
 import AddressBarEditorDialog from '@/modules/navigator/components/file-browser/address-bar-editor-dialog.vue';
@@ -54,16 +55,18 @@ import FilePickerInfusion from '@/modules/file-picker/components/file-picker-inf
 import {
   formatBytes,
   formatDate,
+  isAudioFile,
   isImageFile,
   isVideoFile,
 } from '@/modules/navigator/components/file-browser/utils';
+import { useAudioCovers } from '@/composables/use-audio-covers';
 import { sortFileBrowserEntries } from '@/modules/navigator/components/file-browser/utils/file-browser-sort';
 import { FILE_BROWSER_SORT_COLUMN_LABEL_KEYS } from '@/modules/navigator/components/file-browser/utils/file-browser-sort-columns';
 import { getGridColumnCount } from '@/modules/navigator/components/file-browser/utils/file-browser-virtual-rows';
 import { FILE_BROWSER_GRID_GAP_DEFAULT } from '@/modules/navigator/components/file-browser/utils/file-browser-layout-gaps';
 import { useImageThumbnails } from '@/modules/navigator/components/file-browser/composables/use-image-thumbnails';
 import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/composables/use-video-thumbnails';
-import { useVerticalVirtualList } from '@/composables/use-vertical-virtual-list';
+import { buildSectionedVirtualRows, useVerticalVirtualList } from '@/composables/use-vertical-virtual-list';
 import { usePlatformStore } from '@/stores/runtime/platform';
 import { useNavigatorIconsStore } from '@/stores/runtime/navigator-icons';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
@@ -86,31 +89,20 @@ interface PickerRequest {
 
 type PickerViewLayout = 'list' | 'grid';
 
-type PickerRow
-  = | {
-    kind: 'section';
-    id: 'dirs' | 'files';
-    label: string;
-    count: number;
-    height: number;
-  }
-  | {
-    kind: 'entry';
-    entry: DirEntry;
-    height: number;
-  }
-  | {
-    kind: 'tiles';
-    id: string;
-    entries: DirEntry[];
-    height: number;
-  };
+type PickerSectionKey = 'dirs' | 'files';
 
-const LIST_ROW_HEIGHT = 32;
-const SECTION_ROW_HEIGHT = 40;
-/** The navigator's grid card heights (`--navigator-grid-view-*` in vars.css). */
-const TILE_DIR_HEIGHT = 52;
-const TILE_FILE_HEIGHT = 120;
+/**
+ * Fallbacks only. The real row heights are the `--file-picker-*-height` custom properties on
+ * the page root, read back below — a virtualized list has to know every row's height in
+ * JavaScript to place the scroll window, so the numbers cannot live in CSS alone, but they
+ * should still only be *written* in one place.
+ */
+const ROW_HEIGHT_FALLBACKS = {
+  list: 42,
+  section: 42,
+  tileDir: 52,
+  tileFile: 120,
+};
 /** The virtual window's own horizontal padding, excluded from tile column math. */
 const LISTING_PADDING_X = 16;
 const PICKER_SORT_COLUMNS: ListSortColumn[] = ['name', 'size', 'modified'];
@@ -119,6 +111,37 @@ const { t } = useI18n();
 const platformStore = usePlatformStore();
 const navigatorIconsStore = useNavigatorIconsStore();
 const userSettingsStore = useUserSettingsStore();
+
+const rootRef = ref<HTMLElement | null>(null);
+const rowHeights = ref({ ...ROW_HEIGHT_FALLBACKS });
+
+/**
+ * Pulls the row heights out of CSS so the stylesheet stays the one place they are set. Called
+ * once the page is mounted; edit the custom properties and the dev server's reload re-reads
+ * them. Changing a height purely in devtools moves the boxes but not the scroll math, since
+ * the virtual list has already been told how tall each row is.
+ */
+function readRowHeights() {
+  const element = rootRef.value;
+
+  if (!element) {
+    return;
+  }
+
+  const styles = getComputedStyle(element);
+
+  function readPx(property: string, fallback: number) {
+    const value = Number.parseFloat(styles.getPropertyValue(property));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  rowHeights.value = {
+    list: readPx('--file-picker-list-row-height', ROW_HEIGHT_FALLBACKS.list),
+    section: readPx('--file-picker-section-row-height', ROW_HEIGHT_FALLBACKS.section),
+    tileDir: readPx('--file-picker-tile-dir-height', ROW_HEIGHT_FALLBACKS.tileDir),
+    tileFile: readPx('--file-picker-tile-file-height', ROW_HEIGHT_FALLBACKS.tileFile),
+  };
+}
 
 const request = ref<PickerRequest | null>(null);
 const currentPath = ref('');
@@ -166,6 +189,7 @@ const {
   getVideoThumbnail,
   clearThumbnails: clearVideoThumbnails,
 } = useVideoThumbnails();
+const { getEmbeddedCover, clearAudioCovers } = useAudioCovers();
 
 const title = computed(() => request.value?.title
   || (request.value?.save ? t('filePicker.defaultSaveTitle') : t('filePicker.defaultTitle')));
@@ -212,65 +236,44 @@ const tileColumnCount = computed(() => getGridColumnCount(
   FILE_BROWSER_GRID_GAP_DEFAULT,
 ));
 
-const pickerRows = computed<PickerRow[]>(() => {
-  const groups = [
+const sectionLabels = computed<Record<PickerSectionKey, string>>(() => ({
+  dirs: t('fileBrowser.folders'),
+  files: t('files'),
+}));
+
+/**
+ * List view is the same geometry with one column and no gutter, so both layouts come out of
+ * the navigator's own row builder rather than a second implementation of the arithmetic.
+ */
+const pickerRows = computed(() => {
+  const isList = viewLayout.value === 'list';
+  const columnCount = isList ? 1 : tileColumnCount.value;
+
+  return buildSectionedVirtualRows<PickerSectionKey, DirEntry>(
+    [
+      {
+        key: 'dirs',
+        items: groupedEntries.value.dirs,
+        itemHeight: isList ? rowHeights.value.list : rowHeights.value.tileDir,
+        columnCount,
+      },
+      {
+        key: 'files',
+        items: groupedEntries.value.files,
+        itemHeight: isList ? rowHeights.value.list : rowHeights.value.tileFile,
+        columnCount,
+      },
+    ],
     {
-      id: 'dirs' as const,
-      label: t('fileBrowser.folders'),
-      entries: groupedEntries.value.dirs,
+      headerHeight: rowHeights.value.section,
+      gap: isList ? 0 : FILE_BROWSER_GRID_GAP_DEFAULT,
     },
-    {
-      id: 'files' as const,
-      label: t('files'),
-      entries: groupedEntries.value.files,
-    },
-  ];
-  const rows: PickerRow[] = [];
-
-  for (const group of groups) {
-    if (group.entries.length === 0) {
-      continue;
-    }
-
-    rows.push({
-      kind: 'section',
-      id: group.id,
-      label: group.label,
-      count: group.entries.length,
-      height: SECTION_ROW_HEIGHT,
-    });
-
-    if (viewLayout.value === 'list') {
-      for (const entry of group.entries) {
-        rows.push({
-          kind: 'entry',
-          entry,
-          height: LIST_ROW_HEIGHT,
-        });
-      }
-
-      continue;
-    }
-
-    const tileHeight = group.id === 'dirs' ? TILE_DIR_HEIGHT : TILE_FILE_HEIGHT;
-    const perRow = tileColumnCount.value;
-
-    for (let offset = 0; offset < group.entries.length; offset += perRow) {
-      rows.push({
-        kind: 'tiles',
-        id: `${group.id}-${offset}`,
-        entries: group.entries.slice(offset, offset + perRow),
-        height: tileHeight + FILE_BROWSER_GRID_GAP_DEFAULT,
-      });
-    }
-  }
-
-  return rows;
+  );
 });
 
 const virtualList = useVerticalVirtualList({
   items: pickerRows,
-  getItemSize: row => row.height,
+  getItemSize: row => row.size,
 });
 const visibleRows = virtualList.visibleItems;
 const listSpacerStyle = virtualList.spacerStyle;
@@ -331,6 +334,7 @@ async function listDirectory(path: string, recordHistory = true) {
     isOverwriteArmed.value = false;
     clearImageThumbnails();
     clearVideoThumbnails();
+    clearAudioCovers();
     virtualList.setScrollTop(0);
     navigatorIconsStore.prefetchForDirectoryEntries(contents.entries);
 
@@ -357,6 +361,11 @@ function getEntryThumbnail(entry: DirEntry): string | undefined {
 
   if (isVideoFile(entry)) {
     return getVideoThumbnail(entry);
+  }
+
+  // The navigator's audio artwork: the cover embedded in the file's tags, if it has one.
+  if (isAudioFile(entry)) {
+    return getEmbeddedCover(entry);
   }
 
   return undefined;
@@ -575,6 +584,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  readRowHeights();
   window.addEventListener('keydown', onKeydown);
 
   request.value = await invoke<PickerRequest | null>('file_picker_request');
@@ -602,7 +612,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="file-picker">
+  <div
+    ref="rootRef"
+    class="file-picker"
+  >
     <FilePickerInfusion />
 
     <header
@@ -720,27 +733,65 @@ onBeforeUnmount(() => {
           >
             <template
               v-for="row in visibleRows"
-              :key="row.item.kind === 'section' ? `section-${row.item.id}`
-                : row.item.kind === 'tiles' ? row.item.id
-                  : row.item.entry.path"
+              :key="row.item.type === 'section'
+                ? `section:${row.item.key}`
+                : `${row.item.key}:${row.item.rowIndex}`"
             >
               <div
-                v-if="row.item.kind === 'section'"
+                v-if="row.item.type === 'section'"
                 class="file-picker__section-row"
                 :style="{ height: `${row.size}px` }"
               >
-                <div class="file-picker__section-bar">
-                  <component
-                    :is="row.item.id === 'dirs' ? FolderIcon : FileIcon"
-                    :size="14"
-                  />
-                  <span>{{ row.item.label }}</span>
-                  <span class="file-picker__section-count">{{ row.item.count }}</span>
-                </div>
+                <FileBrowserGridSectionBar
+                  :label="sectionLabels[row.item.key]"
+                  :count="row.item.count"
+                >
+                  <template #icon>
+                    <component
+                      :is="row.item.key === 'dirs' ? FolderIcon : FileIcon"
+                      :size="14"
+                    />
+                  </template>
+                </FileBrowserGridSectionBar>
               </div>
 
+              <!-- List view is a one-column section, so its rows arrive here holding a single entry. -->
+              <button
+                v-else-if="viewLayout === 'list'"
+                type="button"
+                class="file-picker__entry"
+                :style="{ height: `${row.size}px` }"
+                :class="{
+                  'file-picker__entry--hidden': row.item.items[0].is_hidden,
+                  'file-picker__entry--inert': !isSelectable(row.item.items[0]) && !row.item.items[0].is_dir,
+                }"
+                :data-selected="selectedPaths.has(row.item.items[0].path) || undefined"
+                @click="toggleSelection(row.item.items[0], $event)"
+                @dblclick="activateEntry(row.item.items[0])"
+              >
+                <span class="file-picker__entry-preview">
+                  <img
+                    v-if="getEntryThumbnail(row.item.items[0])"
+                    :src="getEntryThumbnail(row.item.items[0])"
+                    class="file-picker__entry-thumbnail"
+                    alt=""
+                    draggable="false"
+                  >
+                  <FileBrowserEntryIcon
+                    v-else
+                    :entry="row.item.items[0]"
+                    :size="18"
+                    class="file-picker__entry-icon"
+                    :class="{ 'file-picker__entry-icon--folder': row.item.items[0].is_dir }"
+                  />
+                </span>
+                <span class="file-picker__entry-name">{{ row.item.items[0].name }}</span>
+                <span class="file-picker__entry-size">{{ entrySizeText(row.item.items[0]) }}</span>
+                <span class="file-picker__entry-modified">{{ entryModifiedText(row.item.items[0]) }}</span>
+              </button>
+
               <div
-                v-else-if="row.item.kind === 'tiles'"
+                v-else
                 class="file-picker__tile-row"
                 :style="{
                   height: `${row.size}px`,
@@ -748,7 +799,7 @@ onBeforeUnmount(() => {
                 }"
               >
                 <FilePickerTileCard
-                  v-for="entry in row.item.entries"
+                  v-for="entry in row.item.items"
                   :key="entry.path"
                   :entry="entry"
                   :variant="tileVariant(entry)"
@@ -759,40 +810,6 @@ onBeforeUnmount(() => {
                   @dblclick="activateEntry(entry)"
                 />
               </div>
-
-              <button
-                v-else
-                type="button"
-                class="file-picker__entry"
-                :style="{ height: `${row.size}px` }"
-                :class="{
-                  'file-picker__entry--selected': selectedPaths.has(row.item.entry.path),
-                  'file-picker__entry--hidden': row.item.entry.is_hidden,
-                  'file-picker__entry--inert': !isSelectable(row.item.entry) && !row.item.entry.is_dir,
-                }"
-                @click="toggleSelection(row.item.entry, $event)"
-                @dblclick="activateEntry(row.item.entry)"
-              >
-                <span class="file-picker__entry-preview">
-                  <img
-                    v-if="getEntryThumbnail(row.item.entry)"
-                    :src="getEntryThumbnail(row.item.entry)"
-                    class="file-picker__entry-thumbnail"
-                    alt=""
-                    draggable="false"
-                  >
-                  <FileBrowserEntryIcon
-                    v-else
-                    :entry="row.item.entry"
-                    :size="18"
-                    class="file-picker__entry-icon"
-                    :class="{ 'file-picker__entry-icon--folder': row.item.entry.is_dir }"
-                  />
-                </span>
-                <span class="file-picker__entry-name">{{ row.item.entry.name }}</span>
-                <span class="file-picker__entry-size">{{ entrySizeText(row.item.entry) }}</span>
-                <span class="file-picker__entry-modified">{{ entryModifiedText(row.item.entry) }}</span>
-              </button>
             </template>
           </div>
         </div>
@@ -861,7 +878,21 @@ onBeforeUnmount(() => {
   than more of the same material. One knob shades every surface together, keeping their
   relative order intact; the tile cards read it from here.
 */
+
 .file-picker {
+  /*
+    Row heights: set them here and nowhere else. The listing is virtualized, so JavaScript
+    reads these back (`readRowHeights`) to size the scroll window — a height set only in a
+    rule below would move the box and leave the scroll math behind it. Every value is the
+    navigator's own: one design language across both browsing surfaces, so the dialog never
+    drifts from the app it fronts. The section height mirrors the navigator's
+    GRID_SECTION_HEADER_HEIGHT (8px + 2px wrapper padding around its 32px section bar) —
+    numeric because no global variable carries it yet.
+  */
+  --file-picker-list-row-height: var(--navigator-list-view-entry-height);
+  --file-picker-section-row-height: 42px;
+  --file-picker-tile-dir-height: var(--navigator-grid-view-dir-entry-height);
+  --file-picker-tile-file-height: var(--navigator-grid-view-entry-height);
   --file-picker-surface-shade: 35%;
   --file-picker-surface: color-mix(in srgb, black var(--file-picker-surface-shade), hsl(var(--background-3)));
   --file-picker-card-surface: color-mix(in srgb, black var(--file-picker-surface-shade), hsl(var(--background-2)));
@@ -874,6 +905,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   height: 100vh;
   flex-direction: column;
+  border: 1px solid hsl(var(--border) / 50%);
   background: var(--file-picker-surface);
   color: hsl(var(--foreground));
 }
@@ -886,14 +918,17 @@ onBeforeUnmount(() => {
 }
 
 .file-picker__title {
+  color: hsl(var(--muted-foreground));
   font-size: 14px;
-  font-weight: 600;
 }
 
 .file-picker__toolbar {
   display: flex;
   align-items: center;
   padding: 0 12px 6px;
+  border-bottom: 1px solid hsl(var(--border));
+  margin: 0 8px 8px;
+  color: hsl(var(--icon));
   gap: 8px;
 }
 
@@ -957,7 +992,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   padding: 0 18px 4px;
+  border-bottom: 1px solid hsl(var(--border));
+  margin: 0 8px;
   gap: 10px;
+  line-height: 1rem;
 }
 
 .file-picker__column-button {
@@ -971,6 +1009,7 @@ onBeforeUnmount(() => {
   font: inherit;
   font-size: 12px;
   gap: 4px;
+  text-transform: uppercase;
 }
 
 .file-picker__column-button:hover,
@@ -997,6 +1036,7 @@ onBeforeUnmount(() => {
 .file-picker__listing {
   min-height: 0;
   flex: 1;
+  padding: 0 12px;
 }
 
 .file-picker__viewport {
@@ -1026,33 +1066,15 @@ onBeforeUnmount(() => {
   color: hsl(var(--muted-foreground));
 }
 
+/*
+  The navigator's section header geometry, verbatim: 8px above the bar, 2px below, and the
+  bar (a `FileBrowserGridSectionBar`, the navigator's own component) in normal flow at the
+  top — so in tile view the row's grid-gap slack falls below the bar as the gutter. The row's
+  total height is `--file-picker-section-row-height`; the bar is not restyled here at all.
+*/
+
 .file-picker__section-row {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding-bottom: 6px;
-}
-
-/* The navigator's grid section bar, sized for a dialog. */
-.file-picker__section-bar {
-  display: flex;
-  align-items: center;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  background-color: hsl(var(--secondary) / 50%);
-  color: hsl(var(--muted-foreground));
-  font-size: 12px;
-  font-weight: 500;
-  gap: 8px;
-  line-height: 1rem;
-  text-transform: uppercase;
-}
-
-.file-picker__section-count {
-  padding: 2px 8px;
-  border-radius: 10px;
-  background-color: var(--file-picker-surface);
-  font-size: 11px;
+  padding: 8px 0 2px;
 }
 
 .file-picker__tile-row {
@@ -1062,12 +1084,14 @@ onBeforeUnmount(() => {
 }
 
 .file-picker__entry {
+  position: relative;
   display: flex;
   width: 100%;
   align-items: center;
   padding: 0 10px;
   border: none;
   border-radius: 6px;
+  border-bottom: 1px solid hsl(var(--border) / 50%);
   background: transparent;
   color: inherit;
   cursor: default;
@@ -1080,9 +1104,21 @@ onBeforeUnmount(() => {
   background: hsl(var(--foreground) / 5%);
 }
 
-.file-picker__entry--selected,
-.file-picker__entry--selected:hover {
-  background: hsl(var(--secondary) / 60%);
+/* The navigator's list selection, verbatim: an accent-tinted layer with a 1px accent ring. */
+.file-picker__entry::before {
+  position: absolute;
+  z-index: 0;
+  border-radius: 6px;
+  content: "";
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-picker__entry[data-selected]::before {
+  background-color: hsl(var(--primary) / 12%);
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 40%);
+  opacity: 1;
 }
 
 .file-picker__entry--hidden {
@@ -1176,7 +1212,11 @@ onBeforeUnmount(() => {
 .file-picker__actions {
   display: flex;
   justify-content: flex-end;
-  padding: 10px 16px 14px;
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  margin: 8px;
+  background-color: hsl(var(--background-3));
+  color: hsl(var(--muted-foreground));
   gap: 8px;
 }
 </style>
