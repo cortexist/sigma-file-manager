@@ -15,8 +15,21 @@ use std::io::Write;
 
 pub const FILE_PICKER_CLI_FLAG: &str = "--file-picker";
 
-/// What the caller asked for, reduced to what the picker honors. Filters are accepted
-/// upstream and not yet surfaced here.
+/// One choice in the caller's type filter: a display name and the patterns it admits. The
+/// portal sends each pattern tagged as glob or MIME type; they are split here so the page
+/// never re-parses tags.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PickerFilter {
+    /// The requesting application's own label, e.g. "Images".
+    pub name: String,
+    /// Glob patterns, e.g. `*.png`.
+    pub globs: Vec<String>,
+    /// MIME types, possibly wildcarded, e.g. `image/*`.
+    pub mimes: Vec<String>,
+}
+
+/// What the caller asked for, reduced to what the picker honors.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PickerRequest {
@@ -30,6 +43,10 @@ pub struct PickerRequest {
     /// the filename field, and existing names demand an explicit replace.
     pub save: bool,
     pub suggested_name: Option<String>,
+    /// The caller's type filters, in its order; empty means everything is welcome.
+    pub filters: Vec<PickerFilter>,
+    /// Name of the filter the caller wants preselected.
+    pub current_filter: Option<String>,
 }
 
 /// The request this process was launched for; `None` in every other kind of session.
@@ -119,5 +136,20 @@ mod tests {
     #[test]
     fn a_missing_payload_still_opens_a_picker_with_defaults() {
         assert!(picker_request_from_args(&args(&[FILE_PICKER_CLI_FLAG])).is_some());
+    }
+
+    #[test]
+    fn filters_ride_in_split_by_kind() {
+        let request = picker_request_from_args(&args(&[
+            FILE_PICKER_CLI_FLAG,
+            r#"{"title":"Open","filters":[{"name":"Images","globs":["*.png"],"mimes":["image/*"]}],"currentFilter":"Images"}"#,
+        ]))
+        .expect("picker mode");
+
+        assert_eq!(request.filters.len(), 1);
+        assert_eq!(request.filters[0].name, "Images");
+        assert_eq!(request.filters[0].globs, vec!["*.png"]);
+        assert_eq!(request.filters[0].mimes, vec!["image/*"]);
+        assert_eq!(request.current_filter.as_deref(), Some("Images"));
     }
 }

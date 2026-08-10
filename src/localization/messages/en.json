@@ -73,6 +73,7 @@
     "fileNamePlaceholder": "File name",
     "cancel": "Cancel",
     "selectFolder": "Select folder",
+    "fileType": "File type",
     "listingFailed": "This folder could not be read"
   },
   "trayMenu": {

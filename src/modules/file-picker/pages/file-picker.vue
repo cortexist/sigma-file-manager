@@ -15,9 +15,10 @@ Copyright © 2026 Cortexist, LLC. All rights reserved.
   small history, not a Tab), the breadcrumb address bar, and the Ctrl+L path editor dialog —
   all of them props-and-emits driven, which is what makes the borrowing possible. The
   hidden-files switch follows the user's navigator setting until toggled (Ctrl+H works too)
-  and never writes it back: a dialog borrows preferences, it does not edit them. Virtualized
-  throughout so system directories with thousands of entries stay responsive. Portal
-  file-type filters are still deferred.
+  and never writes it back: a dialog borrows preferences, it does not edit them. The caller's
+  portal type filters surface as a dropdown in the footer, narrowing the files (never the
+  folders) to what the application can actually open. Virtualized throughout so system
+  directories with thousands of entries stay responsive.
 -->
 
 <script setup lang="ts">
@@ -43,6 +44,14 @@ import {
 } from 'reka-ui';
 import { Button } from '@/components/ui/button';
 import { ScrollBar } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Toaster } from '@/components/ui/toaster';
 import FileBrowserEntryIcon from '@/modules/navigator/components/file-browser/file-browser-entry-icon.vue';
@@ -78,6 +87,12 @@ import {
 import type { DirEntry } from '@/types/dir-entry';
 import type { ListSortColumn, ListSortDirection } from '@/types/user-settings';
 
+interface PickerFilter {
+  name: string;
+  globs: string[];
+  mimes: string[];
+}
+
 interface PickerRequest {
   title: string;
   multiple: boolean;
@@ -85,6 +100,8 @@ interface PickerRequest {
   currentFolder: string | null;
   save: boolean;
   suggestedName: string | null;
+  filters: PickerFilter[];
+  currentFilter: string | null;
 }
 
 type PickerViewLayout = 'list' | 'grid';
@@ -168,6 +185,68 @@ const canGoUp = computed(() => {
   return !!parent && parent !== currentPath.value;
 });
 
+/** The caller's type filter currently in force, by name; `null` when none were sent. */
+const selectedFilterName = ref<string | null>(null);
+
+const activeFilterMatchers = computed(() => {
+  const filter = (request.value?.filters ?? [])
+    .find(candidate => candidate.name === selectedFilterName.value);
+
+  // A filter with no patterns admits everything; treating it as "no filter" keeps a
+  // careless caller from blanking the listing.
+  if (!filter || (filter.globs.length === 0 && filter.mimes.length === 0)) {
+    return null;
+  }
+
+  return {
+    globs: filter.globs.map(globToRegExp),
+    mimes: filter.mimes.map(pattern => pattern.toLowerCase()),
+  };
+});
+
+/**
+ * Case-insensitive on purpose, unlike GTK's fnmatch: an app asking for `*.jpg` means the
+ * photos, not the photos whose extension happens to be lowercase.
+ */
+function globToRegExp(glob: string): RegExp {
+  const source = glob
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+
+  return new RegExp(`^${source}$`, 'i');
+}
+
+function entryPassesTypeFilter(entry: DirEntry): boolean {
+  const matchers = activeFilterMatchers.value;
+
+  if (!matchers) {
+    return true;
+  }
+
+  if (matchers.globs.some(glob => glob.test(entry.name))) {
+    return true;
+  }
+
+  const mime = entry.mime?.toLowerCase();
+
+  if (!mime) {
+    return false;
+  }
+
+  return matchers.mimes.some((pattern) => {
+    if (pattern === '*' || pattern === '*/*') {
+      return true;
+    }
+
+    if (pattern.endsWith('/*')) {
+      return mime.startsWith(pattern.slice(0, -1));
+    }
+
+    return mime === pattern;
+  });
+}
+
 const sortColumn = ref<ListSortColumn>('name');
 const sortDirection = ref<ListSortDirection>('asc');
 /** `null` until toggled: the dialog follows the user's navigator settings by default. */
@@ -220,7 +299,15 @@ const groupedEntries = computed(() => {
   const files: DirEntry[] = [];
 
   for (const entry of visibleEntries.value) {
-    (entry.is_dir ? dirs : files).push(entry);
+    if (entry.is_dir) {
+      // Folders always show: the filter narrows what can be picked, not where one can go.
+      dirs.push(entry);
+      continue;
+    }
+
+    if (entryPassesTypeFilter(entry)) {
+      files.push(entry);
+    }
   }
 
   return {
@@ -557,9 +644,9 @@ function cancel() {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  // While the path editor is up it owns the keyboard: its Escape must not cancel the picker
-  // and its Enter must not confirm a selection behind it.
-  if (document.querySelector('[role="dialog"][data-state="open"]')) {
+  // While the path editor or the type-filter dropdown is up it owns the keyboard: its Escape
+  // must not cancel the picker and its Enter must not confirm a selection behind it.
+  if (document.querySelector('[role="dialog"][data-state="open"], [role="listbox"][data-state="open"]')) {
     return;
   }
 
@@ -595,6 +682,11 @@ onMounted(async () => {
   }
 
   fileName.value = request.value.suggestedName ?? '';
+
+  const filters = request.value.filters ?? [];
+  selectedFilterName.value = filters.some(filter => filter.name === request.value?.currentFilter)
+    ? request.value.currentFilter
+    : filters[0]?.name ?? null;
 
   const startingFolder = request.value.currentFolder || await homeDir();
   await listDirectory(startingFolder);
@@ -839,6 +931,27 @@ onBeforeUnmount(() => {
     </div>
 
     <footer class="file-picker__actions">
+      <Select
+        v-if="request && request.filters.length > 0 && !request.directory"
+        :model-value="selectedFilterName ?? undefined"
+        @update:model-value="selectedFilterName = ($event as string)"
+      >
+        <SelectTrigger
+          class="file-picker__filter-select"
+          :aria-label="t('filePicker.fileType')"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem
+            v-for="filter in request.filters"
+            :key="filter.name"
+            :value="filter.name"
+          >
+            <SelectItemText>{{ filter.name }}</SelectItemText>
+          </SelectItem>
+        </SelectContent>
+      </Select>
       <Button
         variant="ghost"
         @click="cancel"
@@ -1207,6 +1320,11 @@ onBeforeUnmount(() => {
   flex: none;
   color: #f0a30a;
   font-size: 12px;
+}
+
+.file-picker__filter-select {
+  max-width: 260px;
+  margin-right: auto;
 }
 
 .file-picker__actions {

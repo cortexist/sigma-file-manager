@@ -58,6 +58,30 @@ impl PickerDbusRequest {
 
 struct FileChooserBackend;
 
+/// The wire shape of one portal filter: a name and `(kind, pattern)` pairs, kind 0 for glob
+/// and 1 for MIME type (`org.freedesktop.impl.portal.FileChooser`, type `(sa(us))`).
+type PortalFilterParts = (String, Vec<(u32, String)>);
+
+const PORTAL_FILTER_KIND_MIME: u32 = 1;
+
+fn picker_filter_from_parts(parts: PortalFilterParts) -> crate::file_picker::PickerFilter {
+    let (name, patterns) = parts;
+    let mut filter = crate::file_picker::PickerFilter {
+        name,
+        ..Default::default()
+    };
+
+    for (kind, pattern) in patterns {
+        if kind == PORTAL_FILTER_KIND_MIME {
+            filter.mimes.push(pattern);
+        } else {
+            filter.globs.push(pattern);
+        }
+    }
+
+    filter
+}
+
 impl FileChooserBackend {
     /// Reduces the portal's option soup to what the picker honors.
     fn request_from_options(
@@ -83,6 +107,18 @@ impl FileChooserBackend {
             })
             .filter(|folder| !folder.is_empty());
 
+        let filters = options
+            .get("filters")
+            .and_then(|value| <Vec<PortalFilterParts>>::try_from(value.clone()).ok())
+            .map(|list| list.into_iter().map(picker_filter_from_parts).collect())
+            .unwrap_or_default();
+
+        // Only the name travels on: the picker looks the selection up in `filters`.
+        let current_filter = options
+            .get("current_filter")
+            .and_then(|value| PortalFilterParts::try_from(value.clone()).ok())
+            .map(|(name, _)| name);
+
         crate::file_picker::PickerRequest {
             title: title.to_string(),
             multiple: flag("multiple"),
@@ -90,6 +126,8 @@ impl FileChooserBackend {
             current_folder,
             save: false,
             suggested_name: None,
+            filters,
+            current_filter,
         }
     }
 

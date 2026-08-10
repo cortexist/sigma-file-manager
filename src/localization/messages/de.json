@@ -1328,6 +1328,7 @@
     "save": "Save",
     "replace": "Replace",
     "replaceWarning": "A file with this name exists",
-    "fileNamePlaceholder": "File name"
+    "fileNamePlaceholder": "File name",
+    "fileType": "File type"
   }
 }
