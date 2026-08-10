@@ -63,6 +63,14 @@
   "printView": {
     "unsupportedFileType": "This file type is not supported for printing"
   },
+  "filePicker": {
+    "defaultTitle": "Open",
+    "open": "Open",
+    "cancel": "Cancel",
+    "selectFolder": "Select folder",
+    "parentDirectory": "Parent directory",
+    "listingFailed": "This folder could not be read"
+  },
   "trayMenu": {
     "reloadWindow": "Reload window"
   },

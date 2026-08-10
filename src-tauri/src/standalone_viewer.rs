@@ -61,28 +61,31 @@ pub fn media_file_from_args(args: &[String], cwd: Option<&Path>) -> Option<PathB
     })
 }
 
-/// The identity a standalone viewer presents, matching its desktop entry.
+/// The identity a standalone process presents, matching its own desktop entry rather than the
+/// file manager's.
 ///
 /// Two names are set because two different observers ask. GTK stamps each surface's Wayland
 /// `app_id` from the process's *program name*, which launcher buttons and window rules match
 /// windows by. Process monitors ask the kernel for the *process name* instead — `pgrep`,
 /// status indicators — and would otherwise report the file manager running in the background
-/// when only a viewer is. A standalone viewer is always its own process, so both renames
-/// touch nothing but the viewer; a session's quick view keeps the session's identity.
+/// when only a viewer or a picker is. Both renames are process-wide, which is exactly why
+/// every standalone role runs as its own process; a session's windows keep the session's
+/// identity.
 #[cfg(target_os = "linux")]
-pub fn adopt_viewer_identity() {
-    glib::set_prgname(Some("sigma-quick-view"));
+pub fn adopt_process_identity(name: &str) {
+    glib::set_prgname(Some(name));
 
-    // The kernel truncates to 15 bytes, giving "sigma-quick-vie" — distinct from the file
-    // manager's "sigma-file-mana" is all that matters.
-    let name = std::ffi::CString::new("sigma-quick-view").expect("static name has no NUL");
-    unsafe {
-        libc::prctl(libc::PR_SET_NAME, name.as_ptr());
+    // The kernel truncates to 15 bytes — "sigma-quick-vie", "sigma-file-pick" — distinct from
+    // the file manager's "sigma-file-mana" is all that matters.
+    if let Ok(kernel_name) = std::ffi::CString::new(name) {
+        unsafe {
+            libc::prctl(libc::PR_SET_NAME, kernel_name.as_ptr());
+        }
     }
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn adopt_viewer_identity() {}
+pub fn adopt_process_identity(_name: &str) {}
 
 /// Builds one of the `create: false` windows declared in `tauri.conf.json`.
 pub fn create_window_from_config(

@@ -5456,6 +5456,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "trash",
+ "url",
  "urlencoding",
  "walkdir",
  "webview2-com",
@@ -5466,6 +5467,7 @@ dependencies = [
  "winreg 0.56.0",
  "wl-clipboard-rs",
  "xz2",
+ "zbus",
  "zip",
 ]
 
@@ -6604,8 +6606,10 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -8323,6 +8327,7 @@ dependencies = [
  "rustix",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",

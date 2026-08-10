@@ -48,6 +48,20 @@
         "url": "/quick-view"
       },
       {
+        "label": "file-picker",
+        "create": false,
+        "title": "Open",
+        "width": 920,
+        "height": 620,
+        "minWidth": 480,
+        "minHeight": 360,
+        "resizable": true,
+        "decorations": false,
+        "shadow": true,
+        "visible": false,
+        "url": "/file-picker"
+      },
+      {
         "label": "print-view",
         "create": false,
         "title": "Sigma File Manager | Print",
@@ -67,12 +81,13 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": { 
+        "scope": {
           "requireLiteralLeadingDot": false,
           "allow": [
             "**",
             "$APPDATA/**"
-        ]}
+          ]
+        }
       }
     }
   },

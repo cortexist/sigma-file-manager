@@ -17,6 +17,7 @@ mod dir_size;
 mod dir_watcher;
 mod extensions;
 mod file_operations;
+mod file_picker;
 mod global_search;
 mod image_thumbnails;
 mod input_simulation;
@@ -26,6 +27,8 @@ mod media_info;
 mod media_server;
 mod media_viewer_registration;
 mod open_with;
+#[cfg(target_os = "linux")]
+mod portal_file_chooser;
 mod process_runner;
 mod standalone_viewer;
 mod startup_storage_bootstrap;
@@ -383,11 +386,22 @@ fn get_launch_context() -> LaunchContext {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    // A picker process is one dialog answering one request; the single-instance lock must not
+    // apply, or a second concurrent dialog would forward its request to the first and exit.
+    let picker_request =
+        file_picker::picker_request_from_args(&std::env::args().collect::<Vec<_>>());
+    let is_picker_process = picker_request.is_some();
+
+    let builder = tauri::Builder::default()
         .manage(startup_storage_bootstrap::StartupStorageBootstrapState::default())
         .manage(BackgroundResidency::default())
         .manage(QuickViewOwnership::default())
-        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+        .manage(file_picker::PickerSession(picker_request));
+
+    let builder = if is_picker_process {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             #[cfg(windows)]
             {
                 let filter_result = filter_shell_namespace_args(argv);
@@ -436,6 +450,9 @@ pub fn run() {
                 let _ = app.emit("app-launch-args", launch_context);
             }
         }))
+    };
+
+    builder
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin({
             use tauri_plugin_window_state::StateFlags;
@@ -475,6 +492,8 @@ pub fn run() {
             system_tray::update_tray_shortcut,
             dismiss_main_window_to_background,
             exit_if_no_windows_left,
+            file_picker::file_picker_finish,
+            file_picker::file_picker_request,
             set_quick_view_ownership,
             dir_reader::read_dir,
             dir_reader::read_dir_with_timeout,
@@ -675,6 +694,14 @@ pub fn run() {
 }
 
 fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // A picker process is one dialog answering one request: its window, its own identity, and
+    // none of the app's furniture — no tray, no storage preload, no media-arg interpretation.
+    if app.state::<file_picker::PickerSession>().0.is_some() {
+        standalone_viewer::adopt_process_identity("sigma-file-picker");
+        standalone_viewer::create_window_from_config(app.handle(), "file-picker")?;
+        return Ok(());
+    }
+
     if cfg!(debug_assertions) {
         app.handle().plugin(
             tauri_plugin_log::Builder::default()
@@ -712,7 +739,14 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 
     // Before the window exists, so its surface is stamped with the viewer's own identity.
     if is_standalone_viewer {
-        standalone_viewer::adopt_viewer_identity();
+        standalone_viewer::adopt_process_identity("sigma-quick-view");
+    }
+
+    // The portal backend belongs to the session: the process that is resident, single, and
+    // able to spawn picker processes on demand.
+    #[cfg(target_os = "linux")]
+    if !is_standalone_viewer {
+        portal_file_chooser::start();
     }
 
     standalone_viewer::create_window_from_config(

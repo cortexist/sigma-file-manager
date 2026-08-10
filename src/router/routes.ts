@@ -26,6 +26,13 @@ export const printViewRoute: RouteRecordRaw = {
   meta: { layout: 'quick-view' },
 };
 
+export const filePickerRoute: RouteRecordRaw = {
+  path: '/file-picker',
+  name: 'file-picker',
+  component: () => import('@/modules/file-picker/pages/file-picker.vue'),
+  meta: { layout: 'quick-view' },
+};
+
 export const extensionPageRoute: RouteRecordRaw = {
   path: '/extension/:fullPageId',
   name: 'extension-page',

@@ -5,7 +5,8 @@
   "windows": [
     "main",
     "quick-view",
-    "print-view"
+    "print-view",
+    "file-picker"
   ],
   "permissions": [
     "core:default",
