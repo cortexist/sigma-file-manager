@@ -3,19 +3,13 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 mod associated_programs;
-mod explorer_command;
-mod icon_utils;
 mod open_path;
 mod shell_menu;
 mod utils;
 
 pub use associated_programs::get_associated_programs_impl;
 pub use associated_programs::invoke_handler_for_file;
-pub use explorer_command::get_modern_context_menu_impl;
-pub use explorer_command::invoke_modern_context_menu_item_impl;
 pub use open_path::open_path_default_impl;
-pub use shell_menu::get_shell_context_menu_impl;
-pub use shell_menu::invoke_shell_command;
 pub use shell_menu::open_native_properties_impl;
 
 use crate::open_with::types::OpenWithResult;

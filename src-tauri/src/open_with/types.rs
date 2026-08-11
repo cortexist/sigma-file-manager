@@ -27,18 +27,3 @@ pub struct GetAssociatedProgramsResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ShellContextMenuItem {
-    pub id: u32,
-    pub name: String,
-    pub verb: Option<String>,
-    pub icon: Option<String>,
-    pub children: Option<Vec<ShellContextMenuItem>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetShellContextMenuResult {
-    pub success: bool,
-    pub items: Vec<ShellContextMenuItem>,
-    pub error: Option<String>,
-}

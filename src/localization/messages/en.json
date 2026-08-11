@@ -1073,12 +1073,6 @@
     "programPath": "Program path",
     "noCustomCommands": "No custom commands yet. Add a custom command to open files with specific flags."
   },
-  "moreOptions": {
-    "loading": "Loading options...",
-    "shellExtensions": "Shell extensions",
-    "noOptionsAvailable": "No additional options available",
-    "failedToLoad": "Failed to load options"
-  },
   "changelog": {
     "title": "What's New",
     "settingsTitle": "What's New",

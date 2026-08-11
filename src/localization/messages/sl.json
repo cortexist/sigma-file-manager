@@ -1060,12 +1060,6 @@
     "programPath": "Pot do programa",
     "noCustomCommands": "Še ni ukazov po meri. Dodajte ukaz po meri za odpiranje datotek s posebnimi zastavicami."
   },
-  "moreOptions": {
-    "loading": "Nalagam možnosti...",
-    "shellExtensions": "Razširitve lupine",
-    "noOptionsAvailable": "Ni dodatnih možnosti na voljo",
-    "failedToLoad": "Ni uspelo naložiti možnosti"
-  },
   "changelog": {
     "title": "Kaj je novega",
     "settingsTitle": "Kaj je novega",

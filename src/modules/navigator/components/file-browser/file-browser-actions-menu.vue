@@ -41,7 +41,6 @@ import {
 } from 'vue';
 import FileBrowserNewSubmenu from './file-browser-new-submenu.vue';
 import FileBrowserOpenWithSubmenu from './file-browser-open-with-submenu.vue';
-import FileBrowserMoreOptionsSubmenu from './file-browser-more-options-submenu.vue';
 import FileBrowserArchiveSubmenu from './file-browser-archive-submenu.vue';
 import FileBrowserTerminalSubmenu from './file-browser-terminal-submenu.vue';
 import {
@@ -350,10 +349,6 @@ function handleCreateLink(linkKind: LinkCreationKind) {
     v-if="isActionVisible('open-with')"
     :selected-entries="selectedEntries"
     @open-custom-dialog="handleOpenCustomDialog"
-  />
-  <FileBrowserMoreOptionsSubmenu
-    v-if="!hasVirtualLocationSelection"
-    :selected-entries="selectedEntries"
   />
   <FileBrowserTerminalSubmenu
     v-if="!hasVirtualLocationSelection"

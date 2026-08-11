@@ -1030,12 +1030,6 @@
     "programPath": "程序路径",
     "noCustomCommands": "暂无自定义命令。添加自定义命令以使用特定参数打开文件。"
   },
-  "moreOptions": {
-    "loading": "正在加载选项...",
-    "shellExtensions": "Shell 扩展",
-    "noOptionsAvailable": "没有其他可用选项",
-    "failedToLoad": "加载选项失败"
-  },
   "changelog": {
     "title": "新功能",
     "settingsTitle": "新功能",

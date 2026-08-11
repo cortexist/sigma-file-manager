@@ -1030,12 +1030,6 @@
     "programPath": "Program yolu",
     "noCustomCommands": "Henüz özel komut yok. Dosyaları belirli bayraklarla açmak için özel komut ekleyin."
   },
-  "moreOptions": {
-    "loading": "Seçenekler yükleniyor...",
-    "shellExtensions": "Kabuk uzantıları",
-    "noOptionsAvailable": "Ek seçenek mevcut değil",
-    "failedToLoad": "Seçenekler yüklenemedi"
-  },
   "changelog": {
     "title": "Yenilikler",
     "settingsTitle": "Yenilikler",

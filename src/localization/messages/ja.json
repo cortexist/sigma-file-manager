@@ -1030,12 +1030,6 @@
     "programPath": "プログラムパス",
     "noCustomCommands": "カスタムコマンドがありません。特定のフラグでファイルを開くためのカスタムコマンドを追加してください。"
   },
-  "moreOptions": {
-    "loading": "オプションを読み込み中...",
-    "shellExtensions": "シェル拡張機能",
-    "noOptionsAvailable": "追加のオプションはありません",
-    "failedToLoad": "オプションの読み込みに失敗しました"
-  },
   "changelog": {
     "title": "新機能",
     "settingsTitle": "新機能",

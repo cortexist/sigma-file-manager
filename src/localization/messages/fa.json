@@ -1026,12 +1026,6 @@
     "programPath": "مسیر برنامه",
     "noCustomCommands": "هنوز دستور سفارشی وجود ندارد. برای باز کردن فایل‌ها با پرچم‌های خاص، دستور سفارشی اضافه کنید."
   },
-  "moreOptions": {
-    "loading": "در حال بارگذاری گزینه‌ها...",
-    "shellExtensions": "افزونه‌های شل",
-    "noOptionsAvailable": "گزینه اضافی موجود نیست",
-    "failedToLoad": "بارگذاری گزینه‌ها ناموفق بود"
-  },
   "changelog": {
     "title": "تازه‌ها",
     "settingsTitle": "تازه‌ها",

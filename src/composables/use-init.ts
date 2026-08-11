@@ -534,7 +534,6 @@ export function useInit() {
         'Failed to initialize app updater:',
       );
     }
-
   }
 
   onMounted(() => {

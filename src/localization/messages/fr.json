@@ -1030,12 +1030,6 @@
     "programPath": "Chemin du programme",
     "noCustomCommands": "Pas encore de commandes personnalisées. Ajoutez une commande pour ouvrir des fichiers avec des drapeaux spécifiques."
   },
-  "moreOptions": {
-    "loading": "Chargement des options...",
-    "shellExtensions": "Extensions du shell",
-    "noOptionsAvailable": "Aucune option supplémentaire disponible",
-    "failedToLoad": "Échec du chargement des options"
-  },
   "changelog": {
     "title": "Nouveautés",
     "settingsTitle": "Nouveautés",
