@@ -2,8 +2,16 @@
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
+/*
+  This fork, not the upstream project it came from.
+
+  Everything here is where a person using *this* build should be sent: the releases they can
+  actually install, the issue tracker whose maintainer can act on their report, and the source
+  that matches the binary in front of them. Upstream keeps the credit in the licence headers and
+  the README; it should not be receiving bug reports about code it has never seen.
+*/
 const githubMainBranch = 'main';
-const githubUser = 'aleksey-hoffman';
+const githubUser = 'cortexist';
 const githubRepo = 'sigma-file-manager';
 const githubFullRepoName = `${githubUser}/${githubRepo}`;
 const githubBaseUrl = 'https://github.com';

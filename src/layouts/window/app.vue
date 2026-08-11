@@ -8,7 +8,6 @@ import { NavSidebar, WindowToolbar } from '@/modules/shell';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/toaster';
 import { InfusionWrapper } from '@/components/ui/infusion';
-import { ChangelogDialog } from '@/modules/changelog';
 import { PageIframeLayout } from '@/layouts';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import { useEmbedPages } from '@/modules/extensions/composables/use-embed-pages';
@@ -28,7 +27,6 @@ const { activeEmbedPageId, visitedEmbedPages } = useEmbedPages();
   >
     <InfusionWrapper />
     <Toaster />
-    <ChangelogDialog />
     <ExtensionDialog />
     <CommandPalette />
     <ExtensionModalsContainer />

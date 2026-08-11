@@ -16,7 +16,6 @@ import {
   SettingsIcon,
   FileTextIcon,
   SearchIcon,
-  SparklesIcon,
 } from '@lucide/vue';
 import { join } from '@tauri-apps/api/path';
 import { Button } from '@/components/ui/button';
@@ -28,19 +27,12 @@ import {
   DropdownMenuTrigger,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import externalLinks from '@/data/external-links';
 import { openNavigatorPath } from '@/utils/open-navigator-directory';
-import { useChangelog } from '@/modules/changelog';
 import normalizePath from '@/utils/normalize-path';
 
 const { t } = useI18n();
 const router = useRouter();
-const { open: openChangelog } = useChangelog();
 
 function navigateToDirectory(path: string) {
   openNavigatorPath(router, path);
@@ -91,23 +83,6 @@ function openReleasesPage() {
 <template>
   <Teleport to=".window-toolbar-primary-teleport-target">
     <div class="animate-fade-in settings-actions">
-      <Tooltip>
-        <TooltipTrigger as-child>
-          <Button
-            variant="ghost"
-            size="icon"
-            @click="openChangelog"
-          >
-            <SparklesIcon
-              :size="16"
-              class="settings-actions-icon"
-            />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {{ t('changelog.title') }}
-        </TooltipContent>
-      </Tooltip>
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
           <Button

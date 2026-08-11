@@ -130,12 +130,14 @@ jobs:
   build:
     name: Build (${{ matrix.platform }})
     needs: prepare
+    # Linux only. This fork is developed and tested on Linux, and the Windows installer upstream
+    # ships is code-signed through infrastructure this repository has no access to — publishing
+    # an unsigned one under the same name would be worse than publishing none. The Windows code
+    # still has to compile: CI keeps a `cargo check` for it on every pull request.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: windows
-            os: windows-latest
           - platform: linux
             os: ubuntu-24.04
 

@@ -13,8 +13,13 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::Emitter;
 
+/// This fork's own releases, and deliberately not the upstream project's.
+///
+/// The Linux picker takes the first `.AppImage` in a release, so pointing this at upstream does
+/// not merely show the wrong release notes — it downloads an upstream build and installs it over
+/// this one. The two have diverged far enough that there is no upgrade path between them.
 const GITHUB_RELEASES_API_URL: &str =
-    "https://api.github.com/repos/aleksey-hoffman/sigma-file-manager/releases?per_page=100";
+    "https://api.github.com/repos/cortexist/sigma-file-manager/releases?per_page=100";
 const MAX_INSTALLER_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
 const CONNECT_TIMEOUT_SECS: u64 = 5;
 const UPDATE_CHECK_TIMEOUT_SECS: u64 = 10;

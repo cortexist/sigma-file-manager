@@ -19,7 +19,6 @@ import { useGlobalShortcutsStore } from '@/stores/runtime/global-shortcuts';
 import { useTerminalsStore } from '@/stores/runtime/terminals';
 import { useBackgroundMediaStore } from '@/stores/runtime/background-media';
 import { disableWebViewFeatures } from '@/utils/disable-web-view-features';
-import { useChangelog } from '@/modules/changelog';
 import { useAppUpdater } from '@/modules/app-updater';
 import { useExtensionsStore } from '@/stores/runtime/extensions';
 import { useArchiveJobsStore } from '@/stores/runtime/archive-jobs';
@@ -73,7 +72,6 @@ export function useInit() {
   const deleteJobsStore = useDeleteJobsStore();
   const copyMoveJobsStore = useCopyMoveJobsStore();
   const quickViewStore = useQuickViewStore();
-  const { checkAndShowChangelog } = useChangelog();
   const { initAutoCheck } = useAppUpdater();
   useClipboardFocusSync();
   let appLaunchArgsUnlisten: UnlistenFn | null = null;
@@ -537,11 +535,6 @@ export function useInit() {
       );
     }
 
-    runInBackgroundWithTrace(
-      'background:changelog.checkAndShow',
-      () => checkAndShowChangelog(),
-      'Failed to check changelog:',
-    );
   }
 
   onMounted(() => {
