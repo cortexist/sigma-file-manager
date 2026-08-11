@@ -122,6 +122,9 @@ Worth knowing while iterating:
 
 ## Release build
 
+> Publishing a version is a different thing from building one locally, and is done by CI —
+> see [`docs/releasing.md`](docs/releasing.md) for the tag-to-published-release steps.
+
 ```bash
 npx tauri build --no-bundle
 ```
