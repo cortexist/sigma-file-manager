@@ -111,7 +111,15 @@ describe('module load recovery', () => {
       configurable: true,
       value: { reload: reloadMock },
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    // The prototype is taken from the instance rather than named. `Storage` — bare or on
+    // `window` — resolves to Node's own global on Node 22 and newer, which is a different class
+    // from the one jsdom's `sessionStorage` inherits from, so a mock installed there silently
+    // never fires and this test passed only by not testing anything. Spying on the instance
+    // does not work either: jsdom backs storage with a Proxy, so assigning `setItem` to it
+    // stores a key of that name instead of replacing the method.
+    const storagePrototype = Object.getPrototypeOf(window.sessionStorage) as Storage;
+
+    vi.spyOn(storagePrototype, 'setItem').mockImplementation(() => {
       throw new Error('Storage unavailable');
     });
 
