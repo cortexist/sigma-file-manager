@@ -4,9 +4,9 @@
 
 use crate::open_with::types::OpenWithResult;
 use crate::open_with::utils::{
-    canonicalize_path, common_parent_directory_for_selections,
-    normalize_selection_path_for_comparison, parent_directory_for_selection, path_for_selection,
-    prepare_shell_path, shell_path_candidates,
+    common_parent_directory_for_selections, normalize_selection_path_for_comparison,
+    parent_directory_for_selection, path_for_selection, prepare_shell_path,
+    shell_path_candidates,
 };
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
@@ -26,21 +26,9 @@ use windows::Win32::UI::Shell::{
     CMF_NORMAL, CMINVOKECOMMANDINFOEX, KF_FLAG_DEFAULT, SEE_MASK_INVOKEIDLIST, SHELLEXECUTEINFOW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreatePopupMenu, DestroyMenu, GetMenuItemCount, GetMenuItemInfoW, MENUITEMINFOW, MIIM_BITMAP,
-    MIIM_ID, MIIM_STRING, MIIM_SUBMENU, SW_SHOWNORMAL,
+    CreatePopupMenu, DestroyMenu, GetMenuItemCount, GetMenuItemInfoW, MENUITEMINFOW, MIIM_ID,
+    SW_SHOWNORMAL,
 };
-
-const EXCLUDED_VERBS: &[&str] = &[
-    "cut",
-    "copy",
-    "paste",
-    "delete",
-    "rename",
-    "link",
-    "properties",
-];
-
-const UNSUPPORTED_VERBS: &[&str] = &["pintostartscreen"];
 
 struct ShellContextMenu {
     menu: IContextMenu,
