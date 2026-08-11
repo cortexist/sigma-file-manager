@@ -3,10 +3,19 @@
 A fork of [aleksey-hoffman/sigma-file-manager](https://github.com/aleksey-hoffman/sigma-file-manager),
 originally created and maintained by [Aleksey Hoffman](https://github.com/aleksey-hoffman).
 
-**This fork is developed and tested exclusively on Linux, under Wayland with Sway, and is
-coded for that environment.** Fixes and features here are written against that stack first;
-X11, Windows and macOS paths are inherited from upstream and are not exercised. The fork has
-diverged far enough that it is not intended to be merged back.
+**This fork is Linux-only, and no longer builds on Windows or macOS at all.** It is developed
+and tested under Wayland with Sway, and coded for that environment. Nothing here has been
+tested on any other platform.
+
+The break is not incidental: the native media stack (`audio_covers`, `media_info`) links
+GStreamer, which is declared as a Linux-only dependency, while the modules themselves are not
+gated — so compilation fails on both other platforms. Repairing it would mean maintaining code
+this fork does not ship, run or test, so CI does not attempt those builds and releases are
+Linux only. The `#[cfg(windows)]` and macOS code still in the tree is inherited from upstream
+and is now entirely unverified; treat it as such. X11 paths are likewise inherited and not
+exercised.
+
+The fork has diverged far enough that it is not intended to be merged back.
 
 For the feature list, screenshots and community links, see the upstream README.
 

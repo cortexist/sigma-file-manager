@@ -94,18 +94,9 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis",
       "appimage",
-      "deb",
-      "app",
-      "dmg"
+      "deb"
     ],
-    "windows": {
-      "nsis": {
-        "installMode": "currentUser",
-        "installerIcon": "icons/icon.ico"
-      }
-    },
     "linux": {
       "deb": {
         "depends": [

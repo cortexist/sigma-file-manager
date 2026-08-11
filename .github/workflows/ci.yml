@@ -11,6 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# There is deliberately no Windows job. The Windows build does not compile here and has not for
+# some time: `audio_covers` — and the rest of the native media stack — uses GStreamer, which
+# `Cargo.toml` declares for Linux only, while the modules themselves are not gated. Fixing that
+# would mean maintaining Windows code this fork does not ship, run or test. The `#[cfg(windows)]`
+# code that remains is inherited and unverified; treat it as such rather than trusting CI to
+# have checked it.
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -58,23 +64,3 @@ jobs:
 
       - name: Cargo test (lib)
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
-
-  tauri-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v1-rust
-          shared-key: ci-windows
-          workspaces: src-tauri
-          cache-on-failure: true
-
-      - name: Cargo check release lib
-        run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
