@@ -10,10 +10,13 @@ Copyright © 2026 Cortexist, LLC. All rights reserved.
   rather than a shared component (that extraction is the next stage): the real icon pipeline,
   image and video thumbnails from the shared disk cache, the navigator's sort comparator, and
   entries grouped the way the navigator groups them — folders in a section on top, files in a
-  section below — in either a list or a tile view. The toolbar borrows the navigator's own
+  section below — in either a list or a tile view. The chrome borrows the navigator's own
   components outright: the back/forward/up/home/refresh cluster (backed by the dialog's own
-  small history, not a Tab), the breadcrumb address bar, and the Ctrl+L path editor dialog —
-  all of them props-and-emits driven, which is what makes the borrowing possible. The
+  small history, not a Tab) sharing the title row so the toolbar keeps its width for the
+  breadcrumb address bar, the Ctrl+L path editor dialog, and the new-folder dialog
+  (Ctrl+Shift+N, the navigator's binding) which creates the folder and steps into it — a save
+  is often "build the rest of the path, then name the file" — all of them props-and-emits
+  driven, which is what makes the borrowing possible. The
   hidden-files switch follows the user's navigator setting until toggled (Ctrl+H works too)
   and never writes it back: a dialog borrows preferences, it does not edit them. The caller's
   portal type filters surface as a dropdown in the footer, narrowing the files (never the
@@ -23,7 +26,7 @@ Copyright © 2026 Cortexist, LLC. All rights reserved.
 
 <script setup lang="ts">
 import {
-  computed, onBeforeUnmount, onMounted, ref, watch,
+  computed, markRaw, onBeforeUnmount, onMounted, ref, watch,
 } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -34,6 +37,7 @@ import {
   ChevronUpIcon,
   FileIcon,
   FolderIcon,
+  FolderPlusIcon,
   LayoutGridIcon,
   ListIcon,
 } from '@lucide/vue';
@@ -53,12 +57,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Toaster } from '@/components/ui/toaster';
+import { toast, Toaster, ToastStatic } from '@/components/ui/toaster';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import FileBrowserEntryIcon from '@/modules/navigator/components/file-browser/file-browser-entry-icon.vue';
 import FileBrowserGridSectionBar from '@/modules/navigator/components/file-browser/file-browser-grid-section-bar.vue';
 import FileBrowserToolbarNavButtons from '@/modules/navigator/components/file-browser/file-browser-toolbar-nav-buttons.vue';
 import FileBrowserToolbarAddressBar from '@/modules/navigator/components/file-browser/file-browser-toolbar-address-bar.vue';
 import AddressBarEditorDialog from '@/modules/navigator/components/file-browser/address-bar-editor-dialog.vue';
+import FileBrowserNewItemDialog from '@/modules/navigator/components/file-browser/file-browser-new-item-dialog.vue';
 import FilePickerTileCard from '@/modules/file-picker/components/file-picker-tile-card.vue';
 import FilePickerInfusion from '@/modules/file-picker/components/file-picker-infusion.vue';
 import {
@@ -84,6 +94,7 @@ import {
   resolveDirectoryContents,
   virtualLocationPathExists,
 } from '@/utils/virtual-locations';
+import type { FileOperationResult } from '@/stores/runtime/clipboard';
 import type { DirEntry } from '@/types/dir-entry';
 import type { ListSortColumn, ListSortDirection } from '@/types/user-settings';
 
@@ -572,6 +583,47 @@ function openAddressBarEditor() {
   void addressBarEditorRef.value?.open('path');
 }
 
+const isNewFolderDialogOpen = ref(false);
+
+function openNewFolderDialog() {
+  if (!currentPathIsVirtual.value) {
+    isNewFolderDialogOpen.value = true;
+  }
+}
+
+/**
+ * The navigator's dialog and command, but the aftermath is the picker's own: the dialog
+ * exists to build the path to the destination, so a created folder is entered, not just
+ * listed — each level costs one dialog instead of a dialog and a double-click.
+ */
+async function handleNewFolderConfirm(name: string) {
+  try {
+    const result = await invoke<FileOperationResult>('create_item', {
+      directoryPath: currentPath.value,
+      name,
+      isDirectory: true,
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || '');
+    }
+  }
+  catch (error) {
+    toast.custom(markRaw(ToastStatic), {
+      componentProps: {
+        data: {
+          title: t('dialogs.newDirItemDialog.failedToCreateNewDirectory'),
+          description: error instanceof Error ? error.message : String(error),
+        },
+      },
+    });
+    return;
+  }
+
+  isNewFolderDialogOpen.value = false;
+  void listDirectory(`${currentPath.value.replace(/\/+$/, '')}/${name}`);
+}
+
 function handleAddressBarNavigate(path: string) {
   void listDirectory(path);
 }
@@ -668,6 +720,12 @@ function onKeydown(event: KeyboardEvent) {
     event.preventDefault();
     openAddressBarEditor();
   }
+
+  // The navigator's default new-directory binding.
+  if (event.ctrlKey && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'n') {
+    event.preventDefault();
+    openNewFolderDialog();
+  }
 }
 
 onMounted(async () => {
@@ -714,10 +772,11 @@ onBeforeUnmount(() => {
       class="file-picker__header"
       data-tauri-drag-region
     >
-      <span class="file-picker__title">{{ title }}</span>
-    </header>
+      <span
+        class="file-picker__title"
+        data-tauri-drag-region
+      >{{ title }}</span>
 
-    <div class="file-picker__toolbar">
       <FileBrowserToolbarNavButtons
         :can-go-back="canGoBack"
         :can-go-forward="canGoForward"
@@ -728,13 +787,7 @@ onBeforeUnmount(() => {
         @go-up="goUp"
         @go-home="goHome"
         @refresh="refresh"
-      />
-
-      <FileBrowserToolbarAddressBar
-        :current-path="currentPath"
-        @navigate="handleAddressBarNavigate"
-        @open-file="handleAddressBarOpenFile"
-        @edit="openAddressBarEditor"
+        @create-new-directory="openNewFolderDialog"
       />
 
       <div
@@ -769,6 +822,30 @@ onBeforeUnmount(() => {
           @update:model-value="hiddenFilesOverride = $event === true"
         />
       </label>
+    </header>
+
+    <div class="file-picker__toolbar">
+      <FileBrowserToolbarAddressBar
+        :current-path="currentPath"
+        @navigate="handleAddressBarNavigate"
+        @open-file="handleAddressBarOpenFile"
+        @edit="openAddressBarEditor"
+      />
+
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="file-picker__new-folder-button"
+            :disabled="currentPathIsVirtual"
+            @click="openNewFolderDialog"
+          >
+            <FolderPlusIcon :size="18" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{{ t('navigator.newDirectory') }}</TooltipContent>
+      </Tooltip>
     </div>
 
     <div
@@ -973,6 +1050,12 @@ onBeforeUnmount(() => {
       @open-file="handleAddressBarOpenFile"
       @reveal="handleAddressBarReveal"
     />
+    <FileBrowserNewItemDialog
+      v-model:open="isNewFolderDialogOpen"
+      type="directory"
+      @confirm="handleNewFolderConfirm"
+      @cancel="isNewFolderDialogOpen = false"
+    />
     <Toaster />
   </div>
 </template>
@@ -1023,16 +1106,41 @@ onBeforeUnmount(() => {
   color: hsl(var(--foreground));
 }
 
+/*
+ The title row carries every control that is not the address bar: the title leftmost (it is
+ the window's name, not a label on the buttons), then the nav cluster, then the view controls
+ pushed to the right end. That leaves the row below to the address bar and the new-folder
+ button that extends it, which is the one thing here that wants every pixel it can get — a
+ deep path is why the dialog is open. The gap around the nav cluster is the drag handle. The
+ row's insets mirror the toolbar's (8px margin + 12px padding), so both rows' contents start
+ and end on the same vertical lines. The title span carries the drag attribute too, since
+ Tauri only starts a drag from elements that hold it themselves.
+*/
+
 .file-picker__header {
   display: flex;
-  align-items: baseline;
-  padding: 12px 16px 8px;
-  gap: 12px;
+  align-items: center;
+  padding: 6px 12px 2px;
+  margin: 0 8px;
+  color: hsl(var(--icon));
+  gap: 8px;
 }
 
 .file-picker__title {
+  overflow: hidden;
+  min-width: 0;
+  flex: 0 1 auto;
   color: hsl(var(--muted-foreground));
   font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The nav cluster's own metrics, so the toolbar's buttons read as one set of controls. */
+.file-picker__new-folder-button {
+  width: 36px;
+  height: 36px;
+  flex: none;
 }
 
 .file-picker__toolbar {
@@ -1045,11 +1153,13 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+/* First of the right-end pair, so it carries the push. */
 .file-picker__layout-toggle {
   display: flex;
   overflow: hidden;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius-sm);
+  margin-left: auto;
 }
 
 .file-picker__layout-option {
@@ -1077,12 +1187,13 @@ onBeforeUnmount(() => {
 
 .file-picker__hidden-toggle {
   display: flex;
+  flex: none;
   align-items: center;
-  margin-left: auto;
   color: hsl(var(--muted-foreground));
   cursor: default;
   font-size: 12px;
   gap: 8px;
+  white-space: nowrap;
 }
 
 /* The navigator's compact switch sizing, from its Layout menu. */
