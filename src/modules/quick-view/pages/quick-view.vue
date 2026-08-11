@@ -2003,7 +2003,7 @@ onUnmounted(() => {
 .quick-view__strip {
   width: 100%;
   flex: 0 0 auto;
-  padding: 6px 12px 0 12px;
+  padding: 6px 12px 0;
   border-top: 1px solid hsl(var(--border, 0 0% 90%));
   background: hsl(var(--background, 0 0% 100%) / 95%);
 }
@@ -2096,7 +2096,7 @@ onUnmounted(() => {
 
 .quick-view__hint {
   flex: 0 0 auto;
-  padding: 0 8px 8px 8px;
+  padding: 0 8px 8px;
   background: hsl(var(--background, 0 0% 100%) / 90%);
   color: hsl(var(--muted-foreground, 0 0% 45%));
   font-size: 12px;
