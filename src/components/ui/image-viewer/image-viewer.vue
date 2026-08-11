@@ -598,7 +598,6 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: flex-end;
   padding: 8px 12px;
-  background: linear-gradient(to bottom, rgb(0 0 0 / 78%), transparent);
   opacity: 0.9;
   transition: opacity 150ms ease;
 }
@@ -612,7 +611,6 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   padding: 8px 12px 10px;
-  background: linear-gradient(to top, rgb(0 0 0 / 78%), transparent);
   opacity: 0.9;
   transition: opacity 150ms ease;
 }
@@ -631,7 +629,7 @@ onBeforeUnmount(() => {
   padding: 4px;
   border: none;
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: hsl(var(--background) / 50%);
   color: var(--foreground);
   cursor: pointer;
 }

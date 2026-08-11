@@ -67,6 +67,59 @@ your GPU, try:
 npm run tauri:dev:webkit-igpu
 ```
 
+### Debugging the file picker
+
+The file dialogs other applications open through the desktop portal are served by dedicated
+picker processes (see `docs/standalone-processes.md`), so `npm run tauri:dev` alone never
+shows one. To run a picker against the dev server with the Web Inspector attached:
+
+```bash
+# Terminal 1 — the dev server only (use tauri:dev instead to also get the main window)
+npm run dev
+
+# Terminal 2 — a debug binary with devtools, launched straight into picker mode
+cargo build --features devtools --manifest-path src-tauri/Cargo.toml
+./src-tauri/target/debug/sigma-file-manager --file-picker '{"title":"Dev picker","currentFolder":"/tmp"}'
+```
+
+The dialog opens together with a Web Inspector window — the `devtools` cargo feature
+auto-opens it for picker processes, which matters because right-click → Inspect is disabled
+app-wide. Hot reload works normally; the page comes from the dev server.
+
+The payload is the same JSON the portal backend passes. Every field is optional, and a
+missing or malformed payload still opens a default open-file dialog:
+
+```json
+{
+  "title": "Save Firmware Image",
+  "save": true,
+  "suggestedName": "firmware.bin",
+  "currentFolder": "/home/user/Downloads",
+  "multiple": false,
+  "directory": false,
+  "filters": [
+    { "name": "Images", "globs": ["*.png", "*.jpg"], "mimes": ["image/*"] },
+    { "name": "All Files", "globs": ["*"], "mimes": [] }
+  ],
+  "currentFilter": "Images"
+}
+```
+
+`save` brings the filename field and the two-step replace confirmation, `directory` picks
+folders, `multiple` allows Ctrl-click multi-select, and `filters` populates the type dropdown
+in the footer — handy since reaching save or directory mode through a real application's
+dialog is awkward.
+
+Worth knowing while iterating:
+
+- Confirming or cancelling **ends the process**: the answer goes to stdout as
+  `{"uris": [...]}`, which is exactly how the portal backend consumes a real dialog.
+  Relaunch to iterate.
+- The dialog reads your real user settings — layout, hidden files, theme, accent.
+- The virtualized listing reads its row heights (the `--file-picker-*-height` custom
+  properties) once at mount, so changing them live in the Inspector moves the boxes but not
+  the scroll math. Edit the source instead and let hot reload re-read them coherently.
+
 ## Release build
 
 ```bash
