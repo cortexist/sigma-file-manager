@@ -1030,12 +1030,6 @@
     "programPath": "Programmpfad",
     "noCustomCommands": "Noch keine benutzerdefinierten Befehle. Fügen Sie einen Befehl hinzu, um Dateien mit bestimmten Flags zu öffnen."
   },
-  "moreOptions": {
-    "loading": "Optionen werden geladen...",
-    "shellExtensions": "Shell-Erweiterungen",
-    "noOptionsAvailable": "Keine weiteren Optionen verfügbar",
-    "failedToLoad": "Optionen konnten nicht geladen werden"
-  },
   "changelog": {
     "title": "Neuigkeiten",
     "settingsTitle": "Neuigkeiten",

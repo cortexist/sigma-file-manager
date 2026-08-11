@@ -1060,12 +1060,6 @@
     "programPath": "נתיב התוכנית",
     "noCustomCommands": "אין עדיין פקודות מותאמות אישית. הוסף פקודה מותאמת אישית כדי לפתוח קבצים עם דגלים ספציפיים."
   },
-  "moreOptions": {
-    "loading": "טוען אפשרויות...",
-    "shellExtensions": "תוספי מעטפת",
-    "noOptionsAvailable": "אין אפשרויות נוספות זמינות",
-    "failedToLoad": "טעינת האפשרויות נכשלה"
-  },
   "changelog": {
     "title": "מה חדש",
     "settingsTitle": "מה חדש",

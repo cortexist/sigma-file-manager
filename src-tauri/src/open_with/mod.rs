@@ -11,7 +11,7 @@ mod windows;
 #[cfg(target_os = "linux")]
 mod linux;
 
-pub use types::{GetAssociatedProgramsResult, GetShellContextMenuResult, OpenWithResult};
+pub use types::{GetAssociatedProgramsResult, OpenWithResult};
 
 use std::path::Path;
 use std::process::Command;
@@ -199,60 +199,6 @@ pub fn open_native_open_with_dialog(file_path: String) -> OpenWithResult {
 }
 
 #[tauri::command]
-pub fn get_shell_context_menu(file_path: String) -> GetShellContextMenuResult {
-    #[cfg(target_os = "windows")]
-    {
-        windows::get_shell_context_menu_impl(&file_path)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = file_path;
-        GetShellContextMenuResult {
-            success: false,
-            items: vec![],
-            error: Some("Shell context menu is only supported on Windows".to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-pub fn invoke_shell_context_menu_item(
-    file_path: String,
-    command_id: u32,
-    command_verb: Option<String>,
-) -> OpenWithResult {
-    #[cfg(target_os = "windows")]
-    {
-        windows::invoke_shell_command(&file_path, command_id, command_verb.as_deref())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (file_path, command_id, command_verb);
-        OpenWithResult {
-            success: false,
-            error: Some("Shell context menu is only supported on Windows".to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-pub fn get_modern_context_menu(file_paths: Vec<String>) -> GetShellContextMenuResult {
-    #[cfg(target_os = "windows")]
-    {
-        windows::get_modern_context_menu_impl(&file_paths)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = file_paths;
-        GetShellContextMenuResult {
-            success: false,
-            items: vec![],
-            error: Some("Modern context menu is only supported on Windows".to_string()),
-        }
-    }
-}
-
-#[tauri::command]
 pub fn open_native_properties(file_paths: Vec<String>) -> OpenWithResult {
     #[cfg(target_os = "windows")]
     {
@@ -264,22 +210,6 @@ pub fn open_native_properties(file_paths: Vec<String>) -> OpenWithResult {
         OpenWithResult {
             success: false,
             error: Some("Native properties dialog is only supported on Windows".to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-pub fn invoke_modern_context_menu_item(file_paths: Vec<String>, command_id: u32) -> OpenWithResult {
-    #[cfg(target_os = "windows")]
-    {
-        windows::invoke_modern_context_menu_item_impl(&file_paths, command_id)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (file_paths, command_id);
-        OpenWithResult {
-            success: false,
-            error: Some("Modern context menu is only supported on Windows".to_string()),
         }
     }
 }

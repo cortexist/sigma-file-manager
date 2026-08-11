@@ -1060,12 +1060,6 @@
     "programPath": "پروگرام راستہ",
     "noCustomCommands": "ابھی کوئی کسٹم کمانڈ نہیں۔ فلیگز کے ساتھ کھولنے کے لیے شامل کریں۔"
   },
-  "moreOptions": {
-    "loading": "لوڈ ہو رہا ہے…",
-    "shellExtensions": "شیل ایکسٹینشنز",
-    "noOptionsAvailable": "کوئی اضافی اختیار نہیں",
-    "failedToLoad": "اختیارات لوڈ نہیں ہو سکے"
-  },
   "changelog": {
     "title": "تبدیلیاں",
     "settingsTitle": "تبدیلیاں",

@@ -1060,12 +1060,6 @@
     "programPath": "कार्यक्रम पथ",
     "noCustomCommands": "अभी तक कोई कस्टम आदेश नहीं. विशिष्ट फ़्लैग वाली फ़ाइलें खोलने के लिए एक कस्टम कमांड जोड़ें।"
   },
-  "moreOptions": {
-    "loading": "विकल्प लोड हो रहे हैं...",
-    "shellExtensions": "शैल एक्सटेंशन",
-    "noOptionsAvailable": "कोई अतिरिक्त विकल्प उपलब्ध नहीं है",
-    "failedToLoad": "विकल्प लोड करने में विफल"
-  },
   "changelog": {
     "title": "नया क्या है",
     "settingsTitle": "नया क्या है",

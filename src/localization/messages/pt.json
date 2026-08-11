@@ -1029,12 +1029,6 @@
     "programPath": "Caminho do programa",
     "noCustomCommands": "Nenhum comando personalizado ainda. Adicione um comando personalizado para abrir arquivos com flags específicas."
   },
-  "moreOptions": {
-    "loading": "Carregando opções...",
-    "shellExtensions": "Extensões do shell",
-    "noOptionsAvailable": "Nenhuma opção adicional disponível",
-    "failedToLoad": "Falha ao carregar opções"
-  },
   "changelog": {
     "title": "Novidades",
     "settingsTitle": "Novidades",
