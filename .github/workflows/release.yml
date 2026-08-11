@@ -88,9 +88,24 @@ jobs:
           gh api "repos/$REPOSITORY/releases/generate-notes" "${notes_args[@]}" --jq '.body // ""' \
             | awk '!/^\*\*Full Changelog\*\*: /' > "$generated_notes_file"
 
+          # Said before anything else, because the thing most likely to be misread about this
+          # release is whose it is. The version numbers run on their own line and are not a
+          # continuation of upstream's; nothing here has been reviewed or endorsed by them.
+          fork_notice_file="$(mktemp)"
+          cat > "$fork_notice_file" <<'NOTICE'
+          > **This is an independent fork, not an official Sigma File Manager release.**
+          > It is maintained at [cortexist/sigma-file-manager](https://github.com/cortexist/sigma-file-manager)
+          > and is not affiliated with or endorsed by the upstream project at
+          > [aleksey-hoffman/sigma-file-manager](https://github.com/aleksey-hoffman/sigma-file-manager).
+          > Its version numbers are its own and do not continue upstream's; builds from the two
+          > are not interchangeable, and this one only updates from this repository.
+          NOTICE
+
           notes_marker="<!-- generated-release-notes:$TAG -->"
           release_notes_file="$(mktemp)"
           {
+            cat "$fork_notice_file"
+            echo
             echo "$notes_marker"
             cat "$generated_notes_file"
           } > "$release_notes_file"
@@ -101,7 +116,7 @@ jobs:
               flags+=(--prerelease)
             fi
             gh release create "$TAG" \
-              --title "Sigma File Manager v$VERSION" \
+              --title "Sigma File Manager (Cortexist Fork) $VERSION" \
               --notes-file "$release_notes_file" \
               "${flags[@]}"
           else
@@ -231,17 +246,17 @@ jobs:
           for bundle in "${bundles[@]}"; do
             case "$bundle" in
               *.AppImage)
-                staged_asset="staged/Sigma-File-Manager-${VERSION}-linux.AppImage"
+                staged_asset="staged/Sigma-File-Manager-Cortexist-Fork-${VERSION}-linux.AppImage"
                 ;;
               *.deb)
-                staged_asset="staged/Sigma-File-Manager-${VERSION}-linux.deb"
+                staged_asset="staged/Sigma-File-Manager-Cortexist-Fork-${VERSION}-linux.deb"
                 ;;
               *.exe)
-                staged_asset="staged/Sigma-File-Manager-${VERSION}-windows-setup.exe"
+                staged_asset="staged/Sigma-File-Manager-Cortexist-Fork-${VERSION}-windows-setup.exe"
                 ;;
               *)
                 extension="${bundle##*.}"
-                staged_asset="staged/Sigma-File-Manager-${VERSION}-${PLATFORM}.${extension}"
+                staged_asset="staged/Sigma-File-Manager-Cortexist-Fork-${VERSION}-${PLATFORM}.${extension}"
                 ;;
             esac
 
@@ -264,7 +279,7 @@ jobs:
           fi
           chmod +x "$binary"
           mkdir -p staged
-          staged_binary="staged/Sigma-File-Manager-${VERSION}-linux-binary"
+          staged_binary="staged/Sigma-File-Manager-Cortexist-Fork-${VERSION}-linux-binary"
           cp "$binary" "$staged_binary"
           gh release upload "$TAG" "$staged_binary" --clobber
 
@@ -292,4 +307,9 @@ jobs:
             echo "::error::Flatpak bundle not found at $flatpak_bundle"
             exit 1
           fi
-          gh release upload "$TAG" "$flatpak_bundle" --clobber
+          # Staged under the same fork-marked name as the other assets. The build script writes
+          # the plain name, and renaming it there would only move the mismatch somewhere else.
+          mkdir -p staged
+          staged_flatpak="staged/Sigma-File-Manager-Cortexist-Fork-${VERSION}-linux.flatpak"
+          cp "$flatpak_bundle" "$staged_flatpak"
+          gh release upload "$TAG" "$staged_flatpak" --clobber
