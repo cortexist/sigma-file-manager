@@ -21,7 +21,8 @@
     "dashboard": "Painel",
     "notes": "Notas",
     "settings": "Configuração",
-    "extensions": "Extensões"
+    "extensions": "Extensões",
+    "trash": "Lixeira"
   },
   "language": {
     "language": "Idioma"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "Remover tudo desta lista"
     }
+  },
+  "trash": {
+    "subtitle": "Os arquivos que você excluiu e de onde vieram",
+    "empty": "A lixeira está vazia",
+    "emptyDescription": "Os arquivos excluídos ficam aqui até você restaurá-los ou removê-los definitivamente.",
+    "originalLocation": "Local original",
+    "deleted": "Excluído",
+    "restore": "Restaurar",
+    "deletePermanently": "Excluir definitivamente",
+    "emptyTrash": "Esvaziar a lixeira",
+    "restoredItems": "0 itens restaurados | 1 item restaurado | {n} itens restaurados | {n} itens restaurados",
+    "purgedItems": "0 itens excluídos definitivamente | 1 item excluído definitivamente | {n} itens excluídos definitivamente | {n} itens excluídos definitivamente",
+    "operationFailed": "Não foi possível fazer nada com esses itens",
+    "loadFailed": "Não foi possível ler a lixeira",
+    "unsupported": "A lixeira não pode ser lida neste sistema",
+    "unsupportedDescription": "A exclusão continua movendo arquivos para a lixeira; apenas listar o conteúdo não está disponível aqui."
   },
   "settingsCategories": {
     "navigation": "Navegação"

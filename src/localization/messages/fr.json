@@ -21,7 +21,8 @@
     "dashboard": "Tableau de bord",
     "notes": "Notes",
     "settings": "Paramètres",
-    "extensions": "Extensions"
+    "extensions": "Extensions",
+    "trash": "Corbeille"
   },
   "language": {
     "language": "Langue"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "Tout supprimer de cette liste"
     }
+  },
+  "trash": {
+    "subtitle": "Les fichiers que vous avez supprimés, et leur provenance",
+    "empty": "La corbeille est vide",
+    "emptyDescription": "Les fichiers supprimés attendent ici que vous les restauriez ou les supprimiez définitivement.",
+    "originalLocation": "Emplacement d’origine",
+    "deleted": "Supprimé",
+    "restore": "Restaurer",
+    "deletePermanently": "Supprimer définitivement",
+    "emptyTrash": "Vider la corbeille",
+    "restoredItems": "0 élément restauré | 1 élément restauré | {n} éléments restaurés | {n} éléments restaurés",
+    "purgedItems": "0 élément supprimé définitivement | 1 élément supprimé définitivement | {n} éléments supprimés définitivement | {n} éléments supprimés définitivement",
+    "operationFailed": "Rien n’a pu être fait pour ces éléments",
+    "loadFailed": "Impossible de lire la corbeille",
+    "unsupported": "La corbeille ne peut pas être lue sur ce système",
+    "unsupportedDescription": "La suppression place toujours les fichiers dans la corbeille ; seul l’affichage de son contenu est indisponible ici."
   },
   "settingsCategories": {
     "navigation": "Navigation"

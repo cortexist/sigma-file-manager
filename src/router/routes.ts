@@ -4,8 +4,10 @@
 
 import HomePage from '@/modules/home/pages/home.vue';
 import {
-  BlocksIcon, FolderClosedIcon, HomeIcon, BookmarkIcon, SettingsIcon, XIcon,
+  BlocksIcon, FolderClosedIcon, HomeIcon, BookmarkIcon, SettingsIcon,
 } from '@lucide/vue';
+import SearchTrashIcon from '@/components/icons/search-trash-icon.vue';
+import type { Component } from 'vue';
 import type { RouteRecordRaw } from 'vue-router';
 
 export function loadNavigatorRoute() {
@@ -40,7 +42,11 @@ export const extensionPageRoute: RouteRecordRaw = {
   meta: { keepAlive: true },
 };
 
-export const routes: Array<RouteRecordRaw & { icon: typeof XIcon }> = [
+/**
+ * The rail renders these with `<component :is>` at a fixed size, so anything drawn that way
+ * fits — most are Lucide icons, but a page whose meaning no stock icon carries brings its own.
+ */
+export const routes: Array<RouteRecordRaw & { icon: Component }> = [
   {
     path: '/',
     name: 'home',
@@ -58,6 +64,14 @@ export const routes: Array<RouteRecordRaw & { icon: typeof XIcon }> = [
     name: 'dashboard',
     icon: BookmarkIcon,
     component: () => import('@/modules/dashboard/pages/dashboard.vue'),
+  },
+  {
+    // Looking through what was deleted is browsing, so it sits with the other places one
+    // browses rather than down with the app's own settings.
+    path: '/trash',
+    name: 'trash',
+    icon: SearchTrashIcon,
+    component: () => import('@/modules/trash/pages/trash.vue'),
   },
   {
     path: '/settings',

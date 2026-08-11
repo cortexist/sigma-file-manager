@@ -21,7 +21,8 @@
     "dashboard": "ダッシュボード",
     "notes": "ノート",
     "settings": "環境設定",
-    "extensions": "拡張機能"
+    "extensions": "拡張機能",
+    "trash": "ゴミ箱"
   },
   "language": {
     "language": "言語"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "このリストからすべて削除"
     }
+  },
+  "trash": {
+    "subtitle": "削除したファイルと、その元の場所",
+    "empty": "ゴミ箱は空です",
+    "emptyDescription": "削除したファイルは、元に戻すか完全に削除するまでここに残ります。",
+    "originalLocation": "元の場所",
+    "deleted": "削除日時",
+    "restore": "元に戻す",
+    "deletePermanently": "完全に削除",
+    "emptyTrash": "ゴミ箱を空にする",
+    "restoredItems": "0個の項目を元に戻しました | 1個の項目を元に戻しました | {n}個の項目を元に戻しました | {n}個の項目を元に戻しました",
+    "purgedItems": "0個の項目を完全に削除しました | 1個の項目を完全に削除しました | {n}個の項目を完全に削除しました | {n}個の項目を完全に削除しました",
+    "operationFailed": "これらの項目には何もできませんでした",
+    "loadFailed": "ゴミ箱を読み取れませんでした",
+    "unsupported": "このシステムではゴミ箱を読み取れません",
+    "unsupportedDescription": "削除したファイルは引き続きゴミ箱に移動します。ここで中身を一覧表示できないだけです。"
   },
   "settingsCategories": {
     "navigation": "ナビゲーション"

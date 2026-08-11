@@ -362,11 +362,20 @@ function getDriveIcon(drive: {
   background-color: hsl(var(--foreground) / 5%);
 }
 
+/*
+  Both properties on purpose. The Lucide icons are outlines and take the colour on `stroke`;
+  an icon drawn as filled paths takes it from `currentColor`, which is what `color` sets. A
+  `fill` rule would be wrong for the outlines — it would override their `fill="none"` and
+  render every one of them solid.
+*/
+
 .nav-sidebar-item-icon {
+  color: hsl(var(--icon));
   stroke: hsl(var(--icon));
 }
 
 .nav-sidebar-item[is-active="true"] .nav-sidebar-item-icon {
+  color: hsl(var(--primary));
   stroke: hsl(var(--primary));
 }
 

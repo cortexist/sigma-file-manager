@@ -21,7 +21,8 @@
     "dashboard": "Gösterge Tablosu",
     "notes": "Notlar",
     "settings": "Ayarlar",
-    "extensions": "Uzantılar"
+    "extensions": "Uzantılar",
+    "trash": "Çöp Kutusu"
   },
   "language": {
     "language": "Dil"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "Tümünü bu listeden kaldır"
     }
+  },
+  "trash": {
+    "subtitle": "Sildiğin dosyalar ve nereden geldikleri",
+    "empty": "Çöp kutusu boş",
+    "emptyDescription": "Silinen dosyalar, geri yükleyene veya kalıcı olarak silene kadar burada bekler.",
+    "originalLocation": "Özgün konum",
+    "deleted": "Silinme",
+    "restore": "Geri yükle",
+    "deletePermanently": "Kalıcı olarak sil",
+    "emptyTrash": "Çöp kutusunu boşalt",
+    "restoredItems": "0 öge geri yüklendi | 1 öge geri yüklendi | {n} öge geri yüklendi | {n} öge geri yüklendi",
+    "purgedItems": "0 öge kalıcı olarak silindi | 1 öge kalıcı olarak silindi | {n} öge kalıcı olarak silindi | {n} öge kalıcı olarak silindi",
+    "operationFailed": "Bu ögeler için hiçbir şey yapılamadı",
+    "loadFailed": "Çöp kutusu okunamadı",
+    "unsupported": "Bu sistemde çöp kutusu okunamıyor",
+    "unsupportedDescription": "Silme işlemi dosyaları hâlâ çöp kutusuna taşır; yalnızca içeriğin listelenmesi burada kullanılamaz."
   },
   "settingsCategories": {
     "navigation": "Gezinme"

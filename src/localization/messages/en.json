@@ -21,7 +21,8 @@
     "dashboard": "Dashboard",
     "notes": "Notes",
     "settings": "Settings",
-    "extensions": "Extensions"
+    "extensions": "Extensions",
+    "trash": "Trash"
   },
   "language": {
     "language": "Language"
@@ -231,6 +232,22 @@
     "actions": {
       "clearAll": "Remove all from this list"
     }
+  },
+  "trash": {
+    "subtitle": "Files you deleted, and where they came from",
+    "empty": "The trash is empty",
+    "emptyDescription": "Deleted files wait here until you put them back or remove them for good.",
+    "originalLocation": "Original location",
+    "deleted": "Deleted",
+    "restore": "Restore",
+    "deletePermanently": "Delete permanently",
+    "emptyTrash": "Empty the trash",
+    "restoredItems": "Restored 0 items | Restored 1 item | Restored {n} items | Restored {n} items",
+    "purgedItems": "Deleted 0 items for good | Deleted 1 item for good | Deleted {n} items for good | Deleted {n} items for good",
+    "operationFailed": "Nothing could be done to those items",
+    "loadFailed": "The trash could not be read",
+    "unsupported": "The trash cannot be read on this system",
+    "unsupportedDescription": "Deleting still moves files to the trash; only listing what is in it is unavailable here."
   },
   "settingsCategories": {
     "navigation": "Navigation"

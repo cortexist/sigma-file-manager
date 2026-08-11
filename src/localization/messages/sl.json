@@ -21,7 +21,8 @@
     "dashboard": "Nadzorna plošča",
     "notes": "Opombe",
     "settings": "Nastavitve",
-    "extensions": "Razširitve"
+    "extensions": "Razširitve",
+    "trash": "Koš"
   },
   "language": {
     "language": "Jezik"
@@ -218,6 +219,22 @@
     "actions": {
       "clearAll": "Odstrani vse s tega seznama"
     }
+  },
+  "trash": {
+    "subtitle": "Datoteke, ki ste jih izbrisali, in od kod so prišle",
+    "empty": "Koš je prazen",
+    "emptyDescription": "Izbrisane datoteke počakajo tukaj, dokler jih ne obnovite ali trajno odstranite.",
+    "originalLocation": "Prvotno mesto",
+    "deleted": "Izbrisano",
+    "restore": "Obnovi",
+    "deletePermanently": "Trajno izbriši",
+    "emptyTrash": "Izprazni koš",
+    "restoredItems": "Obnovljenih 0 elementov | Obnovljen 1 element | Obnovljena {n} elementa | Obnovljenih {n} elementov",
+    "purgedItems": "Trajno izbrisanih 0 elementov | Trajno izbrisan 1 element | Trajno izbrisana {n} elementa | Trajno izbrisanih {n} elementov",
+    "operationFailed": "Za te elemente ni bilo mogoče storiti ničesar",
+    "loadFailed": "Koša ni bilo mogoče prebrati",
+    "unsupported": "V tem sistemu koša ni mogoče prebrati",
+    "unsupportedDescription": "Brisanje datoteke še vedno premakne v koš; tukaj ni na voljo le prikaz njegove vsebine."
   },
   "settingsCategories": {
     "navigation": "Navigacija"

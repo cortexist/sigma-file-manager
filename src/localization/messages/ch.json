@@ -21,7 +21,8 @@
     "dashboard": "仪表板",
     "notes": "笔记",
     "settings": "设置",
-    "extensions": "扩展功能"
+    "extensions": "扩展功能",
+    "trash": "回收站"
   },
   "language": {
     "language": "语言"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "从此列表中删除全部"
     }
+  },
+  "trash": {
+    "subtitle": "你删除的文件，以及它们原来的位置",
+    "empty": "回收站是空的",
+    "emptyDescription": "删除的文件会留在这里，直到你还原或彻底删除它们。",
+    "originalLocation": "原始位置",
+    "deleted": "删除时间",
+    "restore": "还原",
+    "deletePermanently": "彻底删除",
+    "emptyTrash": "清空回收站",
+    "restoredItems": "已还原 0 个项目 | 已还原 1 个项目 | 已还原 {n} 个项目 | 已还原 {n} 个项目",
+    "purgedItems": "已彻底删除 0 个项目 | 已彻底删除 1 个项目 | 已彻底删除 {n} 个项目 | 已彻底删除 {n} 个项目",
+    "operationFailed": "无法对这些项目执行任何操作",
+    "loadFailed": "无法读取回收站",
+    "unsupported": "此系统无法读取回收站",
+    "unsupportedDescription": "删除仍会将文件移到回收站，只是这里无法列出其中的内容。"
   },
   "settingsCategories": {
     "navigation": "导航"

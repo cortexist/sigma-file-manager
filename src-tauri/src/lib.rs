@@ -38,6 +38,7 @@ mod system_clipboard;
 mod system_icons;
 mod system_tray;
 mod terminal;
+mod trash_bin;
 #[cfg(windows)]
 mod url_drop;
 mod user_storage_files_config;
@@ -571,6 +572,12 @@ pub fn run() {
             file_operations::rename_item,
             file_operations::delete_items,
             file_operations::create_item,
+            trash_bin::trash_is_listable,
+            trash_bin::trash_list,
+            trash_bin::trash_sizes,
+            trash_bin::trash_restore,
+            trash_bin::trash_purge,
+            trash_bin::trash_empty,
             link_operations::create_links,
             archive::jobs::start_archive_job,
             archive::jobs::cancel_archive_job,

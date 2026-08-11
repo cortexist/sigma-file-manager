@@ -21,7 +21,8 @@
     "dashboard": "Dashboard",
     "notes": "Note",
     "settings": "Impostazioni",
-    "extensions": "Estensioni"
+    "extensions": "Estensioni",
+    "trash": "Cestino"
   },
   "language": {
     "language": "Lingua"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "Rimuovi tutto da questa lista"
     }
+  },
+  "trash": {
+    "subtitle": "I file che hai eliminato e da dove provengono",
+    "empty": "Il cestino è vuoto",
+    "emptyDescription": "I file eliminati restano qui finché non li ripristini o non li elimini definitivamente.",
+    "originalLocation": "Posizione originale",
+    "deleted": "Eliminato",
+    "restore": "Ripristina",
+    "deletePermanently": "Elimina definitivamente",
+    "emptyTrash": "Svuota il cestino",
+    "restoredItems": "0 elementi ripristinati | 1 elemento ripristinato | {n} elementi ripristinati | {n} elementi ripristinati",
+    "purgedItems": "0 elementi eliminati definitivamente | 1 elemento eliminato definitivamente | {n} elementi eliminati definitivamente | {n} elementi eliminati definitivamente",
+    "operationFailed": "Non è stato possibile fare nulla per quegli elementi",
+    "loadFailed": "Impossibile leggere il cestino",
+    "unsupported": "Il cestino non può essere letto su questo sistema",
+    "unsupportedDescription": "L’eliminazione sposta ancora i file nel cestino; qui non è disponibile solo l’elenco del contenuto."
   },
   "settingsCategories": {
     "navigation": "Navigazione"

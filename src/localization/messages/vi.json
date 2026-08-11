@@ -21,7 +21,8 @@
     "dashboard": "Bảng điều khiển",
     "notes": "Ghi chú",
     "settings": "Cài đặt",
-    "extensions": "Tiện ích mở rộng"
+    "extensions": "Tiện ích mở rộng",
+    "trash": "Thùng rác"
   },
   "language": {
     "language": "Ngôn ngữ"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "Xóa tất cả khỏi danh sách này"
     }
+  },
+  "trash": {
+    "subtitle": "Những tệp bạn đã xoá và nơi chúng đến từ",
+    "empty": "Thùng rác trống",
+    "emptyDescription": "Tệp đã xoá nằm ở đây cho đến khi bạn khôi phục hoặc xoá vĩnh viễn.",
+    "originalLocation": "Vị trí ban đầu",
+    "deleted": "Đã xoá",
+    "restore": "Khôi phục",
+    "deletePermanently": "Xoá vĩnh viễn",
+    "emptyTrash": "Dọn sạch thùng rác",
+    "restoredItems": "Đã khôi phục 0 mục | Đã khôi phục 1 mục | Đã khôi phục {n} mục | Đã khôi phục {n} mục",
+    "purgedItems": "Đã xoá vĩnh viễn 0 mục | Đã xoá vĩnh viễn 1 mục | Đã xoá vĩnh viễn {n} mục | Đã xoá vĩnh viễn {n} mục",
+    "operationFailed": "Không thể làm gì với các mục đó",
+    "loadFailed": "Không thể đọc thùng rác",
+    "unsupported": "Không thể đọc thùng rác trên hệ thống này",
+    "unsupportedDescription": "Xoá tệp vẫn chuyển chúng vào thùng rác; chỉ là không thể liệt kê nội dung ở đây."
   },
   "settingsCategories": {
     "navigation": "Điều hướng"

@@ -21,7 +21,8 @@
     "dashboard": "Tablero",
     "notes": "Notas",
     "settings": "Configuración",
-    "extensions": "Extensiones"
+    "extensions": "Extensiones",
+    "trash": "Papelera"
   },
   "language": {
     "language": "Idioma"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "Eliminar todo de esta lista"
     }
+  },
+  "trash": {
+    "subtitle": "Archivos que eliminaste y de dónde vinieron",
+    "empty": "La papelera está vacía",
+    "emptyDescription": "Los archivos eliminados esperan aquí hasta que los restaures o los elimines definitivamente.",
+    "originalLocation": "Ubicación original",
+    "deleted": "Eliminado",
+    "restore": "Restaurar",
+    "deletePermanently": "Eliminar definitivamente",
+    "emptyTrash": "Vaciar la papelera",
+    "restoredItems": "0 elementos restaurados | 1 elemento restaurado | {n} elementos restaurados | {n} elementos restaurados",
+    "purgedItems": "0 elementos eliminados definitivamente | 1 elemento eliminado definitivamente | {n} elementos eliminados definitivamente | {n} elementos eliminados definitivamente",
+    "operationFailed": "No se pudo hacer nada con esos elementos",
+    "loadFailed": "No se pudo leer la papelera",
+    "unsupported": "La papelera no se puede leer en este sistema",
+    "unsupportedDescription": "Al eliminar, los archivos siguen yendo a la papelera; solo no se puede mostrar su contenido aquí."
   },
   "settingsCategories": {
     "navigation": "Navegación"

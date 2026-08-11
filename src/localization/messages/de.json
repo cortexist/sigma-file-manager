@@ -21,7 +21,8 @@
     "dashboard": "Dashboard",
     "notes": "Notizen",
     "settings": "Einstellungen",
-    "extensions": "Erweiterungen"
+    "extensions": "Erweiterungen",
+    "trash": "Papierkorb"
   },
   "language": {
     "language": "Sprache"
@@ -189,6 +190,22 @@
     "actions": {
       "clearAll": "Alle aus dieser Liste entfernen"
     }
+  },
+  "trash": {
+    "subtitle": "Gelöschte Dateien und ihre Herkunft",
+    "empty": "Der Papierkorb ist leer",
+    "emptyDescription": "Gelöschte Dateien warten hier, bis du sie wiederherstellst oder endgültig entfernst.",
+    "originalLocation": "Ursprünglicher Ort",
+    "deleted": "Gelöscht",
+    "restore": "Wiederherstellen",
+    "deletePermanently": "Endgültig löschen",
+    "emptyTrash": "Papierkorb leeren",
+    "restoredItems": "0 Elemente wiederhergestellt | 1 Element wiederhergestellt | {n} Elemente wiederhergestellt | {n} Elemente wiederhergestellt",
+    "purgedItems": "0 Elemente endgültig gelöscht | 1 Element endgültig gelöscht | {n} Elemente endgültig gelöscht | {n} Elemente endgültig gelöscht",
+    "operationFailed": "Für diese Elemente konnte nichts getan werden",
+    "loadFailed": "Der Papierkorb konnte nicht gelesen werden",
+    "unsupported": "Der Papierkorb kann auf diesem System nicht gelesen werden",
+    "unsupportedDescription": "Löschen verschiebt Dateien weiterhin in den Papierkorb; nur das Auflisten ist hier nicht verfügbar."
   },
   "settingsCategories": {
     "navigation": "Navigation"
