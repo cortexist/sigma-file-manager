@@ -70,6 +70,9 @@ vi.mock('@/modules/navigator/composables/use-navigator-image-thumbnails', () => 
   }),
 }));
 
+/** The content version every `createImageEntry` carries: its `modified_time` and `size`. */
+const ENTRY_VERSION = '123-1024';
+
 function createImageEntry(extension: string, pathSuffix = extension): DirEntry {
   return {
     name: `photo.${extension}`,
@@ -130,7 +133,35 @@ describe('useInfoPanelImagePreview', () => {
     const preview = mountInfoPanelImagePreview(selectedEntry);
     await nextTick();
 
-    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.png');
+    expect(preview.imageOriginalSrc.value).toBe(`asset://C:/media/photo.png?v=${ENTRY_VERSION}`);
+  });
+
+  /**
+   * The regression this guards: a file re-saved in place kept its path, so the source string
+   * was identical, so nothing below it could tell that the picture had changed — the pane went
+   * on showing the bytes from before the write until another file was selected and back.
+   */
+  it('re-points the source when the file behind the selection has been written to', async () => {
+    const selectedEntry = ref<DirEntry | null>(createImageEntry('png'));
+    const preview = mountInfoPanelImagePreview(selectedEntry);
+    await nextTick();
+
+    const before = preview.imageOriginalSrc.value;
+    const beforeMedia = preview.playableMediaSrc.value;
+
+    // What the info panel hands down after re-reading the file it watches: the same path,
+    // carrying the times and size it has now. The wait for the write to finish happens there,
+    // so an entry arriving here is already the settled one.
+    selectedEntry.value = {
+      ...createImageEntry('png'),
+      modified_time: 456,
+      size: 2048,
+    };
+    await nextTick();
+
+    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.png?v=456-2048');
+    expect(preview.imageOriginalSrc.value).not.toBe(before);
+    expect(preview.playableMediaSrc.value).not.toBe(beforeMedia);
   });
 
   it('skips the intermediate thumbnail when the full-size setting is enabled', async () => {
@@ -141,7 +172,7 @@ describe('useInfoPanelImagePreview', () => {
     const preview = mountInfoPanelImagePreview(selectedEntry);
     await nextTick();
 
-    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.png');
+    expect(preview.imageOriginalSrc.value).toBe(`asset://C:/media/photo.png?v=${ENTRY_VERSION}`);
     expect(preview.imageThumbnailSrc.value).toBe('');
     expect(mockGetImageThumbnail).not.toHaveBeenCalled();
     expect(preview.usesThumbnailImagePreview.value).toBe(false);
@@ -163,7 +194,7 @@ describe('useInfoPanelImagePreview', () => {
     await nextTick();
 
     expect(preview.imageThumbnailSrc.value).toBe('asset://thumb');
-    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.png');
+    expect(preview.imageOriginalSrc.value).toBe(`asset://C:/media/photo.png?v=${ENTRY_VERSION}`);
     expect(mockGetImageThumbnail).toHaveBeenCalled();
     expect(preview.usesThumbnailImagePreview.value).toBe(true);
   });
@@ -173,7 +204,7 @@ describe('useInfoPanelImagePreview', () => {
     const preview = mountInfoPanelImagePreview(selectedEntry);
     await nextTick();
 
-    expect(preview.imageOriginalSrc.value).toBe('asset://C:/media/photo.svg');
+    expect(preview.imageOriginalSrc.value).toBe(`asset://C:/media/photo.svg?v=${ENTRY_VERSION}`);
     expect(preview.imageThumbnailSrc.value).toBe('');
     expect(preview.usesThumbnailImagePreview.value).toBe(false);
   });

@@ -28,8 +28,8 @@ function createDateTimeOptions(overrides: Partial<DateTime> = {}): DateTime {
 }
 
 function translate(key: string, values?: unknown): string {
-  if (key === 'relativeTime.secondsAgo') {
-    return `${String(values)} sec ago`;
+  if (key === 'relativeTime.justNow') {
+    return 'Just now';
   }
 
   if (key === 'relativeTime.minutesAgo') {
@@ -65,6 +65,23 @@ describe('isRelativeDateDisplayEnabled', () => {
 describe('formatRelativeDateDisplay', () => {
   it('formats recent timestamps as relative labels', () => {
     const result = formatRelativeDateDisplay({
+      timestamp: Date.UTC(2026, 3, 5, 12, 2, 0),
+      referenceNowMs: Date.UTC(2026, 3, 5, 12, 5, 0),
+      dateTimeOptions: createDateTimeOptions(),
+      appLocale: 'en',
+      translate,
+    });
+
+    expect(result).toBe('3 min ago');
+  });
+
+  /**
+   * The whole first minute reads the same, rather than counting seconds up towards one. This
+   * is the answer the list view and the search results already gave, so a file's age now reads
+   * the same wherever it is shown.
+   */
+  it('calls the first minute just now, at either end of it', () => {
+    const justHappened = formatRelativeDateDisplay({
       timestamp: Date.UTC(2026, 3, 5, 12, 0, 30),
       referenceNowMs: Date.UTC(2026, 3, 5, 12, 1, 0),
       dateTimeOptions: createDateTimeOptions(),
@@ -72,7 +89,28 @@ describe('formatRelativeDateDisplay', () => {
       translate,
     });
 
-    expect(result).toBe('30 sec ago');
+    const almostAMinute = formatRelativeDateDisplay({
+      timestamp: Date.UTC(2026, 3, 5, 12, 0, 1),
+      referenceNowMs: Date.UTC(2026, 3, 5, 12, 1, 0),
+      dateTimeOptions: createDateTimeOptions(),
+      appLocale: 'en',
+      translate,
+    });
+
+    expect(justHappened).toBe('Just now');
+    expect(almostAMinute).toBe('Just now');
+  });
+
+  it('starts counting minutes as soon as one has passed', () => {
+    const result = formatRelativeDateDisplay({
+      timestamp: Date.UTC(2026, 3, 5, 12, 0, 0),
+      referenceNowMs: Date.UTC(2026, 3, 5, 12, 1, 0),
+      dateTimeOptions: createDateTimeOptions(),
+      appLocale: 'en',
+      translate,
+    });
+
+    expect(result).toBe('1 min ago');
   });
 
   it('falls back to absolute formatting when relative display is disabled', () => {

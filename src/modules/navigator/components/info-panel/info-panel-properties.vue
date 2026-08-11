@@ -21,6 +21,7 @@ import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import type { DirEntry } from '@/types/dir-entry';
 import type { RelativeTimeTranslations } from '@/modules/navigator/components/file-browser/utils';
 import { getPathDisplayValue } from '@/utils/normalize-path';
+import { fileContentVersion } from '@/utils/file-content-version';
 import { formatRelativeDateDisplay } from '@/utils/relative-date-display';
 import {
   getDirEntryKindKey,
@@ -60,7 +61,10 @@ const { clockRef: relativeDateClock } = useRelativeDateDisplayClock(() => {
   return !!(entry.modified_time || entry.created_time);
 });
 
-const { rows: mediaInfoRows } = useInfoPanelMediaInfo(() => props.selectedEntry?.path);
+const { rows: mediaInfoRows } = useInfoPanelMediaInfo(
+  () => props.selectedEntry?.path,
+  () => fileContentVersion(props.selectedEntry),
+);
 
 function formatPropertyDate(timestamp: number, relativeDisplay = true): string {
   return formatRelativeDateDisplay({

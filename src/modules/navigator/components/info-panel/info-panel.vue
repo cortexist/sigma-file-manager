@@ -4,7 +4,7 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 -->
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { InfoIcon } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -15,6 +15,7 @@ import InfoPanelResizableLayout from './info-panel-resizable-layout.vue';
 import InfoPanelDrawerLayout from './info-panel-drawer-layout.vue';
 import type { DirEntry } from '@/types/dir-entry';
 import { useIsSmallScreen } from '@/composables/use-responsive-query';
+import { useWatchedFileEntry } from '@/composables/use-file-content-version';
 
 const props = defineProps<{
   selectedEntry: DirEntry | null;
@@ -23,27 +24,52 @@ const props = defineProps<{
 
 const isCompact = useIsSmallScreen();
 const isDrawerOpen = ref(false);
+
+/**
+ * The panel keeps its own eye on the file it is describing.
+ *
+ * What arrives in the prop is the object captured when the entry was clicked. A directory
+ * refresh replaces the listing but not the selection, so re-saving the file leaves this panel
+ * describing a file that no longer exists in that form — the size, the dates, the resolution
+ * and the picture itself all from before the write. Watching the file directly also covers the
+ * cases the listing never could: a file chosen from search results is not in the browsed
+ * directory at all.
+ *
+ * Directories are left out. Their preview is a glyph and their size is counted separately, so
+ * a watch on the parent would buy nothing.
+ */
+const { entry: watchedEntry } = useWatchedFileEntry(
+  () => (props.selectedEntry && !props.selectedEntry.is_dir ? props.selectedEntry.path : null),
+  { initial: () => props.selectedEntry },
+);
+
+/** Guarded by path so a selection change can never be shown against the previous file. */
+const displayedEntry = computed(() => (
+  watchedEntry.value?.path === props.selectedEntry?.path
+    ? watchedEntry.value
+    : props.selectedEntry
+));
 </script>
 
 <template>
   <div class="info-panel info-panel-hover-reveal">
     <InfoPanelResizableLayout
       v-if="!isCompact"
-      :selected-entry="props.selectedEntry"
+      :selected-entry="displayedEntry"
       :is-current-dir="props.isCurrentDir"
     />
     <template v-else>
       <InfoPanelPreview
-        :selected-entry="props.selectedEntry"
+        :selected-entry="displayedEntry"
         :is-current-dir="props.isCurrentDir"
         compact
       />
       <InfoPanelHeader
-        :selected-entry="props.selectedEntry"
+        :selected-entry="displayedEntry"
         :show-reset-button="false"
       />
       <InfoPanelProperties
-        :selected-entry="props.selectedEntry"
+        :selected-entry="displayedEntry"
         orientation="compact"
       />
       <Button
@@ -67,7 +93,7 @@ const isDrawerOpen = ref(false);
     <DrawerContent class="info-panel-compact-drawer">
       <div class="info-panel-compact-drawer__body">
         <InfoPanelDrawerLayout
-          :selected-entry="props.selectedEntry"
+          :selected-entry="displayedEntry"
           :is-current-dir="props.isCurrentDir"
         />
       </div>

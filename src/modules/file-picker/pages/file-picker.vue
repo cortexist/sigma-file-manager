@@ -95,14 +95,13 @@ import {
   virtualLocationPathExists,
 } from '@/utils/virtual-locations';
 import type { FileOperationResult } from '@/stores/runtime/clipboard';
+import {
+  createTypeFilterMatchers,
+  entryPassesTypeFilter,
+  type PickerTypeFilter,
+} from '@/modules/file-picker/utils/picker-type-filter';
 import type { DirEntry } from '@/types/dir-entry';
 import type { ListSortColumn, ListSortDirection } from '@/types/user-settings';
-
-interface PickerFilter {
-  name: string;
-  globs: string[];
-  mimes: string[];
-}
 
 interface PickerRequest {
   title: string;
@@ -111,7 +110,7 @@ interface PickerRequest {
   currentFolder: string | null;
   save: boolean;
   suggestedName: string | null;
-  filters: PickerFilter[];
+  filters: PickerTypeFilter[];
   currentFilter: string | null;
 }
 
@@ -199,64 +198,9 @@ const canGoUp = computed(() => {
 /** The caller's type filter currently in force, by name; `null` when none were sent. */
 const selectedFilterName = ref<string | null>(null);
 
-const activeFilterMatchers = computed(() => {
-  const filter = (request.value?.filters ?? [])
-    .find(candidate => candidate.name === selectedFilterName.value);
-
-  // A filter with no patterns admits everything; treating it as "no filter" keeps a
-  // careless caller from blanking the listing.
-  if (!filter || (filter.globs.length === 0 && filter.mimes.length === 0)) {
-    return null;
-  }
-
-  return {
-    globs: filter.globs.map(globToRegExp),
-    mimes: filter.mimes.map(pattern => pattern.toLowerCase()),
-  };
-});
-
-/**
- * Case-insensitive on purpose, unlike GTK's fnmatch: an app asking for `*.jpg` means the
- * photos, not the photos whose extension happens to be lowercase.
- */
-function globToRegExp(glob: string): RegExp {
-  const source = glob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
-
-  return new RegExp(`^${source}$`, 'i');
-}
-
-function entryPassesTypeFilter(entry: DirEntry): boolean {
-  const matchers = activeFilterMatchers.value;
-
-  if (!matchers) {
-    return true;
-  }
-
-  if (matchers.globs.some(glob => glob.test(entry.name))) {
-    return true;
-  }
-
-  const mime = entry.mime?.toLowerCase();
-
-  if (!mime) {
-    return false;
-  }
-
-  return matchers.mimes.some((pattern) => {
-    if (pattern === '*' || pattern === '*/*') {
-      return true;
-    }
-
-    if (pattern.endsWith('/*')) {
-      return mime.startsWith(pattern.slice(0, -1));
-    }
-
-    return mime === pattern;
-  });
-}
+const activeFilterMatchers = computed(() => createTypeFilterMatchers(
+  (request.value?.filters ?? []).find(candidate => candidate.name === selectedFilterName.value),
+));
 
 const sortColumn = ref<ListSortColumn>('name');
 const sortDirection = ref<ListSortDirection>('asc');
@@ -316,7 +260,7 @@ const groupedEntries = computed(() => {
       continue;
     }
 
-    if (entryPassesTypeFilter(entry)) {
+    if (entryPassesTypeFilter(entry, activeFilterMatchers.value)) {
       files.push(entry);
     }
   }

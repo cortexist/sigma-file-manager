@@ -10,7 +10,6 @@
   "minutes": "minutes",
   "relativeTime": {
     "justNow": "À l'instant",
-    "secondsAgo": "il y a 0 s | il y a 1 s | il y a {n} s | il y a {n} s",
     "minutesAgo": "il y a 0 min | il y a 1 min | il y a {n} min | il y a {n} min",
     "hoursAgo": "il y a 0 heures | il y a 1 heure | il y a {n} heures | il y a {n} heures",
     "daysAgo": "il y a 0 jours | il y a 1 jour | il y a {n} jours | il y a {n} jours"

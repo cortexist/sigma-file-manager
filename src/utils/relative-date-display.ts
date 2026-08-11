@@ -72,8 +72,11 @@ export function formatRelativeDateDisplay(params: {
   if (elapsedMs < RECENT_RELATIVE_DATE_WINDOW_MS) {
     const totalSeconds = Math.floor(elapsedMs / 1000);
 
+    // Nobody reads a file's timestamp to the second, and a label that counts up on its own is
+    // movement asking to be watched rather than information. The whole first minute is "just
+    // now" — the same answer the list view and search results have always given.
     if (totalSeconds < 60) {
-      return translate('relativeTime.secondsAgo', totalSeconds);
+      return translate('relativeTime.justNow');
     }
 
     const totalMinutes = Math.floor(totalSeconds / 60);

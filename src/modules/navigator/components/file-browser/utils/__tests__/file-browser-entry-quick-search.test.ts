@@ -213,7 +213,7 @@ describe('fileBrowserEntryMatchesQuickSearch', () => {
     expect(createFileBrowserQuickSearchMatcher('7', store, cache)(entry)).toBe(true);
   });
 
-  it('invalidates cached relative modified labels at elapsed second boundaries', () => {
+  it('invalidates cached relative modified labels when the label changes', () => {
     vi.useFakeTimers();
 
     try {
@@ -226,12 +226,18 @@ describe('fileBrowserEntryMatchesQuickSearch', () => {
       const store = createMockDirSizesStore();
       const cache = createFileBrowserQuickSearchCache();
 
-      expect(createFileBrowserQuickSearchMatcher('5 sec', store, cache)(entry)).toBe(true);
+      expect(createFileBrowserQuickSearchMatcher('just now', store, cache)(entry)).toBe(true);
 
+      // Still inside the first minute: the label has not moved, so neither has the cache.
       vi.setSystemTime(referenceNowMs + 1000);
 
-      expect(createFileBrowserQuickSearchMatcher('6 sec', store, cache)(entry)).toBe(true);
-      expect(createFileBrowserQuickSearchMatcher('5 sec', store, cache)(entry)).toBe(false);
+      expect(createFileBrowserQuickSearchMatcher('just now', store, cache)(entry)).toBe(true);
+
+      // A minute has passed and the label now counts minutes, which must reach the cache.
+      vi.setSystemTime(referenceNowMs + 60_000);
+
+      expect(createFileBrowserQuickSearchMatcher('1 min', store, cache)(entry)).toBe(true);
+      expect(createFileBrowserQuickSearchMatcher('just now', store, cache)(entry)).toBe(false);
     }
     finally {
       vi.useRealTimers();

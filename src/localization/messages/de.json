@@ -10,7 +10,6 @@
   "minutes": "Minuten",
   "relativeTime": {
     "justNow": "Gerade eben",
-    "secondsAgo": "vor 0 Sek. | vor 1 Sek. | vor {n} Sek. | vor {n} Sek.",
     "minutesAgo": "vor 0 Min. | vor 1 Min. | vor {n} Min. | vor {n} Min.",
     "hoursAgo": "vor 0 Std. | vor 1 Std. | vor {n} Std. | vor {n} Std.",
     "daysAgo": "vor 0 Tagen | vor 1 Tag | vor {n} Tagen | vor {n} Tagen"

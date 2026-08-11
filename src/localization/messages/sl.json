@@ -10,7 +10,6 @@
   "minutes": "minut",
   "relativeTime": {
     "justNow": "Sedaj",
-    "secondsAgo": "0 s nazaj | 1 s nazaj | {n} s nazaj | {n} s nazaj",
     "minutesAgo": "0 min nazaj | 1 min nazaj | {n} min nazaj | {n} min nazaj",
     "hoursAgo": "0 ur nazaj | 1 ura nazaj | {n} ur nazaj | {n} ur nazaj",
     "daysAgo": "0 dni nazaj | 1 dan nazaj | {n} dni nazaj | {n} dni nazaj"

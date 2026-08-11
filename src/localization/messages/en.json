@@ -10,7 +10,6 @@
   "minutes": "minutes",
   "relativeTime": {
     "justNow": "Just now",
-    "secondsAgo": "0 sec ago | 1 sec ago | {n} sec ago | {n} sec ago",
     "minutesAgo": "0 min ago | 1 min ago | {n} min ago | {n} min ago",
     "hoursAgo": "0 hours ago | 1 hour ago | {n} hours ago | {n} hours ago",
     "daysAgo": "0 days ago | 1 day ago | {n} days ago | {n} days ago"

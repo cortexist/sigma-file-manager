@@ -10,7 +10,6 @@
   "minutes": "minuti",
   "relativeTime": {
     "justNow": "Adesso",
-    "secondsAgo": "0 sec fa | 1 sec fa | {n} sec fa | {n} sec fa",
     "minutesAgo": "0 min fa | 1 min fa | {n} min fa | {n} min fa",
     "hoursAgo": "0 ore fa | 1 ora fa | {n} ore fa | {n} ore fa",
     "daysAgo": "0 giorni fa | 1 giorno fa | {n} giorni fa | {n} giorni fa"

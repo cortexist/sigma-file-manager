@@ -11,6 +11,7 @@ import {
 } from 'vue';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { convertMediaSrc } from '@/utils/media-src';
+import { fileContentVersion, withContentVersion } from '@/utils/file-content-version';
 import { isImageFile as checkIsImage } from '@/modules/navigator/components/file-browser/utils';
 import { useDevicePixelPreviewSize } from '@/modules/navigator/composables/use-device-pixel-preview-size';
 import { useNavigatorImageThumbnails } from '@/modules/navigator/composables/use-navigator-image-thumbnails';
@@ -72,6 +73,15 @@ export function useInfoPanelImagePreview(selectedEntry: MaybeRefOrGetter<DirEntr
     enabled: isImageFile,
   });
 
+  /**
+   * Both sources carry the selected file's content version, so re-saving the file in place
+   * reaches the viewer instead of stopping at an unchanged URL rather than being invisible to
+   * it. The entry this reads is the one the info panel watches and re-stats for itself, which
+   * is also where the wait for the file to finish being written already happened — so a change
+   * arriving here is a change worth showing immediately.
+   */
+  const contentVersion = computed(() => fileContentVersion(toValue(selectedEntry)));
+
   const mediaSrc = computed(() => {
     const entry = toValue(selectedEntry);
 
@@ -79,7 +89,7 @@ export function useInfoPanelImagePreview(selectedEntry: MaybeRefOrGetter<DirEntr
       return '';
     }
 
-    return convertFileSrc(entry.path);
+    return withContentVersion(convertFileSrc(entry.path), contentVersion.value);
   });
 
   // Video and audio need the loopback media server on Linux; images and PDFs stay on the
@@ -91,7 +101,7 @@ export function useInfoPanelImagePreview(selectedEntry: MaybeRefOrGetter<DirEntr
       return '';
     }
 
-    return convertMediaSrc(entry.path);
+    return withContentVersion(convertMediaSrc(entry.path), contentVersion.value);
   });
 
   const imageThumbnailMaxDimension = computed(

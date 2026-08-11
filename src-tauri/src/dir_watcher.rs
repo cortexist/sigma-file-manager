@@ -15,8 +15,16 @@ use tauri::{AppHandle, Emitter};
 static ACTIVE_WATCHERS: Lazy<Mutex<HashMap<String, WatcherHandle>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// One watcher thread per directory, shared by everyone who asked for it.
+///
+/// The count is what makes the two commands composable. Quick View watches the folder its
+/// file lives in so it can notice the file being rewritten, and that is very often the folder
+/// the navigator is already watching in the same process — without a count, the second
+/// `watch_directory` would be answered from the map without starting anything, and then the
+/// first `unwatch_directory` would stop the thread out from under the other subscriber.
 struct WatcherHandle {
     stop_signal: Arc<Mutex<bool>>,
+    subscriber_count: usize,
 }
 
 fn active_watcher_count() -> usize {
@@ -96,11 +104,14 @@ pub async fn watch_directory(app: AppHandle, path: String) -> Result<(), String>
     }
 
     {
-        let watchers = ACTIVE_WATCHERS.lock().map_err(|err| err.to_string())?;
-        if watchers.contains_key(&normalized_path) {
+        let mut watchers = ACTIVE_WATCHERS.lock().map_err(|err| err.to_string())?;
+        if let Some(handle) = watchers.get_mut(&normalized_path) {
+            handle.subscriber_count += 1;
+            let subscriber_count = handle.subscriber_count;
             dir_watcher_diag!(
-                "[dir-watcher-diag] watch_directory skipped already-active path={} active_count={}",
+                "[dir-watcher-diag] watch_directory joined already-active path={} subscribers={} active_count={}",
                 normalized_path,
+                subscriber_count,
                 watchers.len(),
             );
             return Ok(());
@@ -264,8 +275,18 @@ pub async fn watch_directory(app: AppHandle, path: String) -> Result<(), String>
             }
         }
 
+        // Only ever retract this thread's own registration. A watcher stopped and immediately
+        // restarted for the same directory — one subscriber leaving as another arrives — puts a
+        // live handle under this key before the outgoing thread gets here, and removing that
+        // one would leave the new subscriber registered with nothing watching for it.
         if let Ok(mut watchers) = ACTIVE_WATCHERS.lock() {
-            watchers.remove(&path_for_thread);
+            let is_own_registration = watchers
+                .get(&path_for_thread)
+                .is_some_and(|handle| Arc::ptr_eq(&handle.stop_signal, &stop_signal_clone));
+
+            if is_own_registration {
+                watchers.remove(&path_for_thread);
+            }
         }
 
         dir_watcher_diag!(
@@ -277,7 +298,13 @@ pub async fn watch_directory(app: AppHandle, path: String) -> Result<(), String>
     });
 
     let mut watchers = ACTIVE_WATCHERS.lock().map_err(|err| err.to_string())?;
-    watchers.insert(normalized_path.clone(), WatcherHandle { stop_signal });
+    watchers.insert(
+        normalized_path.clone(),
+        WatcherHandle {
+            stop_signal,
+            subscriber_count: 1,
+        },
+    );
 
     dir_watcher_diag!(
         "[dir-watcher-diag] watch_directory registered path={} active_count={} active_paths={:?}",
@@ -303,7 +330,19 @@ pub async fn unwatch_directory(path: String) -> Result<(), String> {
 
     let mut watchers = ACTIVE_WATCHERS.lock().map_err(|err| err.to_string())?;
 
-    if let Some(handle) = watchers.remove(&normalized_path) {
+    if let Some(handle) = watchers.get_mut(&normalized_path) {
+        handle.subscriber_count = handle.subscriber_count.saturating_sub(1);
+
+        if handle.subscriber_count > 0 {
+            dir_watcher_diag!(
+                "[dir-watcher-diag] unwatch_directory released one subscriber path={} remaining_subscribers={}",
+                normalized_path,
+                handle.subscriber_count,
+            );
+            return Ok(());
+        }
+
+        let handle = watchers.remove(&normalized_path).expect("handle just read");
         let mut should_stop = handle
             .stop_signal
             .lock()

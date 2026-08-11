@@ -4,6 +4,7 @@
 
 import { reactive, ref } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { fileContentVersion, withContentVersion } from '@/utils/file-content-version';
 import type { DirEntry } from '@/types/dir-entry';
 
 const IMAGE_THUMBNAIL_MAX_DIMENSION = 384;
@@ -179,7 +180,13 @@ export function useImageThumbnails() {
       if (request.generation === thumbnailGeneration && !cancelledThumbnails.has(processingKey)) {
         imageThumbnails.value = {
           ...imageThumbnails.value,
-          [request.thumbnailKey]: convertFileSrc(thumbnailPath),
+          // A cache file already carries the source's times in its name, but a picture small
+          // enough to be its own thumbnail is answered with the source path itself — and that
+          // URL does not change when the picture is replaced. The version makes it change.
+          [request.thumbnailKey]: withContentVersion(
+            convertFileSrc(thumbnailPath),
+            fileContentVersion(request.entry),
+          ),
         };
       }
     }

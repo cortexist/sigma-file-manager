@@ -24,8 +24,15 @@ import { readMediaInfo, summarizeMediaInfo, type MediaInfoRow } from '@/utils/me
  *
  * Rows are cleared the moment the selection changes rather than when its replacement arrives:
  * briefly showing nothing is honest, while briefly showing the previous file's numbers is not.
+ *
+ * The optional content version makes "the same file, rewritten" count as a change too. Without
+ * it these rows would describe the recording that used to be at this path, which is the same
+ * kind of lie as showing the previous file's numbers — just harder to notice.
  */
-export function useInfoPanelMediaInfo(path: MaybeRefOrGetter<string | undefined>) {
+export function useInfoPanelMediaInfo(
+  path: MaybeRefOrGetter<string | undefined>,
+  version?: MaybeRefOrGetter<string | null | undefined>,
+) {
   const rows = ref<MediaInfoRow[]>([]);
   let latestRequest = 0;
 
@@ -51,7 +58,7 @@ export function useInfoPanelMediaInfo(path: MaybeRefOrGetter<string | undefined>
     UI_CONSTANTS.INFO_PANEL_MEDIA_INFO_DEBOUNCE_MS,
   );
 
-  watch(() => toValue(path), (target) => {
+  watch([() => toValue(path), () => toValue(version)], ([target]) => {
     // Bumping here rather than inside the debounced call means a read already in flight is
     // disowned the instant the selection moves, not when its replacement is finally issued.
     const token = ++latestRequest;

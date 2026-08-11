@@ -40,6 +40,8 @@ import {
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
 import { convertMediaSrc } from '@/utils/media-src';
+import { withContentVersion } from '@/utils/file-content-version';
+import { useWatchedFileContentVersion } from '@/composables/use-file-content-version';
 import { MediaPlayer } from '@/components/ui/media-player';
 import { ImageViewer } from '@/components/ui/image-viewer';
 import WindowActions from '@/modules/window-toolbar/window-actions.vue';
@@ -272,9 +274,25 @@ const audioArtworkSrc = computed((): string | undefined => {
   return stripAudioCovers.getSiblingCover(path);
 });
 
+/**
+ * This window watches its own file. It is handed a path and nothing else — and when another
+ * file manager launched it there is no navigator in the process to notice anything on its
+ * behalf — so re-saving the file while it is on screen has to reach the viewer from here.
+ * A remote URL has no file behind it to watch, hence the local-only guard.
+ */
+const displayedFileContentVersion = useWatchedFileContentVersion(() => (
+  currentFilePath.value && !isHttpOrHttpsUrl(currentFilePath.value)
+    ? currentFilePath.value
+    : null
+));
+
 const fileAssetUrl = computed((): string => {
   if (!currentFilePath.value) return '';
-  return getQuickViewDisplayUrl(currentFilePath.value);
+
+  return withContentVersion(
+    getQuickViewDisplayUrl(currentFilePath.value),
+    displayedFileContentVersion.value,
+  );
 });
 
 // Video and audio go through the loopback media server on Linux, where the asset
@@ -282,7 +300,11 @@ const fileAssetUrl = computed((): string => {
 const fileMediaUrl = computed((): string => {
   if (!currentFilePath.value) return '';
   if (isHttpOrHttpsUrl(currentFilePath.value)) return currentFilePath.value;
-  return convertMediaSrc(currentFilePath.value);
+
+  return withContentVersion(
+    convertMediaSrc(currentFilePath.value),
+    displayedFileContentVersion.value,
+  );
 });
 
 /**
@@ -1313,6 +1335,29 @@ watch(currentFilePath, (path) => {
     textWasTruncated.value = false;
     textPreviewError.value = null;
     textPreviewLoading.value = false;
+    return;
+  }
+
+  void loadTextPreview(path);
+});
+
+/**
+ * A text file rewritten underneath the editor is re-read, so the pane shows the file rather
+ * than the memory of it. Unsaved edits win: someone typing here has a version of this file
+ * that exists nowhere else, and replacing it with what landed on disk would destroy the only
+ * copy. Their edits stay, and saving them resolves it the way they choose.
+ *
+ * Media and images need nothing here — their sources carry the version, so the viewer reloads
+ * on its own.
+ */
+watch(displayedFileContentVersion, (version, previousVersion) => {
+  const path = currentFilePath.value;
+
+  if (!version || !previousVersion || version === previousVersion) {
+    return;
+  }
+
+  if (!path || determineFileType(path) !== 'text' || textIsDirty.value) {
     return;
   }
 

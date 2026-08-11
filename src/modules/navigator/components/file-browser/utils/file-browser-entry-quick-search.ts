@@ -108,8 +108,10 @@ function getRelativeModifiedDateCacheSignature(entry: DirEntry, context: FileBro
     return `future:${Math.floor(context.referenceNowMs / SECOND_MS)}`;
   }
 
+  // The whole first minute reads the same, so it is one bucket. Keying it per second threw the
+  // cached label away sixty times over while it said "just now" throughout.
   if (elapsedMs < MINUTE_MS) {
-    return `seconds:${Math.floor(elapsedMs / SECOND_MS)}`;
+    return 'justNow';
   }
 
   if (elapsedMs < HOUR_MS) {

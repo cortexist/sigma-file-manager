@@ -10,7 +10,6 @@
   "minutes": "phút",
   "relativeTime": {
     "justNow": "Vừa xong",
-    "secondsAgo": "0 giây trước | 1 giây trước | {n} giây trước | {n} giây trước",
     "minutesAgo": "0 phút trước | 1 phút trước | {n} phút trước | {n} phút trước",
     "hoursAgo": "0 giờ trước | 1 giờ trước | {n} giờ trước | {n} giờ trước",
     "daysAgo": "0 ngày trước | 1 ngày trước | {n} ngày trước | {n} ngày trước"

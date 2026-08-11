@@ -23,6 +23,15 @@ export function useRelativeDateDisplay(relativeDisplay: MaybeRefOrGetter<boolean
   return { isEnabled };
 }
 
+/**
+ * How often the reference time is refreshed for relative labels.
+ *
+ * A minute is the finest thing these labels say, so a tick per second produced fifty-nine
+ * re-renders that could not change a word. This is fast enough that a label crosses its minute
+ * boundary while the eye is still on it, and slow enough to stop being a heartbeat.
+ */
+const RELATIVE_CLOCK_INTERVAL_MS = 15 * 1000;
+
 export function useRelativeDateDisplayClock(trackRelativeTime: MaybeRefOrGetter<boolean> = true) {
   const documentVisibility = useDocumentVisibility();
   const clockRef = ref(Date.now());
@@ -49,7 +58,7 @@ export function useRelativeDateDisplayClock(trackRelativeTime: MaybeRefOrGetter<
         clockRef.value = Date.now();
         intervalId = setInterval(() => {
           clockRef.value = Date.now();
-        }, 1000);
+        }, RELATIVE_CLOCK_INTERVAL_MS);
       }
     },
     { immediate: true },

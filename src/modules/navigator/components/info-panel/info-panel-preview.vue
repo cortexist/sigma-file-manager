@@ -26,6 +26,7 @@ import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/
 import UbuntuWslIcon from '@/components/icons/ubuntu-wsl-icon.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { isWslPath } from '@/utils/normalize-path';
+import { fileContentVersion } from '@/utils/file-content-version';
 import type { DirEntry } from '@/types/dir-entry';
 import { determineFileType } from '@/stores/runtime/quick-view';
 import { decodeTextFileBytesWithEncoding } from '@/utils/decode-text-file-bytes';
@@ -74,6 +75,13 @@ const textPreviewContent = ref('');
 const textPreviewLoading = ref(false);
 const textPreviewFailed = ref(false);
 let textPreviewRequestSequence = 0;
+
+/**
+ * Changes when the selected file is written to in place, which the path alone cannot express.
+ * Everything in this pane that would otherwise only ever be read once per selection is keyed
+ * on it as well, so a file being edited under the panel is re-read rather than remembered.
+ */
+const selectedContentVersion = computed(() => fileContentVersion(props.selectedEntry));
 
 const infoPanelPreviewKind = computed(() => {
   const entry = props.selectedEntry;
@@ -155,7 +163,7 @@ const showWslDirectoryIcon = computed(() => {
 });
 
 watch(
-  () => props.selectedEntry?.path,
+  [() => props.selectedEntry?.path, selectedContentVersion],
   async () => {
     const entryAtStart = props.selectedEntry;
     const pathAtStart = entryAtStart?.path;

@@ -10,7 +10,6 @@
   "minutes": "分",
   "relativeTime": {
     "justNow": "たった今",
-    "secondsAgo": "0秒前 | 1秒前 | {n}秒前 | {n}秒前",
     "minutesAgo": "0分前 | 1分前 | {n}分前 | {n}分前",
     "hoursAgo": "0時間前 | 1時間前 | {n}時間前 | {n}時間前",
     "daysAgo": "0日前 | 1日前 | {n}日前 | {n}日前"

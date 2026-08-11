@@ -202,6 +202,8 @@ describe('clipboard toolbar', () => {
     await flushPromises();
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.find('.clipboard-toolbar__item-preview-image').attributes('src')).toBe('asset://C:/Thumbs/photo.png');
+    // The `v` is the source file's content version (`modified_time`-`size`), which is what
+    // makes a re-saved picture reach the view instead of stopping at an unchanged URL.
+    expect(wrapper.find('.clipboard-toolbar__item-preview-image').attributes('src')).toBe('asset://C:/Thumbs/photo.png?v=1-100');
   });
 });
