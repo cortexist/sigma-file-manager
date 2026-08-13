@@ -134,6 +134,10 @@ windows-sys = { version = "0.59", features = [
 # Already in the tree via the GTK stack; used directly to give standalone processes their own
 # Wayland identity. See `standalone_viewer.rs`.
 glib = "0.18"
+# Routing the webview's own file dialogs to Sigma's picker. Already in the tree via tauri's
+# Linux stack; pinned to the same version so the WebView handle it hands back matches. See
+# `webview_file_chooser.rs`.
+webkit2gtk = "=2.0.2"
 # The file-chooser portal backend: sigma serving as the system's file-open dialog. Already in
 # the tree via tauri's Linux stack. See `portal_file_chooser.rs`.
 zbus = { version = "5", default-features = false, features = ["tokio"] }

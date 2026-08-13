@@ -100,6 +100,15 @@ impl PickerProcess {
 
         parse_picker_reply(&stdout)
     }
+
+    /// The same wait for callers that already have a thread to spare and no async runtime
+    /// to reach — the GTK main loop's helper being the one that does.
+    pub fn wait_for_uris_blocking(self) -> Vec<String> {
+        match self.child.wait_with_output() {
+            Ok(output) => parse_picker_reply(&output.stdout),
+            Err(_) => Vec::new(),
+        }
+    }
 }
 
 /// Reads the `{"uris": [...]}` line a finished picker writes to stdout.
@@ -116,7 +125,7 @@ pub(crate) fn parse_picker_reply(stdout: &[u8]) -> Vec<String> {
 
 /// Converts the picker's reply to local paths. Anything that is not a local file is dropped:
 /// the in-app callers all go on to read or write the result through the filesystem.
-pub(crate) fn uris_to_paths(uris: &[String]) -> Vec<String> {
+pub fn uris_to_paths(uris: &[String]) -> Vec<String> {
     uris.iter()
         .filter_map(|uri| url::Url::parse(uri).ok())
         .filter_map(|url| url.to_file_path().ok())

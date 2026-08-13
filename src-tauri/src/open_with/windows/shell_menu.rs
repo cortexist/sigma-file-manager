@@ -5,8 +5,7 @@
 use crate::open_with::types::OpenWithResult;
 use crate::open_with::utils::{
     common_parent_directory_for_selections, normalize_selection_path_for_comparison,
-    parent_directory_for_selection, path_for_selection, prepare_shell_path,
-    shell_path_candidates,
+    parent_directory_for_selection, path_for_selection, prepare_shell_path, shell_path_candidates,
 };
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
@@ -684,4 +683,3 @@ unsafe fn invoke_context_menu_command_by_verb(
 
     menu.InvokeCommand(&invoke_info as *const _ as *const _)
 }
-

@@ -45,6 +45,7 @@ mod user_storage_files_config;
 pub mod utils;
 #[cfg(target_os = "linux")]
 mod video_thumbnails;
+mod webview_file_chooser;
 mod window_manager;
 mod windows_installation;
 #[cfg(windows)]
@@ -751,7 +752,8 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     // none of the app's furniture — no tray, no storage preload, no media-arg interpretation.
     if app.state::<file_picker::PickerSession>().0.is_some() {
         standalone_viewer::adopt_process_identity("sigma-file-picker");
-        let picker_window = standalone_viewer::create_window_from_config(app.handle(), "file-picker")?;
+        let picker_window =
+            standalone_viewer::create_window_from_config(app.handle(), "file-picker")?;
 
         // This process returns before the shared devtools hook below, and the dialog suppresses
         // its context menu like every other window, so without this the picker has no way in.
@@ -810,7 +812,7 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         file_manager1::start(app.handle().clone());
     }
 
-    standalone_viewer::create_window_from_config(
+    let session_window = standalone_viewer::create_window_from_config(
         app.handle(),
         if is_standalone_viewer {
             "quick-view"
@@ -818,6 +820,10 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
             "main"
         },
     )?;
+
+    // Web content Sigma hosts asks the webview for files directly and never the extension
+    // API, so the webview is the only place those requests can be caught.
+    webview_file_chooser::install_webview_file_chooser(&session_window);
 
     #[cfg(windows)]
     let should_hide_main_window_on_startup = {

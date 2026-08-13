@@ -26,4 +26,3 @@ pub struct GetAssociatedProgramsResult {
     pub default_program: Option<AssociatedProgram>,
     pub error: Option<String>,
 }
-
