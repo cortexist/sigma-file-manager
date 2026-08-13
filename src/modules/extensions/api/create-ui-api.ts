@@ -3,6 +3,10 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 import { createApp, markRaw } from 'vue';
+import {
+  buildButtonElement,
+  buildImageElement,
+} from '@/modules/extensions/utils/ui-element-builders';
 import { invoke } from '@tauri-apps/api/core';
 import { writeText as tauriWriteText, writeHtml as tauriWriteHtml } from '@tauri-apps/plugin-clipboard-manager';
 import type {
@@ -385,16 +389,7 @@ export function createUiAPI(context: ExtensionContext) {
       value: options.description ?? '',
       tone: options.tone ?? 'info',
     }),
-    image: (options: {
-      id?: string;
-      src: string;
-      alt?: string;
-    }): UIElement => ({
-      type: 'image',
-      id: options.id,
-      value: options.src,
-      label: options.alt,
-    }),
+    image: buildImageElement,
     previewCard: (options: {
       thumbnail: string;
       title: string;
@@ -420,20 +415,7 @@ export function createUiAPI(context: ExtensionContext) {
         value,
       };
     },
-    button: (options: {
-      id: string;
-      label: string;
-      variant?: 'primary' | 'secondary' | 'danger';
-      size?: 'xs' | 'sm' | 'default' | 'lg';
-      disabled?: boolean;
-    }): UIElement => ({
-      type: 'button',
-      id: options.id,
-      label: options.label,
-      variant: options.variant,
-      size: options.size ?? 'xs',
-      disabled: options.disabled,
-    }),
+    button: buildButtonElement,
     renderToolbar: (
       container: HTMLElement,
       elements: UIElement[],

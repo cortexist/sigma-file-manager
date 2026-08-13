@@ -7,7 +7,7 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 import { computed, inject, markRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { invoke } from '@tauri-apps/api/core';
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog, save as saveDialog } from '@/utils/sigma-dialog';
 import { toast, ToastStatic } from '@/components/ui/toaster';
 import type { DirEntry } from '@/types/dir-entry';
 import { ContextMenuSub } from 'reka-ui';

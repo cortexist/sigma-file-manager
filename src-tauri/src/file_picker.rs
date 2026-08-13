@@ -52,6 +52,90 @@ pub struct PickerRequest {
 /// The request this process was launched for; `None` in every other kind of session.
 pub struct PickerSession(pub Option<PickerRequest>);
 
+/// One running picker, from spawn to answer.
+///
+/// Both callers that need a dialog go through this: the portal backend answering another
+/// application, and the file manager answering itself. Sharing the spawn means there is one
+/// picker in the system rather than a second, quietly divergent one — and it is what keeps a
+/// dialog raised inside Sigma looking like the dialog Sigma raises for everyone else.
+pub struct PickerProcess {
+    child: std::process::Child,
+}
+
+impl PickerProcess {
+    /// Launches a picker for `request`. The process boundary is the reply channel, so its
+    /// stdout is piped; stderr is not, because a picker has nothing to say there.
+    pub fn spawn(request: &PickerRequest) -> Result<Self, String> {
+        let payload = serde_json::to_string(request)
+            .map_err(|error| format!("Failed to encode the picker request: {error}"))?;
+        let executable = crate::xdg_associations::executable_path()?;
+
+        let child = std::process::Command::new(executable)
+            .arg(FILE_PICKER_CLI_FLAG)
+            .arg(payload)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|error| format!("Failed to spawn a file picker: {error}"))?;
+
+        Ok(Self { child })
+    }
+
+    /// The picker's process id, which is how a caller abandons a dialog it no longer wants.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    /// Waits for the answer. An empty list is a cancel, and so is any failure to read one:
+    /// a dialog that could not be completed has chosen nothing, which is what a caller
+    /// already knows how to handle.
+    pub async fn wait_for_uris(self) -> Vec<String> {
+        let child = self.child;
+        let output = tauri::async_runtime::spawn_blocking(move || child.wait_with_output()).await;
+
+        let stdout = match output {
+            Ok(Ok(output)) => output.stdout,
+            _ => return Vec::new(),
+        };
+
+        parse_picker_reply(&stdout)
+    }
+}
+
+/// Reads the `{"uris": [...]}` line a finished picker writes to stdout.
+pub(crate) fn parse_picker_reply(stdout: &[u8]) -> Vec<String> {
+    serde_json::from_slice::<serde_json::Value>(stdout)
+        .ok()
+        .and_then(|reply| {
+            reply
+                .get("uris")
+                .and_then(|list| serde_json::from_value(list.clone()).ok())
+        })
+        .unwrap_or_default()
+}
+
+/// Converts the picker's reply to local paths. Anything that is not a local file is dropped:
+/// the in-app callers all go on to read or write the result through the filesystem.
+pub(crate) fn uris_to_paths(uris: &[String]) -> Vec<String> {
+    uris.iter()
+        .filter_map(|uri| url::Url::parse(uri).ok())
+        .filter_map(|url| url.to_file_path().ok())
+        .map(|path| path.to_string_lossy().to_string())
+        .collect()
+}
+
+/// Raises Sigma's own picker for Sigma's own dialogs, in place of the platform one.
+///
+/// Returns the chosen paths, empty for a cancel. Spawning failures are reported rather than
+/// flattened into a cancel, so the caller can fall back to a platform dialog instead of
+/// leaving the user with a button that silently does nothing.
+#[tauri::command]
+pub async fn file_picker_open(request: PickerRequest) -> Result<Vec<String>, String> {
+    let picker = PickerProcess::spawn(&request)?;
+
+    Ok(uris_to_paths(&picker.wait_for_uris().await))
+}
+
 /// The flag's presence decides the mode; a payload that fails to parse still opens a picker
 /// with defaults rather than falling through to a full file-manager session, because whoever
 /// passed the flag asked for a dialog, not a window full of tabs.
@@ -136,6 +220,67 @@ mod tests {
     #[test]
     fn a_missing_payload_still_opens_a_picker_with_defaults() {
         assert!(picker_request_from_args(&args(&[FILE_PICKER_CLI_FLAG])).is_some());
+    }
+
+    #[test]
+    fn a_reply_yields_the_chosen_uris() {
+        let uris = parse_picker_reply(br#"{"uris":["file:///home/z/a.mp3"]}"#);
+
+        assert_eq!(uris, vec!["file:///home/z/a.mp3".to_string()]);
+    }
+
+    /// A picker that died, or wrote nothing, chose nothing. Callers read that as a cancel.
+    #[test]
+    fn an_unreadable_reply_is_an_empty_choice() {
+        assert!(parse_picker_reply(b"").is_empty());
+        assert!(parse_picker_reply(b"not json").is_empty());
+        assert!(parse_picker_reply(br#"{"error":"nope"}"#).is_empty());
+    }
+
+    #[test]
+    fn a_cancel_is_an_empty_uri_list() {
+        assert!(parse_picker_reply(br#"{"uris":[]}"#).is_empty());
+    }
+
+    #[test]
+    fn uris_come_back_as_local_paths() {
+        let paths = uris_to_paths(&["file:///home/z/My%20Music/a.mp3".to_string()]);
+
+        assert_eq!(paths, vec!["/home/z/My Music/a.mp3".to_string()]);
+    }
+
+    /// The in-app callers all go on to read or write through the filesystem, so anything
+    /// that is not a local file has no path for them to use.
+    #[test]
+    fn remote_and_malformed_uris_are_dropped() {
+        let paths = uris_to_paths(&[
+            "https://example.com/a.mp3".to_string(),
+            "not a uri".to_string(),
+            "file:///home/z/keep.mp3".to_string(),
+        ]);
+
+        assert_eq!(paths, vec!["/home/z/keep.mp3".to_string()]);
+    }
+
+    /// The request the file manager sends itself has to survive the same argv round trip
+    /// the portal backend's does, since both spawn the identical picker.
+    #[test]
+    fn an_in_app_request_round_trips_through_the_command_line() {
+        let request = PickerRequest {
+            title: "Select extension folder".to_string(),
+            directory: true,
+            current_folder: Some("/home/z/Workspaces".to_string()),
+            ..Default::default()
+        };
+
+        let payload = serde_json::to_string(&request).unwrap();
+        let parsed = picker_request_from_args(&args(&[FILE_PICKER_CLI_FLAG, &payload]))
+            .expect("picker mode");
+
+        assert_eq!(parsed.title, "Select extension folder");
+        assert!(parsed.directory);
+        assert!(!parsed.save);
+        assert_eq!(parsed.current_folder.as_deref(), Some("/home/z/Workspaces"));
     }
 
     #[test]

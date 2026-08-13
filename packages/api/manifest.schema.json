@@ -262,7 +262,8 @@
                 "items": {
                   "type": "string",
                   "minLength": 1,
-                  "pattern": "^https?://[A-Za-z0-9.-]+(?::(\\*|\\d+))?$"
+                  "pattern": "^https?://(\\*\\.)?[A-Za-z0-9.-]+(?::(\\*|\\d+))?$",
+                  "description": "Origin the extension may request, e.g. \"https://api.example.com\". A leading \"*.\" admits the domain and its subdomains, which is required when a host redirects to a per-request CDN name. Matching is otherwise exact."
                 }
               }
             }

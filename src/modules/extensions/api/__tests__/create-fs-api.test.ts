@@ -13,7 +13,7 @@ const { invokeAsExtensionMock, hasScopedAccessMock } = vi.hoisted(() => ({
   hasScopedAccessMock: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({
+vi.mock('@/utils/sigma-dialog', () => ({
   open: vi.fn(),
 }));
 

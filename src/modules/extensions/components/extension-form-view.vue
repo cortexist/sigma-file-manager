@@ -34,6 +34,13 @@ import {
   isUnmodifiedEnterKey,
 } from '@/modules/extensions/utils/modal-keyboard-shortcut';
 import { getPrimaryModalButton, resolveModalActionButtons } from '@/modules/extensions/utils/modal-action-buttons';
+import { getLucideIcon } from '@/utils/lucide-icons';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import { useExtensionModalOtherActionsShortcut } from '@/modules/extensions/composables/use-extension-modal-other-actions-shortcut';
 import ExtensionModalHeader from './extension-modal-header.vue';
 import ExtensionModalActionFooter from './extension-modal-action-footer.vue';
@@ -113,6 +120,21 @@ function getTextareaScrollStyle(rows: number | undefined): Record<string, string
   return {
     height: `${rowCount * 1.5 + 1}rem`,
   };
+}
+
+function getElementIcon(element: UIElement) {
+  return element.icon ? getLucideIcon(element.icon) : undefined;
+}
+
+/** A button carrying only an icon is square, so a row of them reads as a toolbar. */
+function isIconOnlyButton(element: UIElement): boolean {
+  return Boolean(element.icon) && !element.label;
+}
+
+function resolveButtonVariant(element: UIElement) {
+  if (element.variant === 'danger') return 'destructive';
+
+  return element.variant === 'primary' ? 'default' : 'outline';
 }
 
 function handleButtonClick(buttonId: string): void {
@@ -262,237 +284,291 @@ watch(
 </script>
 
 <template>
-  <div
-    ref="formRootElement"
-    class="ext-form-view"
-    tabindex="-1"
-    @mousedown="handleFormMouseDown"
-    @click="handleFormLinkClick"
-  >
-    <ExtensionModalHeader
-      :title="title"
-      :extension-id="extensionId"
-      :extension-icon-path="extensionIconPath"
-      :extension-name="extensionName"
-      :command-title="commandTitle"
-      :on-back="onBack"
-      :on-close="onClose"
-    />
+  <!--
+    Its own tooltip provider, because this view is mounted from several hosts and the
+    extension modal container sits outside the one the rest of the window shares. A
+    tooltip without a provider above it throws rather than degrading, taking the control
+    it was attached to off the screen with it. The provider renders no markup of its own,
+    and nesting inside another is harmless.
+  -->
+  <TooltipProvider :delay-duration="300">
+    <div
+      ref="formRootElement"
+      class="ext-form-view"
+      tabindex="-1"
+      @mousedown="handleFormMouseDown"
+      @click="handleFormLinkClick"
+    >
+      <ExtensionModalHeader
+        :title="title"
+        :extension-id="extensionId"
+        :extension-icon-path="extensionIconPath"
+        :extension-name="extensionName"
+        :command-title="commandTitle"
+        :on-back="onBack"
+        :on-close="onClose"
+      />
 
-    <ScrollArea class="ext-form-view__scroll-area">
-      <div class="ext-form-view__content">
-        <template
-          v-for="(element, elementIndex) in content"
-          :key="element.id || `element-${elementIndex}`"
-        >
-          <div
-            v-if="element.type === 'input'"
-            :class="[
-              'ext-form-view__field',
-              { 'ext-form-view__field--no-label': !element.label },
-            ]"
+      <ScrollArea class="ext-form-view__scroll-area">
+        <div class="ext-form-view__content">
+          <template
+            v-for="(element, elementIndex) in content"
+            :key="element.id || `element-${elementIndex}`"
           >
-            <Label
-              v-if="element.label"
-              :for="element.id"
-              class="ext-form-view__label"
-            >
-              {{ element.label }}
-            </Label>
-            <Input
-              :id="element.id"
-              :model-value="String(getElementValue(element) ?? '')"
-              :placeholder="element.placeholder"
-              :disabled="element.disabled"
-              @update:model-value="(value?: string | number) => { if (value !== undefined) handleValueChange(element.id!, value) }"
-            />
-          </div>
-
-          <div
-            v-else-if="element.type === 'textarea'"
-            :class="[
-              'ext-form-view__field',
-              'ext-form-view__field--multiline',
-              { 'ext-form-view__field--no-label': !element.label },
-            ]"
-          >
-            <Label
-              v-if="element.label"
-              :for="element.id"
-              class="ext-form-view__label"
-            >
-              {{ element.label }}
-            </Label>
-            <ScrollArea
-              class="ext-form-view__textarea-scroll"
-              :style="getTextareaScrollStyle(element.rows)"
-            >
-              <textarea
-                :id="element.id"
-                :value="String(getElementValue(element) ?? '')"
-                :placeholder="element.placeholder"
-                :rows="element.rows || 4"
-                :disabled="element.disabled"
-                class="ext-form-view__textarea"
-                @input="(event: Event) => handleTextareaInput(event, element.id!)"
-              />
-            </ScrollArea>
-          </div>
-
-          <div
-            v-else-if="element.type === 'select'"
-            :class="[
-              'ext-form-view__field',
-              { 'ext-form-view__field--no-label': !element.label },
-            ]"
-          >
-            <Label
-              v-if="element.label"
-              :for="element.id"
-              class="ext-form-view__label"
-            >
-              {{ element.label }}
-            </Label>
-            <Select
-              :model-value="String(getElementValue(element) ?? '')"
-              :disabled="element.disabled"
-              @update:model-value="(value) => { if (value != null) handleValueChange(element.id!, value) }"
-            >
-              <SelectTrigger :id="element.id">
-                <SelectValue :placeholder="element.placeholder || 'Select an option'">
-                  {{ getSelectDisplayLabel(element, getElementValue(element)) }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="option in element.options"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div
-            v-else-if="element.type === 'checkbox'"
-            class="ext-form-view__checkbox-field"
-          >
-            <Checkbox
-              :id="element.id"
-              :model-value="Boolean(getElementValue(element))"
-              :disabled="element.disabled"
-              @update:model-value="(checkboxValue: boolean | 'indeterminate') => handleValueChange(element.id!, checkboxValue === true)"
-            />
-            <Label
-              v-if="element.label"
-              :for="element.id"
-              class="ext-form-view__checkbox-label"
-            >
-              {{ element.label }}
-            </Label>
-          </div>
-
-          <Separator
-            v-else-if="element.type === 'separator'"
-            class="ext-form-view__separator"
-          />
-
-          <p
-            v-else-if="element.type === 'text'"
-            class="ext-form-view__text"
-            v-html="formatTextWithLinks(String(element.value ?? ''))"
-          />
-
-          <Alert
-            v-else-if="element.type === 'alert'"
-            :title="String(element.label ?? '')"
-            :description="String(element.value ?? '')"
-            :tone="element.tone || 'info'"
-            class="ext-form-view__alert"
-          />
-
-          <div
-            v-else-if="element.type === 'image'"
-            class="ext-form-view__image-wrapper"
-          >
-            <img
-              :src="String(element.value ?? '')"
-              :alt="element.label ?? ''"
-              class="ext-form-view__image"
-            >
-          </div>
-
-          <div
-            v-else-if="element.type === 'previewCard'"
-            class="ext-form-view__preview-card"
-          >
-            <img
-              :src="String(element.value ?? '')"
-              :alt="element.label ?? ''"
-              class="ext-form-view__preview-card-image"
-            >
-            <div class="ext-form-view__preview-card-content">
-              <span class="ext-form-view__preview-card-title">{{ element.label ?? '' }}</span>
-              <span
-                v-if="element.subtitle"
-                class="ext-form-view__preview-card-subtitle"
-              >{{ element.subtitle }}</span>
-            </div>
-          </div>
-
-          <div
-            v-else-if="element.type === 'previewCardSkeleton'"
-            class="ext-form-view__preview-card"
-          >
-            <Skeleton
-              class="ext-form-view__preview-card-skeleton-image"
-            />
-            <div class="ext-form-view__preview-card-content">
-              <Skeleton
-                class="ext-form-view__preview-card-skeleton-title"
-              />
-              <Skeleton
-                class="ext-form-view__preview-card-skeleton-subtitle"
-              />
-            </div>
-          </div>
-
-          <div
-            v-else-if="element.type === 'skeleton'"
-            class="ext-form-view__skeleton-wrapper"
-          >
-            <Skeleton
+            <div
+              v-if="element.type === 'input'"
               :class="[
-                'ext-form-view__skeleton',
-                element.value && 'ext-form-view__skeleton--sized',
+                'ext-form-view__field',
+                { 'ext-form-view__field--no-label': !element.label },
               ]"
-              :style="element.value ? parseSkeletonDimensions(element.value) : undefined"
+            >
+              <Label
+                v-if="element.label"
+                :for="element.id"
+                class="ext-form-view__label"
+              >
+                {{ element.label }}
+              </Label>
+              <Input
+                :id="element.id"
+                :model-value="String(getElementValue(element) ?? '')"
+                :placeholder="element.placeholder"
+                :disabled="element.disabled"
+                @update:model-value="(value?: string | number) => { if (value !== undefined) handleValueChange(element.id!, value) }"
+              />
+            </div>
+
+            <div
+              v-else-if="element.type === 'textarea'"
+              :class="[
+                'ext-form-view__field',
+                'ext-form-view__field--multiline',
+                { 'ext-form-view__field--no-label': !element.label },
+              ]"
+            >
+              <Label
+                v-if="element.label"
+                :for="element.id"
+                class="ext-form-view__label"
+              >
+                {{ element.label }}
+              </Label>
+              <ScrollArea
+                class="ext-form-view__textarea-scroll"
+                :style="getTextareaScrollStyle(element.rows)"
+              >
+                <textarea
+                  :id="element.id"
+                  :value="String(getElementValue(element) ?? '')"
+                  :placeholder="element.placeholder"
+                  :rows="element.rows || 4"
+                  :disabled="element.disabled"
+                  class="ext-form-view__textarea"
+                  @input="(event: Event) => handleTextareaInput(event, element.id!)"
+                />
+              </ScrollArea>
+            </div>
+
+            <div
+              v-else-if="element.type === 'select'"
+              :class="[
+                'ext-form-view__field',
+                { 'ext-form-view__field--no-label': !element.label },
+              ]"
+            >
+              <Label
+                v-if="element.label"
+                :for="element.id"
+                class="ext-form-view__label"
+              >
+                {{ element.label }}
+              </Label>
+              <Select
+                :model-value="String(getElementValue(element) ?? '')"
+                :disabled="element.disabled"
+                @update:model-value="(value) => { if (value != null) handleValueChange(element.id!, value) }"
+              >
+                <SelectTrigger :id="element.id">
+                  <SelectValue :placeholder="element.placeholder || 'Select an option'">
+                    {{ getSelectDisplayLabel(element, getElementValue(element)) }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in element.options"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div
+              v-else-if="element.type === 'checkbox'"
+              class="ext-form-view__checkbox-field"
+            >
+              <Checkbox
+                :id="element.id"
+                :model-value="Boolean(getElementValue(element))"
+                :disabled="element.disabled"
+                @update:model-value="(checkboxValue: boolean | 'indeterminate') => handleValueChange(element.id!, checkboxValue === true)"
+              />
+              <Label
+                v-if="element.label"
+                :for="element.id"
+                class="ext-form-view__checkbox-label"
+              >
+                {{ element.label }}
+              </Label>
+            </div>
+
+            <Separator
+              v-else-if="element.type === 'separator'"
+              class="ext-form-view__separator"
             />
-          </div>
 
-          <Button
-            v-else-if="element.type === 'button'"
-            :variant="element.variant === 'danger' ? 'destructive' : element.variant === 'primary' ? 'default' : 'outline'"
-            :disabled="element.disabled"
-            class="ext-form-view__inline-button"
-            @click="handleButtonClick(element.id || '')"
-          >
-            {{ element.label }}
-          </Button>
-        </template>
-      </div>
-    </ScrollArea>
+            <p
+              v-else-if="element.type === 'text'"
+              class="ext-form-view__text"
+              v-html="formatTextWithLinks(String(element.value ?? ''))"
+            />
 
-    <ExtensionModalActionFooter
-      ref="actionFooterRef"
-      :buttons="actionButtons"
-      :modal-focus-target="formRootElement"
-      @button-click="handleButtonClick"
-      @other-actions-closed="focusModalRoot"
-    />
-  </div>
+            <Alert
+              v-else-if="element.type === 'alert'"
+              :title="String(element.label ?? '')"
+              :description="String(element.value ?? '')"
+              :tone="element.tone || 'info'"
+              class="ext-form-view__alert"
+            />
+
+            <div
+              v-else-if="element.type === 'image'"
+              class="ext-form-view__image-wrapper"
+            >
+              <img
+                v-if="element.value"
+                :src="String(element.value)"
+                :alt="element.label ?? ''"
+                class="ext-form-view__image"
+              >
+              <div
+                v-else
+                class="ext-form-view__image-placeholder"
+                :aria-label="element.label ?? ''"
+              />
+            </div>
+
+            <div
+              v-else-if="element.type === 'previewCard'"
+              class="ext-form-view__preview-card"
+            >
+              <img
+                :src="String(element.value ?? '')"
+                :alt="element.label ?? ''"
+                class="ext-form-view__preview-card-image"
+              >
+              <div class="ext-form-view__preview-card-content">
+                <span class="ext-form-view__preview-card-title">{{ element.label ?? '' }}</span>
+                <span
+                  v-if="element.subtitle"
+                  class="ext-form-view__preview-card-subtitle"
+                >{{ element.subtitle }}</span>
+              </div>
+            </div>
+
+            <div
+              v-else-if="element.type === 'previewCardSkeleton'"
+              class="ext-form-view__preview-card"
+            >
+              <Skeleton
+                class="ext-form-view__preview-card-skeleton-image"
+              />
+              <div class="ext-form-view__preview-card-content">
+                <Skeleton
+                  class="ext-form-view__preview-card-skeleton-title"
+                />
+                <Skeleton
+                  class="ext-form-view__preview-card-skeleton-subtitle"
+                />
+              </div>
+            </div>
+
+            <div
+              v-else-if="element.type === 'skeleton'"
+              class="ext-form-view__skeleton-wrapper"
+            >
+              <Skeleton
+                :class="[
+                  'ext-form-view__skeleton',
+                  element.value && 'ext-form-view__skeleton--sized',
+                ]"
+                :style="element.value ? parseSkeletonDimensions(element.value) : undefined"
+              />
+            </div>
+
+            <Tooltip
+              v-else-if="element.type === 'button' && element.tooltip"
+              :delay-duration="300"
+            >
+              <TooltipTrigger as-child>
+                <Button
+                  :variant="resolveButtonVariant(element)"
+                  :disabled="element.disabled"
+                  :is-loading="element.loading"
+                  :class="[
+                    'ext-form-view__inline-button',
+                    { 'ext-form-view__inline-button--icon-only': isIconOnlyButton(element) },
+                  ]"
+                  @click="handleButtonClick(element.id || '')"
+                >
+                  <component
+                    :is="getElementIcon(element)"
+                    v-if="!element.loading && getElementIcon(element)"
+                    :size="16"
+                  />
+                  <template v-if="element.label">
+                    {{ element.label }}
+                  </template>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{{ element.tooltip }}</TooltipContent>
+            </Tooltip>
+
+            <Button
+              v-else-if="element.type === 'button'"
+              :variant="resolveButtonVariant(element)"
+              :disabled="element.disabled"
+              :is-loading="element.loading"
+              :class="[
+                'ext-form-view__inline-button',
+                { 'ext-form-view__inline-button--icon-only': isIconOnlyButton(element) },
+              ]"
+              @click="handleButtonClick(element.id || '')"
+            >
+              <component
+                :is="getElementIcon(element)"
+                v-if="!element.loading && getElementIcon(element)"
+                :size="16"
+              />
+              <template v-if="element.label">
+                {{ element.label }}
+              </template>
+            </Button>
+          </template>
+        </div>
+      </ScrollArea>
+
+      <ExtensionModalActionFooter
+        ref="actionFooterRef"
+        :buttons="actionButtons"
+        :modal-focus-target="formRootElement"
+        @button-click="handleButtonClick"
+        @other-actions-closed="focusModalRoot"
+      />
+    </div>
+  </TooltipProvider>
 </template>
 
 <style scoped>
@@ -511,11 +587,29 @@ watch(
   flex: 1;
 }
 
+/**
+ * Rows wrap rather than stack. Every element claims a full row by default, so labelled
+ * fields keep the layout they always had; the exceptions are the elements that are
+ * naturally small — buttons and images — which take only the width they need and let
+ * whatever follows sit beside them. Stacking those one per row left a modal that was
+ * mostly empty space to the right of a thumbnail.
+ */
 .ext-form-view__content {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: flex-start;
   padding: 4px;
   gap: 8px;
+}
+
+.ext-form-view__content > * {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.ext-form-view__content > .ext-form-view__inline-button,
+.ext-form-view__content > .ext-form-view__image-wrapper {
+  flex: 0 0 auto;
 }
 
 .ext-form-view__field {
@@ -711,6 +805,18 @@ watch(
 }
 
 .ext-form-view__inline-button {
-  align-self: flex-start;
+  align-self: flex-end;
+}
+
+.ext-form-view__inline-button--icon-only {
+  width: 2.25rem;
+  padding: 0;
+}
+
+.ext-form-view__image-placeholder {
+  width: 180px;
+  height: 180px;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 6px;
 }
 </style>

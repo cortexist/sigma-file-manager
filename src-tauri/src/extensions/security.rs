@@ -107,6 +107,8 @@ pub(crate) struct HostAllowlistPattern {
     scheme: String,
     host: String,
     port: HostPatternPort,
+    /// Set by a leading `*.`, admitting the domain and anything under it.
+    match_subdomains: bool,
 }
 
 fn default_port_for_scheme(scheme: &str) -> u16 {
@@ -135,10 +137,18 @@ pub(crate) fn parse_host_allowlist_pattern(pattern: &str) -> Result<HostAllowlis
             (trimmed_pattern, false)
         };
 
+    // The `*.` is removed before parsing rather than handed to the URL parser, which has
+    // no concept of a wildcard host and would either reject it or normalise it oddly.
+    let (pattern_body, match_subdomains) = match strip_subdomain_wildcard(pattern_without_wildcard)
+    {
+        Some(body) => (body, true),
+        None => (pattern_without_wildcard.to_string(), false),
+    };
+
     let parsed_pattern = if wildcard_port {
-        reqwest::Url::parse(&format!("{pattern_without_wildcard}:0"))
+        reqwest::Url::parse(&format!("{pattern_body}:0"))
     } else {
-        reqwest::Url::parse(pattern_without_wildcard)
+        reqwest::Url::parse(&pattern_body)
     }
     .map_err(|error| format!("Invalid HTTP host pattern '{}': {}", pattern, error))?;
 
@@ -160,7 +170,32 @@ pub(crate) fn parse_host_allowlist_pattern(pattern: &str) -> Result<HostAllowlis
         HostPatternPort::Any
     };
 
-    Ok(HostAllowlistPattern { scheme, host, port })
+    if host.contains('*') {
+        return Err(format!(
+            "HTTP host pattern '{}' may only use a wildcard as a leading '*.' label",
+            pattern
+        ));
+    }
+
+    Ok(HostAllowlistPattern {
+        scheme,
+        host,
+        port,
+        match_subdomains,
+    })
+}
+
+/// Returns the pattern with a leading `*.` host label removed, or None when absent.
+fn strip_subdomain_wildcard(pattern: &str) -> Option<String> {
+    for scheme_prefix in ["https://", "http://"] {
+        if let Some(rest) = pattern.strip_prefix(scheme_prefix) {
+            if let Some(host_rest) = rest.strip_prefix("*.") {
+                return Some(format!("{scheme_prefix}{host_rest}"));
+            }
+        }
+    }
+
+    None
 }
 
 fn url_matches_host_allowlist_pattern(url: &reqwest::Url, pattern: &HostAllowlistPattern) -> bool {
@@ -172,7 +207,14 @@ fn url_matches_host_allowlist_pattern(url: &reqwest::Url, pattern: &HostAllowlis
         return false;
     };
 
-    if url_host.to_ascii_lowercase() != pattern.host {
+    let url_host = url_host.to_ascii_lowercase();
+
+    // A wildcard admits the domain itself as well as anything beneath it, so declaring
+    // `*.archive.org` does not also require declaring `archive.org`.
+    let host_matches = url_host == pattern.host
+        || (pattern.match_subdomains && url_host.ends_with(&format!(".{}", pattern.host)));
+
+    if !host_matches {
         return false;
     }
 
@@ -305,4 +347,96 @@ pub fn validate_binary_relative_path(value: &str, label: &str) -> Result<PathBuf
     }
 
     Ok(path)
+}
+
+#[cfg(test)]
+mod host_wildcard_tests {
+    use super::*;
+
+    fn matches(pattern: &str, url: &str) -> bool {
+        url_matches_host_allowlist(&reqwest::Url::parse(url).unwrap(), &[pattern.to_string()])
+    }
+
+    /// The case this exists for: the Cover Art Archive redirects to a per-request
+    /// archive.org CDN host, so an extension cannot name the host it will end up on.
+    #[test]
+    fn a_subdomain_wildcard_admits_a_dynamic_cdn_host() {
+        assert!(matches(
+            "https://*.archive.org",
+            "https://dn721902.ca.archive.org/0/items/mbid-x/front.jpg"
+        ));
+        assert!(matches(
+            "https://*.archive.org",
+            "https://ia801504.us.archive.org/thing.jpg"
+        ));
+    }
+
+    #[test]
+    fn a_subdomain_wildcard_admits_the_domain_itself() {
+        assert!(matches("https://*.archive.org", "https://archive.org/download/x"));
+    }
+
+    #[test]
+    fn a_subdomain_wildcard_does_not_admit_a_lookalike_domain() {
+        assert!(!matches("https://*.archive.org", "https://archive.org.evil.com/x"));
+        assert!(!matches("https://*.archive.org", "https://notarchive.org/x"));
+        assert!(!matches("https://*.archive.org", "https://evil-archive.org/x"));
+    }
+
+    #[test]
+    fn a_wildcard_does_not_cross_schemes() {
+        assert!(!matches("https://*.archive.org", "http://ia1.archive.org/x"));
+    }
+
+    #[test]
+    fn an_exact_pattern_still_rejects_subdomains() {
+        assert!(matches("https://coverartarchive.org", "https://coverartarchive.org/release/x"));
+        assert!(!matches("https://coverartarchive.org", "https://cdn.coverartarchive.org/x"));
+    }
+
+    #[test]
+    fn a_wildcard_in_any_other_position_is_rejected() {
+        assert!(parse_host_allowlist_pattern("https://ia*.archive.org").is_err());
+        assert!(parse_host_allowlist_pattern("https://archive.*").is_err());
+    }
+
+    #[test]
+    fn a_bare_wildcard_host_is_rejected() {
+        assert!(parse_host_allowlist_pattern("https://*.").is_err());
+        assert!(parse_host_allowlist_pattern("https://*").is_err());
+    }
+
+    /// The extension's real allowlist against the real redirect target, end to end.
+    #[test]
+    fn the_id3_extensions_allowlist_admits_the_cover_art_redirect() {
+        let allowlist = vec![
+            "https://musicbrainz.org".to_string(),
+            "https://coverartarchive.org".to_string(),
+            "https://*.archive.org".to_string(),
+        ];
+
+        for url in [
+            "https://musicbrainz.org/ws/2/recording?query=x",
+            "https://coverartarchive.org/release/639a1486/front-500",
+            "https://archive.org/download/mbid-639a1486/front.jpg",
+            "https://dn721902.ca.archive.org/0/items/mbid-639a1486/front_thumb500.jpg",
+        ] {
+            assert!(
+                url_matches_host_allowlist(&reqwest::Url::parse(url).unwrap(), &allowlist),
+                "should admit {url}"
+            );
+        }
+
+        for url in ["https://evil.com/x", "https://archive.org.evil.com/x"] {
+            assert!(
+                !url_matches_host_allowlist(&reqwest::Url::parse(url).unwrap(), &allowlist),
+                "should refuse {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wildcard_combines_with_a_port_wildcard() {
+        assert!(matches("https://*.archive.org:*", "https://ia1.archive.org:8443/x"));
+    }
 }

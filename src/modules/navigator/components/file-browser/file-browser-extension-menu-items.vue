@@ -12,6 +12,8 @@ import { useExtensionsStore } from '@/stores/runtime/extensions';
 import { getKeybindingForContextMenuItem, formatKeybindingKeys } from '@/modules/extensions/api';
 import { getLucideIcon } from '@/utils/lucide-icons';
 import { ContextMenuShortcut } from '@/components/ui/context-menu';
+import ExtensionIcon from '@/modules/extensions/components/extension-icon.vue';
+import { getExtensionAssetIconPath, isExtensionAssetIcon } from '@/modules/extensions/utils/extension-menu-icon';
 
 const props = defineProps<{
   selectedEntries: DirEntry[];
@@ -77,9 +79,16 @@ function getMenuItemShortcut(registration: ContextMenuItemRegistration): string 
   return undefined;
 }
 
+function getMenuItemAssetIconPath(registration: ContextMenuItemRegistration): string | undefined {
+  return getExtensionAssetIconPath(registration.item.icon);
+}
+
 function getMenuItemIcon(registration: ContextMenuItemRegistration) {
-  if (!registration.item.icon) return undefined;
-  return getLucideIcon(registration.item.icon);
+  const icon = registration.item.icon;
+
+  if (!icon || isExtensionAssetIcon(icon)) return undefined;
+
+  return getLucideIcon(icon);
 }
 </script>
 
@@ -100,9 +109,18 @@ function getMenuItemIcon(registration: ContextMenuItemRegistration) {
       class="file-browser-extension-menu-items__item"
       @select="handleExtensionAction(registration)"
     >
+      <ExtensionIcon
+        v-if="getMenuItemAssetIconPath(registration)"
+        :extension-id="registration.extensionId"
+        :icon-path="getMenuItemAssetIconPath(registration)"
+        :is-installed="true"
+        :symbolic="true"
+        :size="16"
+        class="file-browser-extension-menu-items__icon"
+      />
       <component
         :is="getMenuItemIcon(registration)"
-        v-if="getMenuItemIcon(registration)"
+        v-else-if="getMenuItemIcon(registration)"
         :size="16"
         class="file-browser-extension-menu-items__icon"
       />

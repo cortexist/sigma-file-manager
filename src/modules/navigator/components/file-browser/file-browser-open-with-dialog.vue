@@ -7,7 +7,7 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 import { ref, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { invoke } from '@tauri-apps/api/core';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@/utils/sigma-dialog';
 import type { DirEntry } from '@/types/dir-entry';
 import {
   Dialog,

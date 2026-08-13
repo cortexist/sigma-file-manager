@@ -5,7 +5,7 @@
 import { computed, ref } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { convertMediaSrc } from '@/utils/media-src';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open } from '@/utils/sigma-dialog';
 import { useUserPathsStore } from '@/stores/storage/user-paths';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import { useBackgroundMediaStore } from '@/stores/runtime/background-media';

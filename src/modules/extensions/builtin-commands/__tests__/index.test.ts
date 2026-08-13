@@ -8,7 +8,7 @@ const { routerPushMock } = vi.hoisted(() => ({
   routerPushMock: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({
+vi.mock('@/utils/sigma-dialog', () => ({
   open: vi.fn(),
   save: vi.fn(),
 }));

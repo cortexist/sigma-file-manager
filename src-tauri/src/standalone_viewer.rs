@@ -130,8 +130,14 @@ mod tests {
 
     impl TempMedia {
         fn new(name: &str) -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("sfm-standalone-test-{}", std::process::id()));
+            // Keyed by the file name as well as the process, because these tests run in
+            // parallel and each one's Drop removes its directory. Sharing one directory let
+            // a finishing test delete the file a sibling was still using.
+            let dir = std::env::temp_dir().join(format!(
+                "sfm-standalone-test-{}-{}",
+                std::process::id(),
+                name
+            ));
             std::fs::create_dir_all(&dir).expect("temp dir");
             let path = dir.join(name);
             std::fs::write(&path, b"x").expect("temp file");

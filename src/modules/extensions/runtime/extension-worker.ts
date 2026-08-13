@@ -10,6 +10,10 @@ import { createRequestId } from '@/modules/extensions/runtime/worker-protocol';
 import { isExtensionInstallCancelledError } from '@/modules/extensions/utils/install-cancellation-error';
 import { cloneForWorkerMessage } from '@/modules/extensions/utils/worker-message-clone';
 import {
+  buildButtonElement,
+  buildImageElement,
+} from '@/modules/extensions/utils/ui-element-builders';
+import {
   mergeModalFormValues,
   shouldPreserveModalValues,
 } from '@/modules/extensions/utils/merge-modal-form-values';
@@ -850,16 +854,7 @@ function createBridge() {
         value: options.description || '',
         tone: options.tone || 'info',
       }),
-      image: (options: {
-        id?: string;
-        src: string;
-        alt?: string;
-      }) => ({
-        type: 'image',
-        id: options.id,
-        value: options.src,
-        label: options.alt,
-      }),
+      image: buildImageElement,
       previewCard: (options: {
         thumbnail: string;
         title: string;
@@ -886,20 +881,7 @@ function createBridge() {
           value,
         };
       },
-      button: (options: {
-        id: string;
-        label: string;
-        variant?: string;
-        size?: string;
-        disabled?: boolean;
-      }) => ({
-        type: 'button',
-        id: options.id,
-        label: options.label,
-        variant: options.variant,
-        size: options.size || 'xs',
-        disabled: options.disabled,
-      }),
+      button: buildButtonElement,
     },
     shell: {
       run: makeCall('shell.run'),

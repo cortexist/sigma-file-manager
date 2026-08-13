@@ -537,6 +537,7 @@ pub fn run() {
             exit_if_no_windows_left,
             file_manager1::drain_show_in_folder_requests,
             file_picker::file_picker_finish,
+            file_picker::file_picker_open,
             file_picker::file_picker_request,
             set_quick_view_ownership,
             dir_reader::read_dir,

@@ -194,27 +194,10 @@ impl FileChooserBackend {
         handle: ObjectPath<'_>,
         object_server: &zbus::ObjectServer,
     ) -> Vec<String> {
-        let payload = match serde_json::to_string(&request) {
-            Ok(payload) => payload,
-            Err(_) => return Vec::new(),
-        };
-
-        let executable = match crate::xdg_associations::executable_path() {
-            Ok(path) => path,
-            Err(_) => return Vec::new(),
-        };
-
-        let child = std::process::Command::new(executable)
-            .arg(crate::file_picker::FILE_PICKER_CLI_FLAG)
-            .arg(payload)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-
-        let child = match child {
-            Ok(child) => child,
+        let picker = match crate::file_picker::PickerProcess::spawn(&request) {
+            Ok(picker) => picker,
             Err(error) => {
-                log::warn!("Failed to spawn a file picker: {error}");
+                log::warn!("{error}");
                 return Vec::new();
             }
         };
@@ -222,29 +205,17 @@ impl FileChooserBackend {
         // Exported for the dialog's lifetime so the caller can abandon it.
         let handle = handle.into_owned();
         let request_object = PickerDbusRequest {
-            picker_pid: child.id(),
+            picker_pid: picker.pid(),
         };
         let exported = object_server.at(&handle, request_object).await.is_ok();
 
-        let output = tauri::async_runtime::spawn_blocking(move || child.wait_with_output()).await;
+        let uris = picker.wait_for_uris().await;
 
         if exported {
             let _ = object_server.remove::<PickerDbusRequest, _>(&handle).await;
         }
 
-        let stdout = match output {
-            Ok(Ok(output)) => output.stdout,
-            _ => return Vec::new(),
-        };
-
-        serde_json::from_slice::<serde_json::Value>(&stdout)
-            .ok()
-            .and_then(|reply| {
-                reply
-                    .get("uris")
-                    .and_then(|list| serde_json::from_value(list.clone()).ok())
-            })
-            .unwrap_or_default()
+        uris
     }
 }
 

@@ -4,7 +4,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { useRouter } from 'vue-router';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@/utils/sigma-dialog';
 import { useI18n } from 'vue-i18n';
 import { openNavigatorPath } from '@/utils/open-navigator-directory';
 

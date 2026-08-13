@@ -5,7 +5,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ref, type Ref } from 'vue';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@/utils/sigma-dialog';
 import type { ExtensionPermission } from '@/types/extension';
 import { useQuickViewStore } from '@/stores/runtime/quick-view';
 import router from '@/router';

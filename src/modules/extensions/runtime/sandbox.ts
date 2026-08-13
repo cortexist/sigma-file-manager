@@ -198,6 +198,141 @@ export function createSandboxedFunction(): () => Promise<void> {
   };
 }
 
+/**
+ * Characters after which a `/` begins a regular expression rather than a division. The
+ * scanner needs to tell the two apart, because a character class such as `/['"]/` would
+ * otherwise look like the start of a string and swallow the rest of the file.
+ */
+const REGEX_ALLOWED_AFTER = new Set('(,=:[!&|?{};+-*%~^<>'.split(''));
+
+/**
+ * Blanks out comments, leaving everything else — including string contents — in place.
+ *
+ * The checks below are text searches, and prose is text. A doc comment that merely
+ * mentions the navigator, or a window, or the document, is not an access to any of them,
+ * but it reads identically to one. Those words are ordinary vocabulary in a file manager,
+ * so scanning comments rejects reasonable extensions with a security error that points at
+ * nothing. Strings are deliberately left alone: a literal `eval(` in a string is still
+ * worth flagging, and blanking strings would weaken the check for no clear gain.
+ *
+ * Comments are replaced by spaces rather than removed so that every remaining character
+ * keeps its offset, and newlines are preserved so line-anchored patterns still behave.
+ */
+export function stripComments(code: string): string {
+  const output = code.split('');
+  let index = 0;
+  let lastSignificantCharacter = '';
+
+  function blank(from: number, to: number): void {
+    for (let position = from; position < to; position += 1) {
+      if (output[position] !== '\n') {
+        output[position] = ' ';
+      }
+    }
+  }
+
+  while (index < code.length) {
+    const character = code[index];
+    const nextCharacter = code[index + 1];
+
+    if (character === '/' && nextCharacter === '/') {
+      const lineEnd = code.indexOf('\n', index);
+      const end = lineEnd === -1 ? code.length : lineEnd;
+      blank(index, end);
+      index = end;
+      continue;
+    }
+
+    if (character === '/' && nextCharacter === '*') {
+      const commentEnd = code.indexOf('*/', index + 2);
+      const end = commentEnd === -1 ? code.length : commentEnd + 2;
+      blank(index, end);
+      index = end;
+      continue;
+    }
+
+    if (character === '\'' || character === '"' || character === '`') {
+      index = skipQuoted(code, index, character);
+      lastSignificantCharacter = character;
+      continue;
+    }
+
+    if (character === '/' && REGEX_ALLOWED_AFTER.has(lastSignificantCharacter)) {
+      index = skipRegex(code, index);
+      lastSignificantCharacter = '/';
+      continue;
+    }
+
+    if (!/\s/.test(character)) {
+      lastSignificantCharacter = character;
+    }
+
+    index += 1;
+  }
+
+  return output.join('');
+}
+
+/** Returns the offset just past the closing quote, honouring backslash escapes. */
+function skipQuoted(code: string, start: number, quote: string): number {
+  let index = start + 1;
+
+  while (index < code.length) {
+    const character = code[index];
+
+    if (character === '\\') {
+      index += 2;
+      continue;
+    }
+
+    if (character === quote) {
+      return index + 1;
+    }
+
+    // An unterminated single-quoted string is a syntax error, but the scanner should not
+    // run past the end of the line looking for a quote that is never coming.
+    if (character === '\n' && quote !== '`') {
+      return index;
+    }
+
+    index += 1;
+  }
+
+  return index;
+}
+
+/** Returns the offset just past a regular expression literal, including its flags. */
+function skipRegex(code: string, start: number): number {
+  let index = start + 1;
+  let inCharacterClass = false;
+
+  while (index < code.length) {
+    const character = code[index];
+
+    if (character === '\\') {
+      index += 2;
+      continue;
+    }
+
+    if (character === '[') {
+      inCharacterClass = true;
+    }
+    else if (character === ']') {
+      inCharacterClass = false;
+    }
+    else if (character === '/' && !inCharacterClass) {
+      return index + 1;
+    }
+    else if (character === '\n') {
+      return index;
+    }
+
+    index += 1;
+  }
+
+  return index;
+}
+
 export function validateExtensionCode(code: string): {
   valid: boolean;
   errors: string[];
@@ -283,8 +418,10 @@ export function validateExtensionCode(code: string): {
     },
   ];
 
+  const executableCode = stripComments(code);
+
   for (const { pattern, message } of dangerousPatterns) {
-    if (pattern.test(code)) {
+    if (pattern.test(executableCode)) {
       errors.push(message);
     }
   }

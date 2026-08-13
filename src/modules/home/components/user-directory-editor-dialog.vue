@@ -8,7 +8,7 @@ import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { FolderOpenIcon, Trash2Icon } from '@lucide/vue';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open } from '@/utils/sigma-dialog';
 import {
   Dialog,
   DialogContent,

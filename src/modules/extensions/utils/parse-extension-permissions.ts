@@ -45,8 +45,18 @@ export function isValidHttpHostPattern(pattern: string): boolean {
 
   try {
     const parsedUrl = new URL(normalizedPattern);
-    return (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:')
-      && parsedUrl.hostname.length > 0;
+
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return false;
+    }
+
+    // A wildcard is only meaningful as a leading `*.` label, admitting the domain and
+    // anything under it. Anywhere else it is a typo, not a pattern.
+    const hostname = parsedUrl.hostname.startsWith('*.')
+      ? parsedUrl.hostname.slice(2)
+      : parsedUrl.hostname;
+
+    return hostname.length > 0 && !hostname.includes('*');
   }
   catch {
     return false;

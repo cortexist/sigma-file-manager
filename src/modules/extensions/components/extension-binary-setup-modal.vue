@@ -7,7 +7,7 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { FolderOpenIcon, PackageIcon } from '@lucide/vue';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@/utils/sigma-dialog';
 import {
   Dialog,
   DialogContent,

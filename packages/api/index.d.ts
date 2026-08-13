@@ -504,6 +504,12 @@ export interface UIElement {
   size?: 'xs' | 'sm' | 'default' | 'lg';
   disabled?: boolean;
   subtitle?: string;
+  /** Lucide icon name shown inside a button. A button with an icon and no label is icon-only. */
+  icon?: string;
+  /** Hover text. The only way an icon-only control can say what it does. */
+  tooltip?: string;
+  /** Replaces a button's icon with a spinner and blocks it while work is in flight. */
+  loading?: boolean;
 }
 
 export interface KeyboardShortcut {
@@ -779,6 +785,7 @@ export interface SigmaExtensionAPI {
     }): UIElement;
     image(options: {
       id?: string;
+      /** An empty source renders a placeholder frame, so a layout keeps its shape. */
       src: string;
       alt?: string;
     }): UIElement;
@@ -795,7 +802,11 @@ export interface SigmaExtensionAPI {
     }): UIElement;
     button(options: {
       id: string;
-      label: string;
+      /** May be omitted when an icon is given, producing an icon-only button. */
+      label?: string;
+      icon?: string;
+      tooltip?: string;
+      loading?: boolean;
       variant?: 'primary' | 'secondary' | 'danger';
       size?: 'xs' | 'sm' | 'default' | 'lg';
       disabled?: boolean;

@@ -16,6 +16,12 @@ const props = withDefaults(defineProps<{
   repository?: string;
   version?: string | null;
   isInstalled?: boolean;
+  /**
+   * Draw the artwork as a solid shape in the current text colour rather than as a picture.
+   * A marketplace listing wants the extension's own colours; a menu row wants an icon that
+   * matches every other icon around it, which means taking the theme's colour.
+   */
+  symbolic?: boolean;
   size?: number;
   cacheKey?: string | number;
 }>(), {
@@ -23,6 +29,7 @@ const props = withDefaults(defineProps<{
   repository: undefined,
   version: null,
   isInstalled: false,
+  symbolic: false,
   size: 24,
   cacheKey: undefined,
 });
@@ -35,6 +42,15 @@ const styleObject = computed(() => ({
   width: `${props.size}px`,
   height: `${props.size}px`,
 }));
+
+const symbolStyleObject = computed(() => {
+  const maskUrl = `url("${displayIconUrl.value ?? ''}")`;
+
+  return {
+    maskImage: maskUrl,
+    WebkitMaskImage: maskUrl,
+  };
+});
 
 function withCacheKey(url: string): string {
   return props.cacheKey ? `${url}?t=${props.cacheKey}` : url;
@@ -180,8 +196,14 @@ onBeforeUnmount(() => {
     class="extension-icon"
     :style="styleObject"
   >
+    <span
+      v-if="displayIconUrl && !hasError && symbolic"
+      class="extension-icon__symbol animate-fade-in-x2"
+      :style="symbolStyleObject"
+      role="presentation"
+    />
     <img
-      v-if="displayIconUrl && !hasError"
+      v-else-if="displayIconUrl && !hasError"
       :src="displayIconUrl"
       alt=""
       class="extension-icon__image animate-fade-in-x2"
@@ -201,6 +223,19 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Masked rather than drawn, so the artwork inherits the colour of the text beside it. */
+.extension-icon__symbol {
+  width: 100%;
+  height: 100%;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
 
 .extension-icon__image {
