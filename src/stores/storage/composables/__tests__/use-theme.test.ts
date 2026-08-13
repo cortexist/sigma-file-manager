@@ -307,3 +307,91 @@ describe('useTheme', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 });
+
+describe('the focus ring follows the accent', () => {
+  beforeEach(() => {
+    document.documentElement.className = '';
+    document.documentElement.style.cssText = '';
+    extensionsData.installedExtensions = {};
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+      })),
+    });
+    Object.defineProperty(document, 'startViewTransition', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    Object.defineProperty(document.documentElement, 'animate', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+  });
+
+  /**
+   * The regression this exists for: `--ring` was a fixed near-white grey, so focusing a
+   * field lit it up in white while other parts of the window used the accent. Users read
+   * that as a fault, not as two conventions — and it was most obvious in extension forms,
+   * which had no way to opt into the accent.
+   */
+  it('uses the accent the user picked', async () => {
+    const theme = ref<Theme>('dark');
+    useTheme(theme, undefined, undefined, ref('330 100% 50%'));
+    await nextTick();
+
+    expect(document.documentElement.style.getPropertyValue('--ring')).toBe('330 100% 50%');
+    expect(document.documentElement.style.getPropertyValue('--primary')).toBe('330 100% 50%');
+  });
+
+  it('falls back to the default accent when the user has picked none', async () => {
+    const theme = ref<Theme>('dark');
+    useTheme(theme, undefined, undefined, ref(null));
+    await nextTick();
+
+    expect(document.documentElement.style.getPropertyValue('--ring')).toBe(DEFAULT_ACCENT_COLOR);
+  });
+
+  it('follows a theme\'s own primary when the user has picked no accent', async () => {
+    extensionsData.installedExtensions = { 'test.palette': createInstalledExtensionData() };
+
+    const theme = ref<Theme>('extension:test.palette:midnight');
+    useTheme(theme, undefined, undefined, ref(null));
+    await nextTick();
+
+    expect(document.documentElement.style.getPropertyValue('--ring')).toBe('200 80% 60%');
+  });
+
+  /** A theme that names its own ring keeps it, the same rule that already governs primary. */
+  it('leaves a ring the theme defined for itself', async () => {
+    const extension = createInstalledExtensionData();
+    extension.manifest.contributes!.themes![0].variables = {
+      '--primary': '200 80% 60%',
+      '--ring': '0 0% 100%',
+    };
+    extensionsData.installedExtensions = { 'test.palette': extension };
+
+    const theme = ref<Theme>('extension:test.palette:midnight');
+    useTheme(theme, undefined, undefined, ref('330 100% 50%'));
+    await nextTick();
+
+    expect(document.documentElement.style.getPropertyValue('--ring')).toBe('0 0% 100%');
+    expect(document.documentElement.style.getPropertyValue('--primary')).toBe('330 100% 50%');
+  });
+
+  it('tracks a later change to the accent', async () => {
+    const theme = ref<Theme>('dark');
+    const accent = ref<string | null>('330 100% 50%');
+    useTheme(theme, undefined, undefined, accent);
+    await nextTick();
+
+    accent.value = '120 60% 45%';
+    await nextTick();
+
+    expect(document.documentElement.style.getPropertyValue('--ring')).toBe('120 60% 45%');
+  });
+});

@@ -177,12 +177,79 @@ pub(crate) fn parse_host_allowlist_pattern(pattern: &str) -> Result<HostAllowlis
         ));
     }
 
+    if match_subdomains && is_public_suffix(&host) {
+        return Err(format!(
+            "HTTP host pattern '{}' is too broad: a wildcard must name a registered domain, \
+             not a public suffix",
+            pattern
+        ));
+    }
+
     Ok(HostAllowlistPattern {
         scheme,
         host,
         port,
         match_subdomains,
     })
+}
+
+/// Registrable-suffix check for wildcard bases.
+///
+/// `*.com` would admit every dot-com, which is not a narrower permission than "anything"
+/// dressed up as one. A wildcard has to name a domain somebody actually registered, so a
+/// base that is itself a public suffix is refused. Chrome draws the same line, refusing
+/// match patterns over a top-level domain.
+///
+/// The multi-label list is the common ones rather than the full Public Suffix List; it is
+/// a guard against an obviously over-broad declaration, not a substitute for review.
+const MULTI_LABEL_PUBLIC_SUFFIXES: &[&str] = &[
+    "co.uk",
+    "org.uk",
+    "gov.uk",
+    "ac.uk",
+    "co.jp",
+    "or.jp",
+    "ne.jp",
+    "com.au",
+    "net.au",
+    "org.au",
+    "com.br",
+    "com.cn",
+    "com.mx",
+    "com.tr",
+    "com.tw",
+    "co.nz",
+    "co.in",
+    "co.za",
+    "co.kr",
+    "com.sg",
+    "com.hk",
+    "com.ar",
+    "com.pl",
+    "com.ua",
+    "com.vn",
+    "github.io",
+    "pages.dev",
+    "workers.dev",
+    "vercel.app",
+    "netlify.app",
+    "herokuapp.com",
+    "amazonaws.com",
+    "cloudfront.net",
+    "azurewebsites.net",
+    "web.app",
+    "firebaseapp.com",
+    "s3.amazonaws.com",
+];
+
+fn is_public_suffix(host: &str) -> bool {
+    if !host.contains('.') {
+        return true;
+    }
+
+    MULTI_LABEL_PUBLIC_SUFFIXES
+        .iter()
+        .any(|suffix| host.eq_ignore_ascii_case(suffix))
 }
 
 /// Returns the pattern with a leading `*.` host label removed, or None when absent.
@@ -373,25 +440,46 @@ mod host_wildcard_tests {
 
     #[test]
     fn a_subdomain_wildcard_admits_the_domain_itself() {
-        assert!(matches("https://*.archive.org", "https://archive.org/download/x"));
+        assert!(matches(
+            "https://*.archive.org",
+            "https://archive.org/download/x"
+        ));
     }
 
     #[test]
     fn a_subdomain_wildcard_does_not_admit_a_lookalike_domain() {
-        assert!(!matches("https://*.archive.org", "https://archive.org.evil.com/x"));
-        assert!(!matches("https://*.archive.org", "https://notarchive.org/x"));
-        assert!(!matches("https://*.archive.org", "https://evil-archive.org/x"));
+        assert!(!matches(
+            "https://*.archive.org",
+            "https://archive.org.evil.com/x"
+        ));
+        assert!(!matches(
+            "https://*.archive.org",
+            "https://notarchive.org/x"
+        ));
+        assert!(!matches(
+            "https://*.archive.org",
+            "https://evil-archive.org/x"
+        ));
     }
 
     #[test]
     fn a_wildcard_does_not_cross_schemes() {
-        assert!(!matches("https://*.archive.org", "http://ia1.archive.org/x"));
+        assert!(!matches(
+            "https://*.archive.org",
+            "http://ia1.archive.org/x"
+        ));
     }
 
     #[test]
     fn an_exact_pattern_still_rejects_subdomains() {
-        assert!(matches("https://coverartarchive.org", "https://coverartarchive.org/release/x"));
-        assert!(!matches("https://coverartarchive.org", "https://cdn.coverartarchive.org/x"));
+        assert!(matches(
+            "https://coverartarchive.org",
+            "https://coverartarchive.org/release/x"
+        ));
+        assert!(!matches(
+            "https://coverartarchive.org",
+            "https://cdn.coverartarchive.org/x"
+        ));
     }
 
     #[test]
@@ -437,6 +525,56 @@ mod host_wildcard_tests {
 
     #[test]
     fn a_wildcard_combines_with_a_port_wildcard() {
-        assert!(matches("https://*.archive.org:*", "https://ia1.archive.org:8443/x"));
+        assert!(matches(
+            "https://*.archive.org:*",
+            "https://ia1.archive.org:8443/x"
+        ));
+    }
+}
+
+#[cfg(test)]
+mod wildcard_breadth_tests {
+    use super::*;
+
+    /// A wildcard over a public suffix is "anything" wearing a narrower-looking costume.
+    #[test]
+    fn a_wildcard_over_a_top_level_domain_is_refused() {
+        for pattern in [
+            "https://*.com",
+            "https://*.org",
+            "https://*.io",
+            "https://*.dev",
+        ] {
+            assert!(
+                parse_host_allowlist_pattern(pattern).is_err(),
+                "{pattern} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wildcard_over_a_multi_label_public_suffix_is_refused() {
+        for pattern in ["https://*.co.uk", "https://*.com.au", "https://*.github.io"] {
+            assert!(
+                parse_host_allowlist_pattern(pattern).is_err(),
+                "{pattern} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wildcard_over_a_registered_domain_is_allowed() {
+        for pattern in ["https://*.archive.org", "https://*.example.co.uk"] {
+            assert!(
+                parse_host_allowlist_pattern(pattern).is_ok(),
+                "{pattern} should be allowed"
+            );
+        }
+    }
+
+    /// An exact host is unaffected: naming one host is already as narrow as it gets.
+    #[test]
+    fn an_exact_top_level_domain_host_is_untouched() {
+        assert!(parse_host_allowlist_pattern("https://example.com").is_ok());
     }
 }

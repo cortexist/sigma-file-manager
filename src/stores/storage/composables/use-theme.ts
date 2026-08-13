@@ -203,6 +203,25 @@ export function useTheme(
    * 3. Neither — fall back to the default, so the app looks the same as it always has instead
    *    of dropping through to whatever the stylesheet happens to define.
    */
+  /**
+   * The focus ring follows the accent.
+   *
+   * `--ring` used to be a fixed near-white grey, which most of the app's focus styles use
+   * while a handful reach for `--primary` directly. Focusing a field in one part of the
+   * window lit it up in the accent and in another in white, which reads as something
+   * having gone wrong rather than as two conventions — nobody using a file manager knows
+   * or cares which component drew the box they are typing in.
+   *
+   * A theme that names its own `--ring` still wins, the same way it does for `--primary`.
+   */
+  function applyFocusRingColor(accentColor: string) {
+    if (appliedThemeVariables.has('--ring')) {
+      return;
+    }
+
+    document.documentElement.style.setProperty('--ring', accentColor);
+  }
+
   function applyAccentColor() {
     if (typeof document === 'undefined' || !document.documentElement) {
       return;
@@ -212,14 +231,22 @@ export function useTheme(
 
     if (accentColor) {
       document.documentElement.style.setProperty('--primary', accentColor);
+      applyFocusRingColor(accentColor);
       return;
     }
 
     if (appliedThemeVariables.has('--primary')) {
+      const themePrimary = document.documentElement.style.getPropertyValue('--primary').trim();
+
+      if (themePrimary) {
+        applyFocusRingColor(themePrimary);
+      }
+
       return;
     }
 
     document.documentElement.style.setProperty('--primary', DEFAULT_ACCENT_COLOR);
+    applyFocusRingColor(DEFAULT_ACCENT_COLOR);
   }
 
   function setTheme(theme: Theme) {
