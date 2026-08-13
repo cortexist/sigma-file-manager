@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 static ICON_DATA_URL_CACHE: Lazy<Mutex<LruCache<String, String>>> = Lazy::new(|| {
     Mutex::new(LruCache::new(
@@ -21,14 +21,23 @@ static ICON_DATA_URL_CACHE: Lazy<Mutex<LruCache<String, String>>> = Lazy::new(||
     ))
 });
 
-static ICON_PROBE_DIR: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
-    let dir = dirs::data_local_dir()
-        .ok_or_else(|| "Could not resolve local data directory".to_string())?
-        .join("com.sigma-file-manager.app")
-        .join("icon-probes");
-    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    Ok(dir)
-});
+static ICON_PROBE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Seeds the probe directory from the app data directory. It is set at startup rather
+/// than assembled here, because assembling it means naming the app's identifier, and a
+/// name written down in a second place is one that can end up disagreeing with the real
+/// one and leaving a stray data directory behind.
+pub(crate) fn set_icon_probe_dir(app_data_dir: &Path) {
+    let _ = ICON_PROBE_DIR.set(app_data_dir.join("icon-probes"));
+}
+
+fn icon_probe_dir() -> Result<&'static Path, String> {
+    let dir = ICON_PROBE_DIR
+        .get()
+        .ok_or_else(|| "Icon probe directory is not initialized".to_string())?;
+    fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    Ok(dir.as_path())
+}
 
 static UNSUPPORTED_SHELL_ICON_PATHS: Lazy<Mutex<HashSet<String>>> =
     Lazy::new(|| Mutex::new(HashSet::new()));
@@ -93,10 +102,7 @@ fn normalize_extension_for_probe(extension: &Option<String>) -> Option<String> {
 }
 
 fn icon_probe_path(extension: &Option<String>) -> Result<PathBuf, String> {
-    let probe_dir = match ICON_PROBE_DIR.as_ref() {
-        Ok(path) => path,
-        Err(error) => return Err(error.clone()),
-    };
+    let probe_dir = icon_probe_dir()?;
 
     let file_name = match normalize_extension_for_probe(extension) {
         Some(extension_value) => format!("probe.{extension_value}"),
@@ -383,6 +389,21 @@ pub fn get_system_icon(
 mod tests {
     use super::*;
 
+    /// Stands in for the startup seeding. `OnceLock` makes the first caller win, so
+    /// every test that probes shares one directory regardless of the order they run in.
+    fn seed_test_icon_probe_dir() {
+        set_icon_probe_dir(&std::env::temp_dir().join("sigma-file-manager-icon-probe-tests"));
+    }
+
+    #[test]
+    fn icon_probe_path_fails_before_the_probe_directory_is_seeded() {
+        // Only meaningful in isolation: any other test in this binary may have seeded it
+        // already, and the point is that nothing falls back to a guessed directory.
+        if ICON_PROBE_DIR.get().is_none() {
+            assert!(icon_probe_path(&Some("txt".to_string())).is_err());
+        }
+    }
+
     #[test]
     fn normalize_extension_for_probe_rejects_invalid_values() {
         assert_eq!(
@@ -411,9 +432,23 @@ mod tests {
 
     #[test]
     fn icon_probe_path_is_absolute() {
+        seed_test_icon_probe_dir();
+
         let probe_path = icon_probe_path(&Some("txt".to_string())).unwrap();
         assert!(probe_path.is_absolute());
         assert!(probe_path.exists());
+    }
+
+    #[test]
+    fn icon_probe_dir_sits_under_the_app_data_dir_it_was_given() {
+        seed_test_icon_probe_dir();
+
+        let probe_dir = icon_probe_dir().unwrap();
+        assert_eq!(probe_dir.file_name().unwrap(), "icon-probes");
+        assert_eq!(
+            probe_dir.parent().unwrap(),
+            ICON_PROBE_DIR.get().unwrap().parent().unwrap()
+        );
     }
 
     #[test]
@@ -442,6 +477,8 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn extension_probe_resolves_shell_icon() {
+        seed_test_icon_probe_dir();
+
         for extension in ["txt", "pdf", "exe"] {
             let probe_path = icon_probe_path(&Some(extension.to_string())).unwrap();
             assert!(

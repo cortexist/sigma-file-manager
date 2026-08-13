@@ -253,9 +253,9 @@ describe('extension runtime loader', () => {
     invokeMock.mockImplementation(async (command: string, args?: { filePath?: string }) => {
       switch (command) {
         case 'get_extension_path':
-          return '/home/alex/.local/share/com.sigma-file-manager.app/extensions/test.video';
+          return '/home/alex/.local/share/com.sigma-file-manager.desktop/extensions/test.video';
         case 'get_extension_storage_path':
-          return '/home/alex/.local/share/com.sigma-file-manager.app/extension-storage/test.video';
+          return '/home/alex/.local/share/com.sigma-file-manager.desktop/extension-storage/test.video';
         case 'extension_path_exists':
           return true;
         case 'read_extension_file':
@@ -292,9 +292,9 @@ describe('extension runtime loader', () => {
     invokeMock.mockImplementation(async (command: string, args?: { filePath?: string }) => {
       switch (command) {
         case 'get_extension_path':
-          return 'C:\\Users\\aleks\\AppData\\Roaming\\com.sigma-file-manager.app\\extensions\\test.video';
+          return 'C:\\Users\\aleks\\AppData\\Roaming\\com.sigma-file-manager.desktop\\extensions\\test.video';
         case 'get_extension_storage_path':
-          return 'C:\\Users\\aleks\\AppData\\Roaming\\com.sigma-file-manager.app\\extension-storage\\test.video';
+          return 'C:\\Users\\aleks\\AppData\\Roaming\\com.sigma-file-manager.desktop\\extension-storage\\test.video';
         case 'extension_path_exists':
           return true;
         case 'read_extension_file':

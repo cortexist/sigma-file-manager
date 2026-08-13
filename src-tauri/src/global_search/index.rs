@@ -117,6 +117,9 @@ pub(super) struct GlobalSearchMeta {
 
 pub(super) const SCHEMA_VERSION: u32 = 1;
 pub(super) const BULK_INDEX_MEMORY_BUDGET_BYTES: usize = 100_000_000;
+/// Deleting documents needs no indexing arena, so the smallest budget tantivy accepts
+/// is enough for maintenance writes.
+pub(super) const MAINTENANCE_INDEX_MEMORY_BUDGET_BYTES: usize = 15_000_000;
 const INDEX_RENAME_MAX_ATTEMPTS: usize = 100;
 const INDEX_RENAME_RETRY_DELAY: Duration = Duration::from_millis(100);
 
@@ -290,6 +293,12 @@ pub(super) fn create_bulk_index_writer(index: &Index) -> Result<IndexWriter, Str
         .map_err(|error| error.to_string())?;
     writer.set_merge_policy(Box::new(NoMergePolicy));
     Ok(writer)
+}
+
+pub(super) fn create_maintenance_index_writer(index: &Index) -> Result<IndexWriter, String> {
+    index
+        .writer_with_num_threads(1, MAINTENANCE_INDEX_MEMORY_BUDGET_BYTES)
+        .map_err(|error| error.to_string())
 }
 
 pub(super) fn open_or_create_index(

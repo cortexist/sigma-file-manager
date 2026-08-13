@@ -4,7 +4,7 @@
 
 use super::types::{GlobalSearchScanPhase, GlobalSearchStatus};
 use once_cell::sync::Lazy;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tantivy::schema::Field;
@@ -62,6 +62,19 @@ pub(super) static GLOBAL_SEARCH_STATE: Lazy<Arc<RwLock<GlobalSearchState>>> = La
         cancel_flag: Arc::new(AtomicBool::new(false)),
     }))
 });
+
+/// Bumped every time a new index is published into the state. Background work that
+/// opens the live index can compare it before and after to notice that a scan swapped
+/// the index directory out from under it.
+static INDEX_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub(super) fn index_generation() -> u64 {
+    INDEX_GENERATION.load(Ordering::SeqCst)
+}
+
+pub(super) fn advance_index_generation() {
+    INDEX_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
 
 pub(super) fn now_millis() -> u64 {
     SystemTime::now()

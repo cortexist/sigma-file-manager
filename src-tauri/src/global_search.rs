@@ -5,6 +5,7 @@
 mod commands;
 mod ignore;
 mod index;
+mod purge;
 mod query;
 mod scan;
 mod scoring;

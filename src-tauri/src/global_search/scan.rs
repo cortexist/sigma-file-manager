@@ -17,7 +17,10 @@ use super::index::{
     replace_index_dir, staging_index_dir, validate_index, validate_staged_index, write_meta,
     GlobalSearchMeta, SCHEMA_VERSION,
 };
-use super::state::{now_millis, GlobalSearchIndexFields, GlobalSearchState, GLOBAL_SEARCH_STATE};
+use super::state::{
+    advance_index_generation, now_millis, GlobalSearchIndexFields, GlobalSearchState,
+    GLOBAL_SEARCH_STATE,
+};
 use super::types::{
     GlobalSearchDriveScanError, GlobalSearchScanOutcome, GlobalSearchScanPhase,
     GlobalSearchSettings, GlobalSearchStatus, IndexPathsSettings,
@@ -37,13 +40,13 @@ fn is_reparse_point(metadata: &Metadata) -> bool {
 fn is_reparse_point(_metadata: &Metadata) -> bool {
     false
 }
-struct CommittedIndexUpdate {
-    doc_count: u64,
-    index_size_bytes: u64,
-    index: Index,
-    reader: IndexReader,
-    fields: GlobalSearchIndexFields,
-    indexed_drive_roots: Option<Vec<String>>,
+pub(super) struct CommittedIndexUpdate {
+    pub(super) doc_count: u64,
+    pub(super) index_size_bytes: u64,
+    pub(super) index: Index,
+    pub(super) reader: IndexReader,
+    pub(super) fields: GlobalSearchIndexFields,
+    pub(super) indexed_drive_roots: Option<Vec<String>>,
 }
 
 fn meta_from_status(state: &GlobalSearchState) -> GlobalSearchMeta {
@@ -109,7 +112,7 @@ fn should_scan_walk_entry(
     }
 }
 
-fn apply_committed_index_status(
+pub(super) fn apply_committed_index_status(
     state: &mut GlobalSearchState,
     base_dir: &Path,
     update: CommittedIndexUpdate,
@@ -135,6 +138,7 @@ fn apply_committed_index_status(
     if advance_last_scan_time {
         state.status.last_scan_time = Some(now_millis());
     }
+    advance_index_generation();
     let _ = write_meta(base_dir, &meta_from_status(state));
 }
 

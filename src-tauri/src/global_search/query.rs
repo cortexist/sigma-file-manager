@@ -15,9 +15,58 @@ use tauri::Manager;
 
 use super::ignore::{builtin_ignored_paths, get_drive_root, normalize_case, IgnoredPathMatcher};
 use super::index::{index_dir, open_or_create_index};
+use super::purge::report_missing_paths;
 use super::scoring::{calculate_similarity_score, get_min_score_for_query_length};
 use super::state::{GlobalSearchIndexFields, GLOBAL_SEARCH_STATE};
 use super::types::{GlobalSearchQueryOptions, GlobalSearchResultEntry};
+
+/// The index lags the filesystem between scans, so indexed hits are verified against
+/// disk before they are shown. Dead hits are scored and sorted like any other, so more
+/// candidates than were asked for are kept: dropping them must not leave the caller
+/// short of results, nor let a dead entry take a live one's place.
+const EXISTENCE_CHECK_OVERFETCH_FACTOR: usize = 2;
+const EXISTENCE_CHECK_MIN_CANDIDATES: usize = 32;
+
+fn existence_check_candidate_limit(limit: usize) -> usize {
+    limit
+        .saturating_mul(EXISTENCE_CHECK_OVERFETCH_FACTOR)
+        .max(EXISTENCE_CHECK_MIN_CANDIDATES)
+}
+
+/// Splits verified entries from the paths that have since disappeared. Link metadata is
+/// read without following it, matching how the indexer decided what to store.
+fn partition_existing_entries(
+    entries: Vec<GlobalSearchResultEntry>,
+) -> (Vec<GlobalSearchResultEntry>, Vec<String>) {
+    let (existing, missing): (Vec<GlobalSearchResultEntry>, Vec<GlobalSearchResultEntry>) = entries
+        .into_par_iter()
+        .partition(|entry| std::fs::symlink_metadata(&entry.path).is_ok());
+
+    (
+        existing,
+        missing.into_iter().map(|entry| entry.path).collect(),
+    )
+}
+
+/// Takes one drive's scored hits down to the requested limit, dropping any whose path
+/// is gone and reporting those so they can be purged from the index.
+fn finalize_drive_group(
+    mut entries: Vec<GlobalSearchResultEntry>,
+    limit: usize,
+) -> (Vec<GlobalSearchResultEntry>, Vec<String>) {
+    entries.par_sort_by(|entry_a, entry_b| {
+        entry_b
+            .score
+            .partial_cmp(&entry_a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    entries.truncate(existence_check_candidate_limit(limit));
+
+    let (mut existing_entries, missing_paths) = partition_existing_entries(entries);
+    existing_entries.truncate(limit);
+
+    (existing_entries, missing_paths)
+}
 
 pub(super) fn build_query(
     fields: &GlobalSearchIndexFields,
@@ -173,22 +222,29 @@ fn global_search_query_blocking(
         }
     }
 
-    let state = GLOBAL_SEARCH_STATE
-        .read()
-        .map_err(|error| error.to_string())?;
+    // Cloning the handles keeps the state lock out of the search itself, which also lets
+    // the purge below take the write lock without contending with a query in flight.
+    let (reader, fields) = {
+        let state = GLOBAL_SEARCH_STATE
+            .read()
+            .map_err(|error| error.to_string())?;
 
-    if state.status.is_committing {
-        return Ok(Vec::new());
-    }
+        if state.status.is_committing {
+            return Ok(Vec::new());
+        }
 
-    let reader = state
-        .reader
-        .as_ref()
-        .ok_or_else(|| "Search index reader is not initialized".to_string())?;
-    let fields = *state
-        .fields
-        .as_ref()
-        .ok_or_else(|| "Search index fields are not initialized".to_string())?;
+        let reader = state
+            .reader
+            .as_ref()
+            .ok_or_else(|| "Search index reader is not initialized".to_string())?
+            .clone();
+        let fields = *state
+            .fields
+            .as_ref()
+            .ok_or_else(|| "Search index fields are not initialized".to_string())?;
+
+        (reader, fields)
+    };
 
     let searcher = reader.searcher();
     let normalized_query = normalize_case(&query);
@@ -289,15 +345,11 @@ fn global_search_query_blocking(
     }
 
     let mut final_results: Vec<GlobalSearchResultEntry> = Vec::new();
-    for (_drive, mut entries) in drive_groups {
-        entries.par_sort_by(|entry_a, entry_b| {
-            entry_b
-                .score
-                .partial_cmp(&entry_a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        entries.truncate(options.limit);
-        final_results.extend(entries);
+    let mut missing_paths: Vec<String> = Vec::new();
+    for (_drive, entries) in drive_groups {
+        let (existing_entries, missing_entry_paths) = finalize_drive_group(entries, options.limit);
+        missing_paths.extend(missing_entry_paths);
+        final_results.extend(existing_entries);
     }
 
     final_results.par_sort_by(|entry_a, entry_b| {
@@ -306,6 +358,8 @@ fn global_search_query_blocking(
             .partial_cmp(&entry_a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+
+    report_missing_paths(&base_dir, missing_paths);
 
     Ok(final_results)
 }
@@ -502,6 +556,134 @@ mod tests {
         let names = search_names("exile", true);
 
         assert!(!names.contains(&"Exiled by Aleksey Hoffman.jpg".to_string()));
+    }
+
+    fn create_entry(path: &str, score: f32) -> GlobalSearchResultEntry {
+        GlobalSearchResultEntry {
+            name: Path::new(path)
+                .file_name()
+                .and_then(|segment| segment.to_str())
+                .unwrap_or(path)
+                .to_string(),
+            ext: None,
+            path: path.to_string(),
+            size: 0,
+            item_count: None,
+            modified_time: 0,
+            accessed_time: 0,
+            created_time: 0,
+            mime: None,
+            is_file: true,
+            is_dir: false,
+            is_symlink: false,
+            is_hidden: false,
+            score,
+        }
+    }
+
+    #[test]
+    fn candidate_limit_over_fetches_so_pruning_can_still_fill_the_limit() {
+        assert_eq!(existence_check_candidate_limit(100), 200);
+    }
+
+    #[test]
+    fn candidate_limit_keeps_a_floor_for_small_limits() {
+        assert_eq!(
+            existence_check_candidate_limit(1),
+            EXISTENCE_CHECK_MIN_CANDIDATES
+        );
+    }
+
+    #[test]
+    fn candidate_limit_saturates_instead_of_overflowing() {
+        assert_eq!(existence_check_candidate_limit(usize::MAX), usize::MAX);
+    }
+
+    #[test]
+    fn partitioning_keeps_entries_on_disk_and_reports_the_rest() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let existing_path = temp.path().join("still-here");
+        std::fs::write(&existing_path, b"").unwrap();
+
+        let existing_path_string = existing_path.to_string_lossy().to_string();
+        let missing_path_string = temp.path().join("deleted").to_string_lossy().to_string();
+
+        let (existing, missing) = partition_existing_entries(vec![
+            create_entry(&existing_path_string, 1.0),
+            create_entry(&missing_path_string, 0.9),
+        ]);
+
+        assert_eq!(
+            existing
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect::<Vec<String>>(),
+            vec![existing_path_string]
+        );
+        assert_eq!(missing, vec![missing_path_string]);
+    }
+
+    #[test]
+    fn deleted_entries_are_dropped_and_live_ones_still_fill_the_limit() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let limit = 3;
+
+        // Deleted entries outscore the live ones, so without over-fetching they would
+        // take every slot and leave the caller with nothing.
+        let mut entries = Vec::new();
+        let mut deleted_paths = Vec::new();
+
+        for index in 0..limit {
+            let path = temp
+                .path()
+                .join(format!("deleted-{index}"))
+                .to_string_lossy()
+                .to_string();
+            entries.push(create_entry(&path, 1.0));
+            deleted_paths.push(path);
+        }
+
+        let mut live_paths = Vec::new();
+
+        for index in 0..limit {
+            let path = temp.path().join(format!("live-{index}"));
+            std::fs::write(&path, b"").unwrap();
+            let path = path.to_string_lossy().to_string();
+            entries.push(create_entry(&path, 0.5));
+            live_paths.push(path);
+        }
+
+        let (results, missing) = finalize_drive_group(entries, limit);
+
+        assert_eq!(
+            results
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect::<Vec<String>>(),
+            live_paths
+        );
+
+        let mut missing_sorted = missing;
+        missing_sorted.sort();
+        deleted_paths.sort();
+        assert_eq!(missing_sorted, deleted_paths);
+    }
+
+    #[test]
+    fn partitioning_keeps_a_dangling_symlink_it_can_still_stat() {
+        #[cfg(unix)]
+        {
+            let temp = tempfile::TempDir::new().unwrap();
+            let link_path = temp.path().join("dangling");
+            std::os::unix::fs::symlink(temp.path().join("no-such-target"), &link_path).unwrap();
+
+            let link_path_string = link_path.to_string_lossy().to_string();
+            let (existing, missing) =
+                partition_existing_entries(vec![create_entry(&link_path_string, 1.0)]);
+
+            assert_eq!(existing.len(), 1);
+            assert!(missing.is_empty());
+        }
     }
 
     #[test]

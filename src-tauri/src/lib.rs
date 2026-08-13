@@ -740,6 +740,12 @@ pub fn run() {
 }
 
 fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Seeded ahead of the standalone branches below, because every process role draws
+    // file icons and each one would otherwise probe from an uninitialized directory.
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        system_icons::set_icon_probe_dir(&app_data_dir);
+    }
+
     // A picker process is one dialog answering one request: its window, its own identity, and
     // none of the app's furniture — no tray, no storage preload, no media-arg interpretation.
     if app.state::<file_picker::PickerSession>().0.is_some() {
