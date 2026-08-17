@@ -134,6 +134,10 @@ windows-sys = { version = "0.59", features = [
 # Already in the tree via the GTK stack; used directly to give standalone processes their own
 # Wayland identity. See `standalone_viewer.rs`.
 glib = "0.18"
+# Presenting a window with the activation token of the click that asked for it — the one raise
+# Tauri's `set_focus` cannot express. Already in the tree via tauri's Linux stack, and pinned to
+# the same version so the window handle it hands back matches. See `window_activation.rs`.
+gtk = "0.18"
 # Routing the webview's own file dialogs to Sigma's picker. Already in the tree via tauri's
 # Linux stack; pinned to the same version so the WebView handle it hands back matches. See
 # `webview_file_chooser.rs`.
