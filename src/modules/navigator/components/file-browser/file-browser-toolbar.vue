@@ -5,33 +5,29 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 <script setup lang="ts">
 import FileBrowserToolbarAddressBar from './file-browser-toolbar-address-bar.vue';
-import FileBrowserToolbarNavButtons from './file-browser-toolbar-nav-buttons.vue';
 import FileBrowserToolbarCreateButton from './file-browser-toolbar-create-button.vue';
 import FileBrowserToolbarFilter from './file-browser-toolbar-filter.vue';
 
 withDefaults(defineProps<{
   pathInput: string;
   filterQuery: string;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  canGoUp: boolean;
-  isLoading: boolean;
   isFilterOpen: boolean;
   focusFilterInput: boolean;
   isSplitView?: boolean;
+  isRecursiveSearchRunning?: boolean;
+  isRecursiveSearchTruncated?: boolean;
+  recursiveSearchError?: string | null;
 }>(), {
   isSplitView: false,
+  isRecursiveSearchRunning: false,
+  isRecursiveSearchTruncated: false,
+  recursiveSearchError: null,
 });
 
 const emit = defineEmits<{
   (event: 'update:pathInput', value: string): void;
   (event: 'update:filterQuery', value: string): void;
   (event: 'update:isFilterOpen', value: boolean): void;
-  (event: 'goBack'): void;
-  (event: 'goForward'): void;
-  (event: 'goUp'): void;
-  (event: 'goHome'): void;
-  (event: 'refresh'): void;
   (event: 'submitPath'): void;
   (event: 'navigateTo', path: string): void;
   (event: 'openFile', path: string): void;
@@ -53,20 +49,6 @@ function handleAddressBarNavigate(path: string) {
       class="file-browser-toolbar__layout"
       :class="{ 'file-browser-toolbar__layout--split-view': isSplitView }"
     >
-      <FileBrowserToolbarNavButtons
-        :can-go-back="canGoBack"
-        :can-go-forward="canGoForward"
-        :can-go-up="canGoUp"
-        :is-loading="isLoading"
-        @go-back="emit('goBack')"
-        @go-forward="emit('goForward')"
-        @go-up="emit('goUp')"
-        @go-home="emit('goHome')"
-        @refresh="emit('refresh')"
-        @create-new-directory="emit('createNewDirectory')"
-        @create-new-file="emit('createNewFile')"
-      />
-
       <FileBrowserToolbarAddressBar
         class="file-browser-toolbar__address-bar"
         :current-path="pathInput"
@@ -84,6 +66,9 @@ function handleAddressBarNavigate(path: string) {
         </div>
         <FileBrowserToolbarFilter
           :filter-query="filterQuery"
+          :is-recursive-search-running="isRecursiveSearchRunning"
+          :is-recursive-search-truncated="isRecursiveSearchTruncated"
+          :recursive-search-error="recursiveSearchError"
           :is-filter-open="isFilterOpen"
           :focus-input="focusFilterInput"
           @update:filter-query="emit('update:filterQuery', $event)"
@@ -121,12 +106,6 @@ function handleAddressBarNavigate(path: string) {
   flex-shrink: 0;
   align-items: center;
   gap: 4px;
-}
-
-@container (width < 600px) {
-  .file-browser-toolbar__create-button {
-    display: none;
-  }
 }
 
 @container (width < 300px) {

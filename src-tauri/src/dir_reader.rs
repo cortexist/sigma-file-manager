@@ -12,6 +12,7 @@ mod network_shares;
 mod path_helpers;
 mod path_volume;
 mod read;
+mod search;
 mod types;
 
 #[allow(unused_imports)]

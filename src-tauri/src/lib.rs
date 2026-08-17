@@ -32,6 +32,7 @@ mod open_with;
 #[cfg(target_os = "linux")]
 mod portal_file_chooser;
 mod process_runner;
+mod search_pattern;
 mod standalone_viewer;
 mod startup_storage_bootstrap;
 mod system_clipboard;
@@ -747,6 +748,8 @@ pub fn run() {
             set_quick_view_ownership,
             dir_reader::read_dir,
             dir_reader::read_dir_with_timeout,
+            dir_reader::search_dir_recursive,
+            dir_reader::cancel_dir_search,
             dir_reader::get_dir_entry_with_timeout,
             dir_reader::get_link_metadata_batch,
             dir_reader::get_dir_item_counts_batch,

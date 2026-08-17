@@ -8,6 +8,7 @@ use super::mountable;
 use super::network_shares;
 use super::path_helpers;
 use super::read::{self, DirItemCountOptions, ReadDirOptions};
+use super::search::{self, RecursiveSearchOptions, RecursiveSearchResults};
 use super::types::{
     DirContents, DirEntryItemCount, DirEntryLinkMetadata, DriveInfo, MountableDevice,
     NetworkShareParams,
@@ -30,6 +31,21 @@ pub async fn read_dir_with_timeout(
     options: Option<ReadDirOptions>,
 ) -> Result<DirContents, String> {
     read::read_dir_with_timeout(path, timeout_ms.unwrap_or(5000), options).await
+}
+
+#[tauri::command]
+pub async fn search_dir_recursive(
+    path: String,
+    options: RecursiveSearchOptions,
+) -> Result<RecursiveSearchResults, String> {
+    tauri::async_runtime::spawn_blocking(move || search::search_dir_recursive(path, options))
+        .await
+        .map_err(|join_error| format!("Failed to search directory: {join_error}"))?
+}
+
+#[tauri::command]
+pub fn cancel_dir_search(search_key: String) {
+    search::cancel_recursive_search(&search_key);
 }
 
 #[tauri::command]

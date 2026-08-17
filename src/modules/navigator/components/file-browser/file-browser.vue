@@ -180,6 +180,14 @@ provideFileBrowserContext({
 
 defineExpose({
   rootElement: fileBrowserRef,
+  // The window toolbar drives navigation for whichever pane is active, so it reads both
+  // the actions and the state that decides whether each of them is available.
+  canGoBack: fb.canGoBack,
+  canGoForward: fb.canGoForward,
+  parentPath: fb.parentPath,
+  isLoading: fb.isLoading,
+  isRefreshing: fb.isRefreshing,
+  navigateToHome: fb.navigateToHome,
   isFilterOpen: fb.isFilterOpen,
   filterQuery: fb.filterQuery,
   currentPath: fb.currentPath,
@@ -230,16 +238,10 @@ defineExpose({
       v-model:filter-query="fb.filterQuery.value"
       v-model:is-filter-open="fb.isFilterOpen.value"
       :focus-filter-input="fb.shouldFocusFilterInput.value"
-      :can-go-back="fb.canGoBack.value"
-      :can-go-forward="fb.canGoForward.value"
-      :can-go-up="!!fb.parentPath.value"
-      :is-loading="fb.isLoading.value || fb.isRefreshing.value"
       :is-split-view="props.isSplitView"
-      @go-back="fb.goBack"
-      @go-forward="fb.goForward"
-      @go-up="fb.navigateToParent"
-      @go-home="fb.navigateToHome"
-      @refresh="fb.refresh"
+      :is-recursive-search-running="fb.isRecursiveSearchRunning.value"
+      :is-recursive-search-truncated="fb.isRecursiveSearchTruncated.value"
+      :recursive-search-error="fb.recursiveSearchError.value"
       @submit-path="fb.handlePathSubmit"
       @navigate-to="fb.navigateToPath"
       @open-file="fb.openFile"

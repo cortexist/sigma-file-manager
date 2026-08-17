@@ -65,7 +65,7 @@ import {
 } from '@/components/ui/tooltip';
 import FileBrowserEntryIcon from '@/modules/navigator/components/file-browser/file-browser-entry-icon.vue';
 import FileBrowserGridSectionBar from '@/modules/navigator/components/file-browser/file-browser-grid-section-bar.vue';
-import FileBrowserToolbarNavButtons from '@/modules/navigator/components/file-browser/file-browser-toolbar-nav-buttons.vue';
+import { NavigatorToolbarNavigation } from '@/modules/navigator/components/navigator-toolbar-actions';
 import FileBrowserToolbarAddressBar from '@/modules/navigator/components/file-browser/file-browser-toolbar-address-bar.vue';
 import AddressBarEditorDialog from '@/modules/navigator/components/file-browser/address-bar-editor-dialog.vue';
 import FileBrowserNewItemDialog from '@/modules/navigator/components/file-browser/file-browser-new-item-dialog.vue';
@@ -721,7 +721,7 @@ onBeforeUnmount(() => {
         data-tauri-drag-region
       >{{ title }}</span>
 
-      <FileBrowserToolbarNavButtons
+      <NavigatorToolbarNavigation
         :can-go-back="canGoBack"
         :can-go-forward="canGoForward"
         :can-go-up="canGoUp"

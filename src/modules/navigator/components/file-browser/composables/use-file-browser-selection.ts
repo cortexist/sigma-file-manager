@@ -35,7 +35,10 @@ import { isContextMenuActionVisible } from '@/modules/navigator/components/file-
 import { applyBackgroundContextMenu } from '@/modules/navigator/components/file-browser/utils/file-browser-background-context-menu';
 import { resolveNavigableItemTarget } from '@/utils/resolve-navigable-item-target';
 import type { CreateLinksResult, LinkCreationKind } from '@/utils/link-operations';
-import { getFileBrowserVisualEntryOrder } from '../file-browser-entry-groups';
+import {
+  getFileBrowserVisualEntryOrder,
+  type FileBrowserFolderGrouping,
+} from '../file-browser-entry-groups';
 import { disconnectDriveForEntry } from '@/utils/disconnect-drive';
 import { refreshDrives } from '@/modules/home/composables/use-drives';
 
@@ -49,6 +52,7 @@ export function useFileBrowserSelection(
   onOpenProperties: (entries: DirEntry[]) => void,
   onRefresh: () => void,
   layout?: () => 'list' | 'grid' | undefined,
+  folderGrouping?: () => FileBrowserFolderGrouping | null,
 ) {
   const { t } = useI18n();
   const platformStore = usePlatformStore();
@@ -163,7 +167,7 @@ export function useFileBrowserSelection(
   }
 
   function getOrderedEntries(): DirEntry[] {
-    return getFileBrowserVisualEntryOrder(entriesRef.value, layout?.());
+    return getFileBrowserVisualEntryOrder(entriesRef.value, layout?.(), folderGrouping?.());
   }
 
   function getEntryIndex(entry: DirEntry): number {

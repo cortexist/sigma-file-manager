@@ -87,6 +87,8 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
   const totalDrivesCount = ref(0);
   const isInitialized = ref(false);
   const lastError = ref<string | null>(null);
+  /** Why the current query could not be run — a malformed pattern, in practice. */
+  const queryError = ref<string | null>(null);
 
   const statusPollTimerId = ref<ReturnType<typeof setTimeout> | null>(null);
   const debounceTimerId = ref<ReturnType<typeof setTimeout> | null>(null);
@@ -355,6 +357,7 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
     if (!trimmedSearchQuery) {
       results.value = [];
       isSearching.value = false;
+      queryError.value = null;
       return;
     }
 
@@ -371,6 +374,7 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
         exact_match: settings.exactMatch ?? false,
         typo_tolerance: settings.typoTolerance ?? true,
         min_score_threshold: null,
+        regex: settings.regex ?? false,
       };
 
       const priorityPaths = getAllPriorityPaths();
@@ -427,10 +431,13 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
       }));
 
       lastError.value = null;
+      queryError.value = null;
     }
     catch (error) {
       if (!abortController.signal.aborted && requestSequence === searchRequestSequence) {
-        lastError.value = String(error);
+        // A query the backend refuses is the query's problem, not the index's, so it is
+        // reported next to the input instead of as an index failure.
+        queryError.value = String(error);
         results.value = [];
       }
     }
@@ -481,6 +488,7 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
     if (!query.value.trim()) {
       results.value = [];
       isSearching.value = false;
+      queryError.value = null;
       return;
     }
 
@@ -523,6 +531,7 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
     cancelPendingSearch();
     query.value = '';
     results.value = [];
+    queryError.value = null;
   }
 
   function checkIdleReindex() {
@@ -651,6 +660,14 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
     search();
   });
 
+  watch(
+    () => userSettingsStore.userSettings.globalSearch.regex,
+    () => {
+      queryError.value = null;
+      search();
+    },
+  );
+
   watch(sharedDrives, () => {
     handleDriveListChange();
   }, { deep: true });
@@ -706,6 +723,7 @@ export const useGlobalSearchStore = defineStore('globalSearch', () => {
     getIsIndexStale,
     isInitialized,
     lastError,
+    queryError,
     open,
     close,
     toggle,

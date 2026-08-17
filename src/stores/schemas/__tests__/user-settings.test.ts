@@ -223,4 +223,18 @@ describe('migrateUserSettingsStorage', () => {
     expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);
     expect(storage.save).toHaveBeenCalledOnce();
   });
+
+  it('turns typo tolerance off when migrating from schema version 26', async () => {
+    const storage = createStorageAdapter({
+      [USER_SETTINGS_SCHEMA_VERSION_KEY]: 26,
+      'globalSearch.typoTolerance': true,
+    });
+
+    await migrateUserSettingsStorage(storage);
+
+    // Everyone carries the old default as a stored value, so searching would keep guessing
+    // at whole words instead of matching the fragment that was typed.
+    expect(storage.values.get('globalSearch.typoTolerance')).toBe(false);
+    expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);
+  });
 });

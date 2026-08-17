@@ -27,12 +27,13 @@ type DirectoryContents = {
 };
 
 export function useFileBrowserEntries(
-  dirContents: Ref<DirectoryContents | null>,
+  dirContents: Ref<DirectoryContents | null> | ComputedRef<DirectoryContents | null>,
   filterQuery: Ref<string>,
   showHiddenFiles: Ref<boolean>,
   sortColumn: Ref<ListSortColumn | null>,
   sortDirection: Ref<ListSortDirection>,
   applySort: ComputedRef<boolean>,
+  useRegex?: ComputedRef<boolean>,
 ) {
   const dirSizesStore = useDirSizesStore();
   const itemCountsStore = useItemCountsStore();
@@ -63,6 +64,7 @@ export function useFileBrowserEntries(
         filterQuery.value,
         dirSizesStore,
         quickSearchCache.value,
+        { regex: useRegex?.value ?? false },
       );
 
       items = items.filter(matchesQuickSearch);

@@ -42,7 +42,10 @@ import {
   consumeNavigatorLayoutResetPending,
   useInfoPanelLayout,
 } from '@/modules/navigator/components/info-panel/composables/use-info-panel-layout';
-import { NavigatorToolbarActions } from '@/modules/navigator/components/navigator-toolbar-actions';
+import {
+  NavigatorToolbarActions,
+  NavigatorToolbarNavigation,
+} from '@/modules/navigator/components/navigator-toolbar-actions';
 import { ClipboardToolbar } from '@/modules/navigator/components/clipboard-toolbar';
 import { GlobalSearchView } from '@/modules/global-search';
 import type { DirEntry } from '@/types/dir-entry';
@@ -84,6 +87,12 @@ type FileBrowserInstance = InstanceType<typeof FileBrowser> & {
   goBack?: () => void | Promise<void>;
   goForward?: () => void | Promise<void>;
   navigateToParent?: () => void | Promise<void>;
+  navigateToHome?: () => void | Promise<void>;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  parentPath?: string | null;
+  isLoading?: boolean;
+  isRefreshing?: boolean;
   openNewItemDialog?: (type: 'file' | 'directory') => void;
   printEntry?: (entry?: DirEntry) => Promise<void>;
   openProperties?: (entries: DirEntry[]) => Promise<void>;
@@ -495,6 +504,44 @@ function getFocusedSplitPaneRef(): FileBrowserInstance | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * The pane the window toolbar's navigation acts on. `getNavigatorPaneRef` answers the same
+ * question for one-off commands, but it reads DOM focus, which nothing re-evaluates when it
+ * changes; the buttons need state that updates on its own, so this follows the active tab.
+ */
+const activeNavigationPane = computed<FileBrowserInstance | undefined>(() => {
+  const currentTabGroup = workspacesStore.currentTabGroup;
+  const activeId = activeTabId.value && paneRefsMap.value.has(activeTabId.value)
+    ? activeTabId.value
+    : currentTabGroup?.[0]?.id;
+  const pane = activeId ? paneRefsMap.value.get(activeId) : undefined;
+
+  return pane ?? singlePaneRef.value ?? undefined;
+});
+
+const navigationState = computed(() => {
+  const pane = activeNavigationPane.value;
+
+  return {
+    canGoBack: pane?.canGoBack ?? false,
+    canGoForward: pane?.canGoForward ?? false,
+    canGoUp: Boolean(pane?.parentPath),
+    isLoading: Boolean(pane?.isLoading) || Boolean(pane?.isRefreshing),
+  };
+});
+
+function runOnActiveNavigationPane(
+  action: (pane: FileBrowserInstance) => void | Promise<void>,
+) {
+  const pane = activeNavigationPane.value;
+
+  if (!pane) {
+    return;
+  }
+
+  void action(pane);
 }
 
 function getNavigatorPaneRef(): FileBrowserInstance | undefined {
@@ -1138,6 +1185,21 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <Teleport to=".window-toolbar-navigation-teleport-target">
+    <NavigatorToolbarNavigation
+      :can-go-back="navigationState.canGoBack"
+      :can-go-forward="navigationState.canGoForward"
+      :can-go-up="navigationState.canGoUp"
+      :is-loading="navigationState.isLoading"
+      @go-back="runOnActiveNavigationPane(pane => pane.goBack?.())"
+      @go-forward="runOnActiveNavigationPane(pane => pane.goForward?.())"
+      @go-up="runOnActiveNavigationPane(pane => pane.navigateToParent?.())"
+      @go-home="runOnActiveNavigationPane(pane => pane.navigateToHome?.())"
+      @refresh="runOnActiveNavigationPane(pane => pane.refresh?.())"
+      @create-new-directory="runOnActiveNavigationPane(pane => pane.openNewItemDialog?.('directory'))"
+      @create-new-file="runOnActiveNavigationPane(pane => pane.openNewItemDialog?.('file'))"
+    />
+  </Teleport>
   <NavigatorToolbarActions
     :is-split-view="isSplitView"
     :show-info-panel="showInfoPanel"
@@ -1209,6 +1271,9 @@ onUnmounted(() => {
                         :is-active-pane="activeTabId ? activeTabId === tab.id : index === 0"
                         :is-split-view="true"
                         class="navigator-page__pane"
+                        :class="{
+                          'navigator-page__pane--active': activeTabId ? activeTabId === tab.id : index === 0,
+                        }"
                         @update:selected-entries="(entries) => handleSelectionChange(entries, tab.id)"
                         @update:current-dir-entry="handleCurrentDirChange"
                       />
@@ -1350,6 +1415,9 @@ onUnmounted(() => {
                     :is-active-pane="activeTabId ? activeTabId === tab.id : index === 0"
                     :is-split-view="true"
                     class="navigator-page__pane"
+                    :class="{
+                      'navigator-page__pane--active': activeTabId ? activeTabId === tab.id : index === 0,
+                    }"
                     @update:selected-entries="(entries) => handleSelectionChange(entries, tab.id)"
                     @update:current-dir-entry="handleCurrentDirChange"
                   />
@@ -1545,6 +1613,15 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: var(--radius-sm);
+}
+
+/* In a split view the navigation in the window toolbar acts on one of the two panes, so
+   that pane says which one it is. The outline is drawn inside the pane's own bounds so it
+   costs no layout and the two panes stay the same size. */
+
+.navigator-page__pane--active {
+  outline: 1px solid hsl(var(--primary) / 40%);
+  outline-offset: -1px;
 }
 
 .navigator-page__compact-header {

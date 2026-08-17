@@ -15,7 +15,6 @@ import { computed } from 'vue';
 import { useFileBrowserContext } from './composables/use-file-browser-context';
 import type {
   FileBrowserGridItemsVirtualRow,
-  FileBrowserGridSectionKey,
   FileBrowserGridSectionVirtualRow,
 } from './composables/use-file-browser-virtual-layout';
 import FileBrowserGridSectionBar from './file-browser-grid-section-bar.vue';
@@ -37,17 +36,27 @@ function handleGridContextMenu(event: MouseEvent) {
   ctx.handleBackgroundContextMenu();
 }
 
-function getSectionLabel(sectionKey: FileBrowserGridSectionKey): string {
-  switch (sectionKey) {
-    case 'dirs':
-      return t('fileBrowser.folders');
+function getSectionLabel(row: FileBrowserGridSectionVirtualRow): string {
+  // A subtree search names its sections after the directory the results came from; every
+  // other section is one of the fixed kinds.
+  if (row.sectionKey.startsWith('folder:')) {
+    return row.label || t('fileBrowser.quickSearchThisFolder');
+  }
+
+  switch (row.sectionKey) {
     case 'images':
       return t('fileBrowser.images');
     case 'videos':
       return t('fileBrowser.videos');
     case 'others':
       return t('fileBrowser.otherFiles');
+    default:
+      return t('fileBrowser.folders');
   }
+}
+
+function isFolderSection(row: FileBrowserGridSectionVirtualRow): boolean {
+  return row.sectionKey.startsWith('folder:');
 }
 
 function getGridRowStyle(row: FileBrowserGridItemsVirtualRow): Record<string, string> {
@@ -89,12 +98,14 @@ function getSectionRowStyle(row: FileBrowserGridSectionVirtualRow): Record<strin
       >
         <div class="file-browser-grid-view__sticky-section-content">
           <FileBrowserGridSectionBar
-            :label="getSectionLabel(ctx.activeGridSectionRow.value.sectionKey)"
+            :label="getSectionLabel(ctx.activeGridSectionRow.value)"
             :count="ctx.activeGridSectionRow.value.count"
+            :variant="isFolderSection(ctx.activeGridSectionRow.value) ? 'path' : 'kind'"
           >
             <template #icon>
               <FolderIcon
-                v-if="ctx.activeGridSectionRow.value.sectionKey === 'dirs'"
+                v-if="ctx.activeGridSectionRow.value.sectionKey === 'dirs'
+                  || isFolderSection(ctx.activeGridSectionRow.value)"
                 :size="14"
               />
               <FileImageIcon
@@ -129,12 +140,13 @@ function getSectionRowStyle(row: FileBrowserGridSectionVirtualRow): Record<strin
           >
             <FileBrowserGridSectionBar
               v-if="shouldShowInlineSectionBar(row)"
-              :label="getSectionLabel(row.sectionKey)"
+              :label="getSectionLabel(row)"
               :count="row.count"
+              :variant="isFolderSection(row) ? 'path' : 'kind'"
             >
               <template #icon>
                 <FolderIcon
-                  v-if="row.sectionKey === 'dirs'"
+                  v-if="row.sectionKey === 'dirs' || isFolderSection(row)"
                   :size="14"
                 />
                 <FileImageIcon

@@ -11,6 +11,7 @@ import {
 import type { DirEntry } from '@/types/dir-entry';
 import type { DirSizesStore } from '../file-browser-sort';
 import {
+  compileFileBrowserQuickSearchPattern,
   createFileBrowserQuickSearchCache,
   createFileBrowserQuickSearchMatcher,
   fileBrowserEntryMatchesQuickSearch,
@@ -242,5 +243,167 @@ describe('fileBrowserEntryMatchesQuickSearch', () => {
     finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('quick search regular expressions', () => {
+  const regexOptions = { regex: true };
+
+  it('matches a pattern against the name instead of a literal substring', () => {
+    const entry = createFileEntry({
+      name: 'report-2024.pdf',
+      ext: 'pdf',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, String.raw`report-\d{4}`, store, regexOptions)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, String.raw`report-\d{2}\.pdf`, store, regexOptions)).toBe(false);
+  });
+
+  it('honours anchors against the whole name', () => {
+    const entry = createFileEntry({
+      name: 'annual-report.pdf',
+      ext: 'pdf',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, String.raw`\.pdf$`, store, regexOptions)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '^annual', store, regexOptions)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '^report', store, regexOptions)).toBe(false);
+  });
+
+  it('anchors against one searchable value at a time, not the values run together', () => {
+    const entry = createFileEntry({
+      name: 'photo.png',
+      ext: 'png',
+      mime: 'image/png',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '^image/png$', store, regexOptions)).toBe(true);
+    // `.` must not cross from one value into the next.
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'photo.png.image', store, regexOptions)).toBe(false);
+  });
+
+  it('ignores case the way the literal search does', () => {
+    const entry = createFileEntry({ name: 'README.md' });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '^readme', store, regexOptions)).toBe(true);
+  });
+
+  it('applies a pattern inside a property query', () => {
+    const entry = createFileEntry({
+      name: 'photo.png',
+      path: 'C:/pics/2024/photo.png',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, String.raw`path: /\d{4}/`, store, regexOptions)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, String.raw`path: /\d{5}/`, store, regexOptions)).toBe(false);
+  });
+
+  it('still resolves numeric property predicates', () => {
+    const entry = createFileEntry({ size: 3 * MB });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'size: >=2mb', store, regexOptions)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'size: <1mb', store, regexOptions)).toBe(false);
+  });
+
+  it('accepts a shell wildcard, which is what most people type first', () => {
+    const entry = createFileEntry({
+      name: 'photo.png',
+      ext: 'png',
+    });
+    const store = createMockDirSizesStore();
+
+    // `*.png` is not valid regex syntax, so without wildcard handling this would not
+    // compile and would match nothing at all.
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '*.png', store, regexOptions)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '*.jpg', store, regexOptions)).toBe(false);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'photo.*', store, regexOptions)).toBe(true);
+  });
+
+  it('anchors a wildcard to the whole name', () => {
+    const entry = createFileEntry({
+      name: 'photo.png.txt',
+      ext: 'txt',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '*.png', store, regexOptions)).toBe(false);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '*.png.*', store, regexOptions)).toBe(true);
+  });
+
+  it('matches nothing while the pattern is unfinished', () => {
+    const entry = createFileEntry({ name: 'anything.txt' });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '^(unclosed', store, regexOptions)).toBe(false);
+  });
+
+  it('treats the query literally when the pattern option is off', () => {
+    const entry = createFileEntry({ name: 'report-2024.pdf' });
+    const literal = createFileEntry({ name: String.raw`report-\d{4}.pdf` });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, String.raw`report-\d{4}`, store)).toBe(false);
+    expect(fileBrowserEntryMatchesQuickSearch(literal, String.raw`report-\d{4}`, store)).toBe(true);
+  });
+
+  it('reports why a pattern cannot be compiled', () => {
+    expect(compileFileBrowserQuickSearchPattern('^report').error).toBeNull();
+    expect(compileFileBrowserQuickSearchPattern('^(unclosed').error).not.toBeNull();
+    // The property prefix is not part of the pattern.
+    expect(compileFileBrowserQuickSearchPattern('path: ^(unclosed').error).not.toBeNull();
+    expect(compileFileBrowserQuickSearchPattern('path: ^ok').error).toBeNull();
+  });
+});
+
+describe('quick search wildcards without the pattern toggle', () => {
+  it('reads * and ? as wildcards even when the toggle is off', () => {
+    const entry = createFileEntry({
+      name: 'photo.png',
+      ext: 'png',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '*.png', store)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '*.jpg', store)).toBe(false);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'ph?to.png', store)).toBe(true);
+  });
+
+  it('anchors a wildcard to the whole value with the toggle off', () => {
+    const entry = createFileEntry({
+      name: 'photo.png.txt',
+      ext: 'txt',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '*.png', store)).toBe(false);
+    // The plain substring search is unchanged, so this still matches.
+    expect(fileBrowserEntryMatchesQuickSearch(entry, '.png', store)).toBe(true);
+  });
+
+  it('leaves a query without wildcards as a substring search', () => {
+    const entry = createFileEntry({ name: 'annual-report.pdf' });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'report', store)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'ann', store)).toBe(true);
+    // A regex metacharacter is a literal here, which a substring search gets right for free.
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'annual.report', store)).toBe(false);
+  });
+
+  it('applies a wildcard inside a property query', () => {
+    const entry = createFileEntry({
+      name: 'photo.png',
+      path: 'C:/pics/2024/photo.png',
+    });
+    const store = createMockDirSizesStore();
+
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'path: *2024*', store)).toBe(true);
+    expect(fileBrowserEntryMatchesQuickSearch(entry, 'path: *2025*', store)).toBe(false);
   });
 });

@@ -229,13 +229,13 @@ onBeforeUnmount(() => {
 .extension-icon__symbol {
   width: 100%;
   height: 100%;
-  background-color: currentColor;
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
+  background-color: currentcolor;
   -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
   -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .extension-icon__image {

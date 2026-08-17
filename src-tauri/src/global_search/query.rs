@@ -2,13 +2,18 @@
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
+use crate::search_pattern::{
+    compile_name_regex, compile_search_pattern, compile_wildcard_search_pattern,
+    looks_like_wildcard, normalize_search_pattern, to_term_dictionary_pattern,
+    wildcard_search_pattern,
+};
 use crate::utils::{
     is_hidden_path, metadata_times_unix_ms, normalize_path, path_extension_lowercase,
 };
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use tantivy::collector::TopDocs;
-use tantivy::query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, Query, TermQuery};
+use tantivy::query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, Query, RegexQuery, TermQuery};
 use tantivy::schema::{IndexRecordOption, Value};
 use tantivy::Term;
 use tauri::Manager;
@@ -26,6 +31,10 @@ use super::types::{GlobalSearchQueryOptions, GlobalSearchResultEntry};
 /// short of results, nor let a dead entry take a live one's place.
 const EXISTENCE_CHECK_OVERFETCH_FACTOR: usize = 2;
 const EXISTENCE_CHECK_MIN_CANDIDATES: usize = 32;
+
+/// Pattern hits are ranked equally, above any score a fuzzy match can reach, so a mixed
+/// merge never demotes an exact pattern hit below a guess.
+const REGEX_MATCH_SCORE: f32 = 1.0;
 
 fn existence_check_candidate_limit(limit: usize) -> usize {
     limit
@@ -72,15 +81,21 @@ pub(super) fn build_query(
     fields: &GlobalSearchIndexFields,
     query: &str,
     options: &GlobalSearchQueryOptions,
-) -> Box<dyn Query> {
+) -> Result<Box<dyn Query>, String> {
     let normalized = normalize_case(query);
 
     if normalized.is_empty() {
-        return Box::new(AllQuery);
+        return Ok(Box::new(AllQuery));
+    }
+
+    match select_match_mode(query, options) {
+        MatchMode::Pattern => return build_pattern_query(fields, query),
+        MatchMode::Wildcard => return build_wildcard_query(fields, query, options.exact_match),
+        MatchMode::Fuzzy => {}
     }
 
     if options.exact_match {
-        return build_exact_match_query(fields, &normalized);
+        return Ok(build_exact_match_query(fields, &normalized));
     }
 
     let words = split_query_tokens(&normalized);
@@ -104,7 +119,71 @@ pub(super) fn build_query(
         }
     }
 
-    Box::new(BooleanQuery::from(subqueries))
+    Ok(Box::new(BooleanQuery::from(subqueries)))
+}
+
+/// How a query is read. The three are decided per query rather than only by settings: a
+/// query carrying `*` or `?` is a wildcard whatever else is switched on, because that is
+/// what those characters mean to everyone who types them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MatchMode {
+    /// A regular expression, as typed.
+    Pattern,
+    /// Shell wildcards, and a plain query as a fragment of the name.
+    Wildcard,
+    /// Terms matched with a tolerance for typos, which is what this search did originally.
+    Fuzzy,
+}
+
+pub(super) fn select_match_mode(query: &str, options: &GlobalSearchQueryOptions) -> MatchMode {
+    if options.regex {
+        return MatchMode::Pattern;
+    }
+
+    if looks_like_wildcard(query) {
+        return MatchMode::Wildcard;
+    }
+
+    if options.typo_tolerance {
+        return MatchMode::Fuzzy;
+    }
+
+    MatchMode::Wildcard
+}
+
+/// Runs a wildcard query over the term dictionary. A plain query searches for a fragment of
+/// the name, which is the one thing the fuzzy engine could not do: it matches whole tokens,
+/// so `ann` never finds `annual-report`.
+fn build_wildcard_query(
+    fields: &GlobalSearchIndexFields,
+    query: &str,
+    whole_name: bool,
+) -> Result<Box<dyn Query>, String> {
+    let pattern = wildcard_search_pattern(query, whole_name);
+    let term_pattern = to_term_dictionary_pattern(&pattern);
+
+    RegexQuery::from_pattern(&term_pattern, fields.name_lower)
+        .map(|query| Box::new(query) as Box<dyn Query>)
+        .map_err(|error| format!("Invalid search pattern: {error}"))
+}
+
+/// Runs the pattern over the term dictionary of the untokenized lowercased name, so a
+/// filename is matched whole rather than word by word.
+fn build_pattern_query(
+    fields: &GlobalSearchIndexFields,
+    pattern: &str,
+) -> Result<Box<dyn Query>, String> {
+    // A wildcard is translated to regex source first, so both engines are handed the same
+    // meaning. Compiled up front so a half-typed pattern is reported as the user's mistake
+    // rather than as an index failure.
+    let normalized = normalize_search_pattern(pattern);
+    compile_name_regex(&normalized)?;
+
+    let term_pattern = to_term_dictionary_pattern(&normalized);
+
+    RegexQuery::from_pattern(&term_pattern, fields.name_lower)
+        .map(|query| Box::new(query) as Box<dyn Query>)
+        .map_err(|error| format!("Invalid regular expression: {error}"))
 }
 
 fn build_exact_match_query(
@@ -249,7 +328,8 @@ fn global_search_query_blocking(
     let searcher = reader.searcher();
     let normalized_query = normalize_case(&query);
 
-    let query_boxed = build_query(&fields, &query, &options);
+    let match_mode = select_match_mode(&query, &options);
+    let query_boxed = build_query(&fields, &query, &options)?;
     let top_docs = searcher
         .search(&query_boxed, &TopDocs::with_limit(100_000).order_by_score())
         .map_err(|error| error.to_string())?;
@@ -283,15 +363,30 @@ fn global_search_query_blocking(
                 .and_then(|value| value.as_str())?
                 .to_string();
 
-            if options.exact_match && !matches_exact_name(&normalized_query, &name_value) {
-                return None;
-            }
+            // Which engine ran decides how a hit is scored. Only the fuzzy one guesses, so
+            // only it needs a threshold to throw its own worst guesses away; the index has
+            // already decided the other two, and scoring them again could only drop a hit
+            // the user asked for by name.
+            let name_score = match match_mode {
+                MatchMode::Pattern => REGEX_MATCH_SCORE,
+                // Ranked, not filtered: the closer a name is to what was typed, the higher
+                // it sits, which is what makes a truncated result list keep the best hits.
+                MatchMode::Wildcard => calculate_similarity_score(&normalized_query, &name_value),
+                MatchMode::Fuzzy => {
+                    if options.exact_match && !matches_exact_name(&normalized_query, &name_value) {
+                        return None;
+                    }
 
-            let name_score = calculate_similarity_score(&normalized_query, &name_value);
+                    let similarity_score =
+                        calculate_similarity_score(&normalized_query, &name_value);
 
-            if name_score < min_score {
-                return None;
-            }
+                    if similarity_score < min_score {
+                        return None;
+                    }
+
+                    similarity_score
+                }
+            };
 
             let doc_is_file = retrieved
                 .get_first(fields.is_file)
@@ -387,6 +482,14 @@ fn global_search_query_paths_blocking(
 ) -> Result<Vec<GlobalSearchResultEntry>, String> {
     let normalized_query = normalize_case(&query);
     let min_score = get_min_score_for_query_length(normalized_query.len());
+    // The same three engines the indexed search picks between, so a query means one thing
+    // no matter which half of the results it is being matched against.
+    let match_mode = select_match_mode(&query, &options);
+    let name_pattern = match match_mode {
+        MatchMode::Pattern => Some(compile_search_pattern(&query)?),
+        MatchMode::Wildcard => Some(compile_wildcard_search_pattern(&query, options.exact_match)?),
+        MatchMode::Fuzzy => None,
+    };
 
     let all_searchable_paths: Vec<PathBuf> = paths
         .par_iter()
@@ -418,15 +521,29 @@ fn global_search_query_paths_blocking(
                 .and_then(|segment| segment.to_str())?
                 .to_string();
 
-            if options.exact_match && !matches_exact_name(&normalized_query, &name) {
-                return None;
-            }
+            let name_score = if let Some(pattern) = name_pattern.as_ref() {
+                if !pattern.is_match(&name) {
+                    return None;
+                }
 
-            let name_score = calculate_similarity_score(&normalized_query, &name);
+                if match_mode == MatchMode::Wildcard {
+                    calculate_similarity_score(&normalized_query, &name)
+                } else {
+                    REGEX_MATCH_SCORE
+                }
+            } else {
+                if options.exact_match && !matches_exact_name(&normalized_query, &name) {
+                    return None;
+                }
 
-            if name_score < min_score {
-                return None;
-            }
+                let similarity_score = calculate_similarity_score(&normalized_query, &name);
+
+                if similarity_score < min_score {
+                    return None;
+                }
+
+                similarity_score
+            };
 
             let metadata = std::fs::metadata(path).ok()?;
 
@@ -498,10 +615,33 @@ mod tests {
             exact_match,
             typo_tolerance: true,
             min_score_threshold: Some(0.0),
+            regex: false,
+        }
+    }
+
+    fn create_regex_options() -> GlobalSearchQueryOptions {
+        GlobalSearchQueryOptions {
+            regex: true,
+            ..create_options(false)
+        }
+    }
+
+    /// How a query arrives with no pattern mode and no typo tolerance switched on.
+    fn create_plain_options() -> GlobalSearchQueryOptions {
+        GlobalSearchQueryOptions {
+            typo_tolerance: false,
+            ..create_options(false)
         }
     }
 
     fn search_names(query_text: &str, exact_match: bool) -> Vec<String> {
+        search_names_with_options(query_text, &create_options(exact_match))
+    }
+
+    fn search_names_with_options(
+        query_text: &str,
+        options: &GlobalSearchQueryOptions,
+    ) -> Vec<String> {
         let (schema, fields) = build_schema();
         let index = tantivy::Index::create_in_ram(schema);
         let mut writer = index.writer(50_000_000).unwrap();
@@ -528,7 +668,7 @@ mod tests {
 
         let reader = index.reader().unwrap();
         let searcher = reader.searcher();
-        let query = build_query(&fields, query_text, &create_options(exact_match));
+        let query = build_query(&fields, query_text, options).unwrap();
         let top_docs = searcher
             .search(&query, &TopDocs::with_limit(10).order_by_score())
             .unwrap();
@@ -556,6 +696,136 @@ mod tests {
         let names = search_names("exile", true);
 
         assert!(!names.contains(&"Exiled by Aleksey Hoffman.jpg".to_string()));
+    }
+
+    #[test]
+    fn regex_query_matches_a_pattern_across_the_whole_filename() {
+        // The tokenized name field would have split this into words; the pattern spans the
+        // spaces and the extension, so only the untokenized field can answer it.
+        let names = search_names_with_options(r"^exile by .*\.jpg$", &create_regex_options());
+
+        assert_eq!(names, vec!["Exile by Aleksey Hoffman.jpg".to_string()]);
+    }
+
+    #[test]
+    fn regex_query_matches_an_unanchored_pattern_anywhere_in_the_name() {
+        let mut names = search_names_with_options("ex[ai]", &create_regex_options());
+        names.sort();
+
+        assert_eq!(
+            names,
+            vec![
+                "Example.jpg".to_string(),
+                "Exile by Aleksey Hoffman.jpg".to_string(),
+                "Exiled by Aleksey Hoffman.jpg".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn regex_query_supports_alternation_without_swallowing_the_padding() {
+        let mut names = search_names_with_options("example|exiled", &create_regex_options());
+        names.sort();
+
+        assert_eq!(
+            names,
+            vec![
+                "Example.jpg".to_string(),
+                "Exiled by Aleksey Hoffman.jpg".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_wildcard_query_matches_the_way_a_shell_would() {
+        // `*.jpg` is not valid regex syntax at all, so this only works if the wildcard is
+        // recognised and translated before the index ever sees it.
+        let mut names = search_names_with_options("*.jpg", &create_regex_options());
+        names.sort();
+
+        assert_eq!(
+            names,
+            vec![
+                "Example.jpg".to_string(),
+                "Exile by Aleksey Hoffman.jpg".to_string(),
+                "Exiled by Aleksey Hoffman.jpg".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_wildcard_query_is_anchored_to_the_whole_name() {
+        // `exile*` reaches from the start of the name, so it takes both Exile and Exiled.
+        assert_eq!(search_names_with_options("exile*", &create_regex_options()).len(), 2);
+        assert_eq!(search_names_with_options("*hoffman*", &create_regex_options()).len(), 2);
+        // Anchored: no name begins with "hoffman", however many contain it.
+        assert!(search_names_with_options("hoffman*", &create_regex_options()).is_empty());
+    }
+
+    #[test]
+    fn a_plain_query_finds_a_fragment_of_the_name() {
+        // The fuzzy engine matches whole tokens, so this prefix found nothing before.
+        let names = search_names_with_options("exil", &create_plain_options());
+
+        assert_eq!(names.len(), 2);
+    }
+
+    #[test]
+    fn a_wildcard_query_works_without_the_pattern_mode() {
+        let mut names = search_names_with_options("*.jpg", &create_plain_options());
+        names.sort();
+
+        assert_eq!(names.len(), 3);
+        assert!(names.iter().all(|name| name.ends_with(".jpg")));
+    }
+
+    #[test]
+    fn a_wildcard_query_beats_typo_tolerance_to_the_query() {
+        // Typo tolerance left on must not turn `*.jpg` back into a fuzzy guess.
+        let options = GlobalSearchQueryOptions {
+            typo_tolerance: true,
+            ..create_options(false)
+        };
+
+        assert_eq!(select_match_mode("*.jpg", &options), MatchMode::Wildcard);
+        assert_eq!(search_names_with_options("*.jpg", &options).len(), 3);
+    }
+
+    #[test]
+    fn typo_tolerance_still_reaches_the_fuzzy_engine() {
+        let options = GlobalSearchQueryOptions {
+            typo_tolerance: true,
+            ..create_options(false)
+        };
+
+        assert_eq!(select_match_mode("exile", &options), MatchMode::Fuzzy);
+        assert_eq!(select_match_mode("exile", &create_plain_options()), MatchMode::Wildcard);
+        assert_eq!(select_match_mode("exile", &create_regex_options()), MatchMode::Pattern);
+    }
+
+    #[test]
+    fn exact_match_asks_for_the_whole_name() {
+        let options = GlobalSearchQueryOptions {
+            exact_match: true,
+            ..create_plain_options()
+        };
+
+        assert!(search_names_with_options("exile", &options).is_empty());
+        assert_eq!(
+            search_names_with_options("Exile by Aleksey Hoffman.jpg", &options),
+            vec!["Exile by Aleksey Hoffman.jpg".to_string()]
+        );
+    }
+
+    #[test]
+    fn regex_query_reports_a_broken_pattern() {
+        let (schema, fields) = build_schema();
+        let _index = tantivy::Index::create_in_ram(schema);
+
+        let error = build_query(&fields, "[unclosed", &create_regex_options())
+            .expect_err("broken pattern is rejected");
+
+        assert!(error.contains("Invalid regular expression"));
     }
 
     fn create_entry(path: &str, score: f32) -> GlobalSearchResultEntry {
@@ -698,3 +968,4 @@ mod tests {
         ));
     }
 }
+

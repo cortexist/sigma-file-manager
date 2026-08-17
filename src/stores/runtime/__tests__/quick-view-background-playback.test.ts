@@ -24,7 +24,10 @@ function recordingWindow() {
 vi.mock('@/utils/auxiliary-windows', () => ({
   runAuxiliaryWindowTask: async (
     _label: string,
-    task: (context: { window: unknown; isCurrent: () => boolean }) => Promise<unknown>,
+    task: (context: {
+      window: unknown;
+      isCurrent: () => boolean;
+    }) => Promise<unknown>,
   ) => task({
     window: recordingWindow(),
     isCurrent: () => true,

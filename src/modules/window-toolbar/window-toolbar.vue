@@ -206,6 +206,7 @@ onBeforeUnmount(() => {
     >
       <LanShareReplaceDialog />
       <CommandPaletteToolbarButton />
+      <div class="window-toolbar-navigation-teleport-target" />
       <div class="window-toolbar-extension-embed-teleport-target" />
       <div class="window-toolbar-primary-teleport-target" />
       <Spacer class="window-toolbar-spacer" />
@@ -221,6 +222,19 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Navigation for the active pane, between the command button and the tabs. It has the
+   width up here that it never had inside a pane's own toolbar. */
+
+.window-toolbar-navigation-teleport-target {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.window-toolbar-navigation-teleport-target:empty {
+  display: none;
+}
+
 .window-toolbar-extension-embed-teleport-target {
   display: flex;
   flex: 0 0 auto;

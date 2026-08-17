@@ -4,16 +4,23 @@ Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 -->
 
 <script setup lang="ts">
-defineProps<{
+withDefaults(defineProps<{
   label: string;
   count: number;
-}>();
+  /** A path is shown as written: a kind is a word, but a path is case-sensitive. */
+  variant?: 'kind' | 'path';
+}>(), {
+  variant: 'kind',
+});
 </script>
 
 <template>
   <div class="file-browser-grid-section-bar">
     <slot name="icon" />
-    <span>{{ label }}</span>
+    <span
+      class="file-browser-grid-section-bar__label"
+      :class="{ 'file-browser-grid-section-bar__label--path': variant === 'path' }"
+    >{{ label }}</span>
     <span class="file-browser-grid-section-bar__count">{{ count }}</span>
   </div>
 </template>
@@ -34,10 +41,21 @@ defineProps<{
   text-transform: uppercase;
 }
 
+.file-browser-grid-section-bar__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-browser-grid-section-bar__label--path {
+  text-transform: none;
+}
+
 .file-browser-grid-section-bar__count {
   padding: 2px 8px;
   border-radius: 10px;
   background-color: hsl(var(--background-3));
   font-size: 11px;
+  white-space: nowrap;
 }
 </style>

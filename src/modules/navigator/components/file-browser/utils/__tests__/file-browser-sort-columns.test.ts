@@ -67,6 +67,10 @@ function createNavigatorSettings(overrides: Partial<UserSettingsNavigator> = {})
     gridSortDirection: 'asc',
     enableBoxSelection: false,
     increaseFileViewGaps: false,
+    quickSearch: {
+      regex: false,
+      recursive: false,
+    },
     ...overrides,
   };
 }
