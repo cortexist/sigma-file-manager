@@ -40,6 +40,7 @@ import {
   type FileBrowserFolderGrouping,
 } from '../file-browser-entry-groups';
 import { disconnectDriveForEntry } from '@/utils/disconnect-drive';
+import { openContainingDirectory } from '@/utils/open-containing-directory';
 import { refreshDrives } from '@/modules/home/composables/use-drives';
 
 export const FILE_BROWSER_REVEAL_STALE_FOCUS_GUARD_MS = 500;
@@ -990,6 +991,12 @@ export function useFileBrowserSelection(
           }).catch((error) => {
             console.error('Failed to copy path:', error);
           });
+        }
+
+        break;
+      case 'open-containing-directory':
+        if (entries.length === 1) {
+          void openContainingDirectory(entries[0]);
         }
 
         break;

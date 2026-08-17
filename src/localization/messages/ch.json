@@ -951,6 +951,7 @@
       "print": "打印",
       "share": "局域网共享",
       "openInNewTab": "在新标签页中打开",
+      "openContainingDirectory": "打开所在文件夹",
       "addToFavorites": "添加到收藏",
       "removeFromFavorites": "从收藏中移除",
       "createLink": "创建链接"

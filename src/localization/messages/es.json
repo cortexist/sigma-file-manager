@@ -953,6 +953,7 @@
       "print": "Imprimir",
       "share": "Compartir en red local",
       "openInNewTab": "Abrir en nueva pestaña",
+      "openContainingDirectory": "Abrir carpeta contenedora",
       "addToFavorites": "Añadir a favoritos",
       "removeFromFavorites": "Quitar de favoritos",
       "createLink": "Crear enlace"

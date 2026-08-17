@@ -981,6 +981,7 @@
       "print": "प्रिंट",
       "share": "LAN पर साझा करें",
       "openInNewTab": "वेब टेब में खोलें",
+      "openContainingDirectory": "युक्त फ़ोल्डर खोलें",
       "addToFavorites": "पसंदीदा में जोड़े",
       "removeFromFavorites": "पसंदीदा से हटाएँ",
       "createLink": "लिंक बनाएं"

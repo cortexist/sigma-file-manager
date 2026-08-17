@@ -950,6 +950,7 @@
       "print": "Imprimir",
       "share": "Compartilhar na rede local",
       "openInNewTab": "Abrir em nova aba",
+      "openContainingDirectory": "Abrir pasta que contém o item",
       "addToFavorites": "Adicionar aos favoritos",
       "removeFromFavorites": "Remover dos favoritos",
       "createLink": "Criar link"

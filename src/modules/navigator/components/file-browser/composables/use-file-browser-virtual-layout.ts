@@ -140,20 +140,29 @@ function getEntryDescriptionHeight(
   return entryDescription?.(entry) ? LIST_ENTRY_WITH_DESCRIPTION_HEIGHT : LIST_ENTRY_HEIGHT;
 }
 
+/**
+ * The width the grid lays its columns out in.
+ *
+ * Capped at the scroll viewport, because this width decides the column count and the column
+ * count decides the layout: anything inside the grid that can push it wider than its
+ * viewport would otherwise feed its own width back in and oscillate. A caller only ever
+ * wants the room actually on screen, so the cap costs nothing.
+ */
 export function resolveViewportContentWidth(viewport: HTMLElement): number {
+  const viewportWidth = getElementContentBoxWidth(viewport);
   const entriesContainer = viewport.querySelector<HTMLElement>(ENTRIES_CONTAINER_SELECTOR);
 
   if (entriesContainer) {
-    return getElementContentBoxWidth(entriesContainer);
+    return Math.min(getElementContentBoxWidth(entriesContainer), viewportWidth);
   }
 
   const contentInner = viewport.querySelector<HTMLElement>(CONTENT_INNER_SELECTOR);
 
   if (contentInner) {
-    return getElementContentBoxWidth(contentInner);
+    return Math.min(getElementContentBoxWidth(contentInner), viewportWidth);
   }
 
-  return getElementContentBoxWidth(viewport);
+  return viewportWidth;
 }
 
 function createListRows(

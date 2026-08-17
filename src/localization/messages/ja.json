@@ -951,6 +951,7 @@
       "print": "印刷",
       "share": "LAN で共有",
       "openInNewTab": "新しいタブで開く",
+      "openContainingDirectory": "含まれるフォルダーを開く",
       "addToFavorites": "お気に入りに追加",
       "removeFromFavorites": "お気に入りから削除",
       "createLink": "リンクを作成"

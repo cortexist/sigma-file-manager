@@ -951,6 +951,7 @@
       "print": "Yazdır",
       "share": "Yerel ağda paylaş",
       "openInNewTab": "Yeni sekmede aç",
+      "openContainingDirectory": "Bulunduğu klasörü aç",
       "addToFavorites": "Favorilere ekle",
       "removeFromFavorites": "Favorilerden kaldır",
       "createLink": "Bağlantı oluştur"

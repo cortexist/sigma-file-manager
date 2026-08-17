@@ -981,6 +981,7 @@
       "print": "Печать",
       "share": "Поделиться по сети",
       "openInNewTab": "Открыть в новой вкладке",
+      "openContainingDirectory": "Открыть папку с файлом",
       "addToFavorites": "Добавить в избранное",
       "removeFromFavorites": "Удалить из избранного",
       "createLink": "Создать ссылку"

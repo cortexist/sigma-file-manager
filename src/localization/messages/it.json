@@ -951,6 +951,7 @@
       "print": "Stampa",
       "share": "Condividi in rete locale",
       "openInNewTab": "Apri in nuova scheda",
+      "openContainingDirectory": "Apri cartella contenitore",
       "addToFavorites": "Aggiungi ai preferiti",
       "removeFromFavorites": "Rimuovi dai preferiti",
       "createLink": "Crea collegamento"

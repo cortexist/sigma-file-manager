@@ -20,6 +20,7 @@ import {
   PrinterIcon,
   Share2Icon,
   SquarePlusIcon,
+  FolderOpenIcon,
   StarIcon,
   UnplugIcon,
   InfoIcon,
@@ -63,9 +64,12 @@ const props = withDefaults(defineProps<{
   menuSeparatorComponent: object;
   disableDestructiveActions?: boolean;
   isCurrentDirectoryContext?: boolean;
+  /** The directory being listed, when these entries came from one. */
+  currentDirectoryPath?: string | null;
 }>(), {
   disableDestructiveActions: false,
   isCurrentDirectoryContext: false,
+  currentDirectoryPath: null,
 });
 
 const emit = defineEmits<{
@@ -101,7 +105,10 @@ const { inlineEndSide } = useTextDirection();
 
 const { isActionVisible, selectionStats } = useContextMenuItems(
   selectedEntriesRef,
-  { disableDestructiveActions: toRef(props, 'disableDestructiveActions') },
+  {
+    disableDestructiveActions: toRef(props, 'disableDestructiveActions'),
+    currentDirectoryPath: toRef(props, 'currentDirectoryPath'),
+  },
 );
 
 const allSelectedAreFavorites = computed(() => {
@@ -394,6 +401,14 @@ function handleCreateLink(linkKind: LinkCreationKind) {
     <ContextMenuShortcut v-if="shortcutsStore.getShortcutLabel('openNewTab')">
       {{ shortcutsStore.getShortcutLabel('openNewTab') }}
     </ContextMenuShortcut>
+  </component>
+  <component
+    :is="menuItemComponent"
+    v-if="isActionVisible('open-containing-directory')"
+    @select="emitAction('open-containing-directory')"
+  >
+    <FolderOpenIcon :size="16" />
+    <span>{{ t('fileBrowser.actions.openContainingDirectory') }}</span>
   </component>
   <component
     :is="menuItemComponent"

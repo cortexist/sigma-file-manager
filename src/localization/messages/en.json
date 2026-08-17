@@ -997,6 +997,7 @@
       "print": "Print",
       "share": "Share over LAN",
       "openInNewTab": "Open in new tab",
+      "openContainingDirectory": "Open containing directory",
       "addToFavorites": "Add to favorites",
       "removeFromFavorites": "Remove from favorites"
     },

@@ -953,6 +953,7 @@
       "print": "Drucken",
       "share": "Im Netzwerk teilen",
       "openInNewTab": "In neuem Tab öffnen",
+      "openContainingDirectory": "Enthaltenden Ordner öffnen",
       "addToFavorites": "Zu Favoriten hinzufügen",
       "removeFromFavorites": "Aus Favoriten entfernen",
       "createLink": "Link erstellen"
