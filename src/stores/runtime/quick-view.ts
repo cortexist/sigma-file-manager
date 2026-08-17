@@ -34,22 +34,33 @@ export function isHttpOrHttpsUrl(value: string): boolean {
 }
 
 export function getFileExtension(path: string): string {
-  let candidate = path;
+  let candidate: string;
 
   if (isHttpOrHttpsUrl(path)) {
+    let pathname: string;
+
     try {
-      candidate = new URL(path).pathname;
+      pathname = new URL(path).pathname;
     }
     catch {
-      candidate = path.split('?')[0]?.split('#')[0] ?? path;
+      pathname = path.split('?')[0]?.split('#')[0] ?? path;
     }
+
+    candidate = pathname.split('/').pop() ?? '';
   }
   else {
-    candidate = path.split('?')[0]?.split('#')[0] ?? path;
+    /**
+     * Only a URL uses `?` and `#` as delimiters. On disk they are ordinary filename
+     * characters, and cutting a local path at them discards everything after — including
+     * the extension, so a file named `clip #1 [123].mp4` read as unsupported.
+     */
+    candidate = path.replace(/\\/g, '/').split('/').pop() ?? '';
   }
 
-  const parts = candidate.split('.');
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+  // Read from the last dot of the file name alone: a dot in a parent directory is not an
+  // extension, while a leading dot (`.gitignore`) names the whole file.
+  const dotIndex = candidate.lastIndexOf('.');
+  return dotIndex === -1 ? '' : candidate.slice(dotIndex + 1).toLowerCase();
 }
 
 export function getFileName(path: string): string {

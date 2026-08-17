@@ -25,6 +25,22 @@ describe('quick-view http(s) urls', () => {
       ),
     ).toBe('png');
     expect(getFileExtension('https://example.com/v.mp4?x=1')).toBe('mp4');
+    expect(getFileExtension('https://example.com/v.mp4#t=10')).toBe('mp4');
+  });
+
+  it('keeps `?` and `#` as ordinary characters in local paths', () => {
+    expect(getFileExtension('/home/u/Downloads/Roco @ AIアニメ #1 [2087830897076977664].mp4'))
+      .toBe('mp4');
+    expect(getFileExtension('/home/u/clip?take 2.mp4')).toBe('mp4');
+    expect(getFileExtension('C:\\Users\\u\\clip #1.mp4')).toBe('mp4');
+    expect(determineFileType('/home/u/Downloads/Roco @ AIアニメ #1 [2087830897076977664].mp4'))
+      .toBe('video');
+  });
+
+  it('reads the extension from the file name, not the path', () => {
+    expect(getFileExtension('/home/u/v1.2/README')).toBe('');
+    expect(getFileExtension('/home/u/.gitignore')).toBe('gitignore');
+    expect(getFileExtension('/home/u/.eslintrc.json')).toBe('json');
   });
 
   it('gets file name from url', () => {
