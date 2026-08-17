@@ -124,6 +124,29 @@ describe('auxiliary-windows', () => {
     expect(closeMock).not.toHaveBeenCalled();
   });
 
+  it('tells the page to let go before hiding it, so playback stops with the window', async () => {
+    const quickViewWindow = createQuickViewWindowStub();
+    getAllWindowsMock.mockResolvedValue([quickViewWindow]);
+
+    const order: string[] = [];
+    emitToMock.mockImplementation((target: { label: string }, eventName: string) => {
+      order.push(`emit:${eventName}:${target.label}`);
+      return Promise.resolve(undefined);
+    });
+    hideMock.mockImplementation(() => {
+      order.push('hide');
+      return Promise.resolve(undefined);
+    });
+
+    const { releaseAuxiliaryWindow } = await import('@/utils/auxiliary-windows');
+    await releaseAuxiliaryWindow('quick-view');
+
+    expect(order).toEqual([
+      'emit:auxiliary-window:released:quick-view',
+      'hide',
+    ]);
+  });
+
   it('closes quick view window from main when prelaunch is disabled', async () => {
     performanceSettings.prelaunchQuickViewWindow = false;
     const quickViewWindow = createQuickViewWindowStub();

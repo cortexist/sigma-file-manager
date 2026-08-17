@@ -15,6 +15,8 @@ export type AuxiliaryWindowLabel = 'quick-view' | 'print-view';
 export const QUICK_VIEW_WINDOW_READY_EVENT = 'quick-view:window-ready';
 export const PRINT_VIEW_WINDOW_READY_EVENT = 'print-view:window-ready';
 export const AUXILIARY_WINDOW_RELEASE_EVENT = 'auxiliary-window:release';
+/** Sent to an auxiliary window that is about to be hidden rather than closed. */
+export const AUXILIARY_WINDOW_RELEASED_EVENT = 'auxiliary-window:released';
 export const PRINT_VIEW_NATIVE_CLOSE_REQUESTED_EVENT = 'print-view:native-close-requested';
 
 const AUXILIARY_WINDOW_READY_EVENTS: Record<AuxiliaryWindowLabel, string> = {
@@ -306,6 +308,14 @@ async function releaseAuxiliaryWindowOnMain(label: AuxiliaryWindowLabel): Promis
     }
 
     if (isAuxiliaryWindowPrelaunchEnabled(label)) {
+      /**
+       * A prelaunched window is only hidden, so its page keeps running with everything it had
+       * on screen still mounted — and a playing media element goes on playing where nobody
+       * can see it. Telling the page to let go of its content first is what makes hiding
+       * behave like closing from the user's side. The page answers on its own schedule; there
+       * is nothing to wait for here beyond having asked.
+       */
+      await emitAuxiliaryWindowEvent(label, AUXILIARY_WINDOW_RELEASED_EVENT, { label });
       await window.hide();
       // Hiding here never reaches the Rust close handler, so the app has to be asked whether
       // anything is still on screen. Releasing a prelaunched window while the main window is

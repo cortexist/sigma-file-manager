@@ -824,7 +824,22 @@ if (typeof document !== 'undefined') {
   window.addEventListener('blur', markPointerIdle);
 }
 
+/**
+ * Whether anything is actually playing right now. Quick View asks at the moment it is
+ * dismissed, to decide between letting the file play on in the background and stopping with
+ * the window; it also watches it, so a file that reaches its end releases the session.
+ */
+defineExpose({ isPlaying });
+
 onBeforeUnmount(() => {
+  /**
+   * Going away has to stop the sound. A detached media element is normally paused by the
+   * engine on its own, but that happens on a later task and not at all while the element is
+   * in fullscreen — either way it is playback outliving the component that owns it, which is
+   * the app's business to prevent rather than the engine's to be trusted with.
+   */
+  mediaRef.value?.pause();
+
   clearIdleTimer();
   clearTimeout(showIdleTimer);
   clearTimeout(frameCaptureFeedbackTimer);

@@ -37,8 +37,15 @@ import {
   QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
   QUICK_VIEW_LOAD_FILE_EVENT,
   QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
+  QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT,
+  QUICK_VIEW_RESTORED_EVENT,
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
+import { useUserSettingsStore } from '@/stores/storage/user-settings';
+import {
+  shouldKeepPlayingAfterDismissal,
+  type QuickViewDismissal,
+} from '@/modules/quick-view/utils/background-playback';
 import { convertMediaSrc } from '@/utils/media-src';
 import { withContentVersion } from '@/utils/file-content-version';
 import { useWatchedFileContentVersion } from '@/composables/use-file-content-version';
@@ -55,6 +62,7 @@ import { renderMarkdownToSafeHtml } from '@/utils/safe-html';
 import type { DirContents, DirEntry } from '@/types/dir-entry';
 import { getParentDirectory } from '@/utils/normalize-path';
 import {
+  AUXILIARY_WINDOW_RELEASED_EVENT,
   buildAuxiliaryWindowReadyPayload,
   QUICK_VIEW_WINDOW_READY_EVENT,
   releaseAuxiliaryWindow,
@@ -86,6 +94,12 @@ let isStandaloneViewer = false;
 const currentFilePath = ref<string | null>(null);
 const resolvedSiblingPaths = ref<string[]>([]);
 const siblingPathsProvidedByMain = ref(false);
+
+const userSettingsStore = useUserSettingsStore();
+/** The mounted player, whichever of the two kinds is on screen. Absent for everything else. */
+const mediaPlayerRef = ref<{ isPlaying: boolean } | null>(null);
+/** Set while this window is hidden but still playing. See `sendToBackgroundPlayback`. */
+const isPlayingInBackground = ref(false);
 
 const stripThumbnails = useImageThumbnails();
 const stripAudioCovers = useAudioCovers();
@@ -136,6 +150,8 @@ let markdownPreviewRequestId = 0;
 let unlistenLoadFile: UnlistenFn | null = null;
 let unlistenCloseRequested: UnlistenFn | null = null;
 let unlistenSiblingPathsChanged: UnlistenFn | null = null;
+let unlistenWindowReleased: UnlistenFn | null = null;
+let unlistenRestored: UnlistenFn | null = null;
 let unlistenOpenMediaRequest: UnlistenFn | null = null;
 
 watch(
@@ -805,9 +821,97 @@ function resetQuickViewWindowState(shouldNotifyMainWindow = true) {
   }
 }
 
-async function closeWindow() {
-  resetQuickViewWindowState(!isStandaloneViewer);
-  await nextTick();
+function shouldKeepPlayingAfter(dismissal: QuickViewDismissal): boolean {
+  return shouldKeepPlayingAfterDismissal({
+    behavior: userSettingsStore.userSettings.navigator.quickViewPlaybackOnDismiss,
+    dismissal,
+    isPlaying: mediaPlayerRef.value?.isPlaying === true,
+  });
+}
+
+/**
+ * Leaves the file playing behind the hidden window and registers it with the backend, which
+ * is what stops the nothing-visible rule from quitting the app mid-track. The main window is
+ * told too, so its shortcut can bring this window back instead of reloading the file.
+ */
+async function sendToBackgroundPlayback(): Promise<void> {
+  /**
+   * Dismissing from in here hides the window through the main window, which answers by
+   * telling this one it was released — so the same dismissal arrives twice. Only the first
+   * starts a session; without this the main window would announce it twice over.
+   */
+  if (isPlayingInBackground.value) {
+    return;
+  }
+
+  isPlayingInBackground.value = true;
+
+  await invoke('set_quick_view_background_playback', { playing: true }).catch(() => {});
+
+  if (!isStandaloneViewer) {
+    void emitTo(
+      {
+        kind: 'WebviewWindow',
+        label: 'main',
+      },
+      QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT,
+      {
+        path: currentFilePath.value,
+        active: true,
+      },
+    );
+  }
+}
+
+/**
+ * Ends the background session — the window came back, the file finished, or it was closed
+ * outright. The backend stops holding the process open for it, and may find there is now
+ * nothing left on screen and quit, which is the whole point of reporting the end.
+ */
+async function endBackgroundPlayback(): Promise<void> {
+  if (!isPlayingInBackground.value) {
+    return;
+  }
+
+  isPlayingInBackground.value = false;
+
+  await invoke('set_quick_view_background_playback', { playing: false }).catch(() => {});
+
+  if (!isStandaloneViewer) {
+    void emitTo(
+      {
+        kind: 'WebviewWindow',
+        label: 'main',
+      },
+      QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT,
+      {
+        path: null,
+        active: false,
+      },
+    );
+  }
+}
+
+/**
+ * A file that plays itself out behind a hidden window has nothing left to come back to, so
+ * the session ends on its own rather than holding the app open in silence.
+ */
+watch(() => mediaPlayerRef.value?.isPlaying === true, (playing) => {
+  if (!playing && isPlayingInBackground.value) {
+    void endBackgroundPlayback();
+  }
+});
+
+async function closeWindow(dismissal: QuickViewDismissal = 'dismiss') {
+  if (shouldKeepPlayingAfter(dismissal)) {
+    // Deliberately keeps the file mounted: the player going away is what stops the sound.
+    await sendToBackgroundPlayback();
+  }
+  else {
+    await endBackgroundPlayback();
+    resetQuickViewWindowState(!isStandaloneViewer);
+    await nextTick();
+  }
 
   /**
    * A standalone viewer is the whole session, so dismissing it quits: hide first so the
@@ -1213,6 +1317,10 @@ async function applyLoadedFile(payload: {
     await waitForFirstPaint(FIRST_PAINT_TIMEOUT_MS);
   }
 
+  // A file arriving replaces whatever was playing behind the hidden window, so the session it
+  // was holding open ends here rather than outliving the thing it was about.
+  await endBackgroundPlayback();
+
   stashCurrentTextIfDirty();
   currentFilePath.value = payload.path;
   resolvedSiblingPaths.value = uniqueSiblingPaths(payload.siblingPaths ?? []);
@@ -1273,9 +1381,37 @@ async function setupEventListeners() {
     },
   );
 
+  /**
+   * The main window hiding this one is the same gesture as dismissing it from in here, so it
+   * gets the same answer: keep playing if that is what the setting and the player call for,
+   * and otherwise drop the file, which unmounts the player and stops the sound. Without this
+   * the hidden window kept playing regardless, with no way to reach it.
+   *
+   * The main window has already let go of its side, so there is nothing to report back to it.
+   */
+  unlistenWindowReleased = await listen(AUXILIARY_WINDOW_RELEASED_EVENT, async () => {
+    if (isStandaloneViewer) {
+      return;
+    }
+
+    if (shouldKeepPlayingAfter('dismiss')) {
+      await sendToBackgroundPlayback();
+      return;
+    }
+
+    await endBackgroundPlayback();
+    resetQuickViewWindowState(false);
+  });
+
+  /** Back on screen: whatever is playing is visible again, so it is no longer a session. */
+  unlistenRestored = await listen(QUICK_VIEW_RESTORED_EVENT, () => {
+    void endBackgroundPlayback();
+  });
+
   unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
     event.preventDefault();
-    await closeWindow();
+    // The window manager's close ends the file, like the window's own close button.
+    await closeWindow('close');
   });
 }
 
@@ -1420,6 +1556,14 @@ onUnmounted(() => {
   if (unlistenSiblingPathsChanged) {
     unlistenSiblingPathsChanged();
   }
+
+  if (unlistenWindowReleased) {
+    unlistenWindowReleased();
+  }
+
+  if (unlistenRestored) {
+    unlistenRestored();
+  }
 });
 </script>
 
@@ -1435,7 +1579,8 @@ onUnmounted(() => {
         class="quick-view__titlebar-title"
         data-tauri-drag-region
       >{{ fileName }}</span>
-      <WindowActions :close-handler="closeWindow" />
+      <!-- The one gesture that means "done with this file" rather than "hide it". -->
+      <WindowActions :close-handler="() => closeWindow('close')" />
     </div>
 
     <div
@@ -1469,6 +1614,7 @@ onUnmounted(() => {
 
         <MediaPlayer
           v-else-if="fileType === 'video'"
+          ref="mediaPlayerRef"
           :src="fileMediaUrl"
           kind="video"
           class="quick-view__video"
@@ -1479,6 +1625,7 @@ onUnmounted(() => {
 
         <MediaPlayer
           v-else-if="fileType === 'audio'"
+          ref="mediaPlayerRef"
           :src="fileMediaUrl"
           kind="audio"
           :source-path="playerSourcePath"

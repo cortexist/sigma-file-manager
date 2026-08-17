@@ -16,7 +16,7 @@ import {
 import { BUILTIN_NAVIGATOR_ICON_THEME_IDS } from '@/types/icon-theme';
 
 export const USER_SETTINGS_SCHEMA_VERSION_KEY = '__schemaVersion';
-export const USER_SETTINGS_SCHEMA_VERSION = 25;
+export const USER_SETTINGS_SCHEMA_VERSION = 26;
 
 export const DEFAULT_GLOBAL_SEARCH_IGNORED_PATHS = [
   '/node_modules',
@@ -447,6 +447,20 @@ async function migrateUserSettingsStep(storage: StorageAdapter, fromVersion: num
 
   if (fromVersion === 24 && toVersion === 25) {
     await setDefaultBooleanIfMissing(storage, 'navigator.openMediaInQuickView', true);
+  }
+
+  if (fromVersion === 25 && toVersion === 26) {
+    const existingPlaybackOnDismiss = await storage.get<unknown>(
+      'navigator.quickViewPlaybackOnDismiss',
+    );
+
+    if (
+      existingPlaybackOnDismiss !== 'keepPlaying'
+      && existingPlaybackOnDismiss !== 'keepPlayingAlways'
+      && existingPlaybackOnDismiss !== 'stop'
+    ) {
+      await storage.set('navigator.quickViewPlaybackOnDismiss', 'keepPlaying');
+    }
   }
 
   if (fromVersion === 23 && toVersion === 24) {

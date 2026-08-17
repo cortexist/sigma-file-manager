@@ -58,6 +58,8 @@ use tauri::{Emitter, Manager};
 
 const SIGMA_AUTOSTART_CLI_FLAG: &str = "--sigma-autostart";
 const AUXILIARY_WINDOW_RELEASE_EVENT: &str = "auxiliary-window:release";
+/// Mirrors `QUICK_VIEW_RESTORED_EVENT` in `stores/runtime/quick-view.ts`.
+const QUICK_VIEW_RESTORED_EVENT: &str = "quick-view:restored";
 const PRINT_VIEW_NATIVE_CLOSE_REQUESTED_EVENT: &str = "print-view:native-close-requested";
 
 /// Set while the user has dismissed the main window to the background — its own titlebar
@@ -78,16 +80,84 @@ impl BackgroundResidency {
     }
 }
 
+/// Set while Quick View was dismissed with something still playing. The window is hidden but
+/// its page runs on, so the media keeps going; the session ends when the user brings the
+/// window back, closes it outright, or the file reaches its end.
+#[derive(Default)]
+struct QuickViewBackgroundPlayback(std::sync::atomic::AtomicBool);
+
+impl QuickViewBackgroundPlayback {
+    fn set(&self, playing: bool) {
+        self.0.store(playing, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn active(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
 /// Reasons the app should outlive its last window; the lifetime rule lives in one place
 /// instead of being re-derived at each close site.
 ///
 /// Background residency is the first reason: the main window dismissed by its own close
-/// button rather than by the window manager. A future mini player — audio continuing after
-/// the windows are gone — belongs here too, as would a running copy job. Whatever registers
-/// a reason is also responsible for giving the user a way back to a window, since quitting
-/// will no longer happen on its own.
+/// button rather than by the window manager. Quick View playing on after being dismissed is
+/// the second — the mini player this comment used to anticipate — as would be a running copy
+/// job. Whatever registers a reason is also responsible for giving the user a way back to a
+/// window, since quitting will no longer happen on its own; for playback that way back is
+/// `show_playing_quick_view`, reached from the launcher and the tray.
 fn should_keep_running_without_windows(app: &tauri::AppHandle) -> bool {
     app.state::<BackgroundResidency>().active()
+        || app.state::<QuickViewBackgroundPlayback>().active()
+}
+
+/// Reports whether Quick View kept playing after being dismissed. Called by the page itself:
+/// it is the only side that knows whether anything was playing when the window went away, and
+/// it calls again when playback ends so a finished file stops holding the process open.
+#[tauri::command]
+fn set_quick_view_background_playback(app: tauri::AppHandle, playing: bool) {
+    app.state::<QuickViewBackgroundPlayback>().set(playing);
+
+    // A file that played itself out while hidden leaves nothing on screen and no reason to
+    // stay, which is the moment the app would have quit had it not been playing.
+    if !playing {
+        exit_if_last_window_closed(&app, &[]);
+    }
+}
+
+/// Whether a launch names nothing to open — the user asking for the app itself rather than
+/// for a file. Flags carry no target, so they leave an activation bare.
+fn is_bare_activation(argv: &[String]) -> bool {
+    !argv.iter().skip(1).any(|arg| !arg.starts_with('-'))
+}
+
+/// Brings a backgrounded Quick View back, and reports whether there was one.
+///
+/// This is the way back that playing in the background obliges the app to provide. Activation
+/// paths try it before falling back to the main window: a user who dismissed Quick View by
+/// accident and reaches for the launcher is asking for what they can hear, not for the file
+/// manager behind it.
+pub(crate) fn show_playing_quick_view<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    if !app.state::<QuickViewBackgroundPlayback>().active() {
+        return false;
+    }
+
+    let Some(quick_view) = app.get_webview_window("quick-view") else {
+        return false;
+    };
+
+    let _ = quick_view.show();
+    let _ = quick_view.set_focus();
+    app.state::<QuickViewBackgroundPlayback>().set(false);
+
+    // The page keeps its own half of the session — what it tells the main window, and what it
+    // does when the file ends — so being put back on screen has to reach it too.
+    let _ = app.emit_to(
+        tauri::EventTarget::webview_window("quick-view"),
+        QUICK_VIEW_RESTORED_EVENT,
+        (),
+    );
+
+    true
 }
 
 /// The main window's own close button: hide, and stay resident for an instant next open.
@@ -433,6 +503,7 @@ pub fn run() {
         .manage(startup_storage_bootstrap::StartupStorageBootstrapState::default())
         .manage(BackgroundResidency::default())
         .manage(QuickViewOwnership::default())
+        .manage(QuickViewBackgroundPlayback::default())
         .manage(file_picker::PickerSession(picker_request))
         .manage(file_manager1::PendingShowRequests::default());
 
@@ -450,7 +521,11 @@ pub fn run() {
                     || !filter_result.had_delegated_paths();
 
                 if should_focus {
-                    system_tray::focus_main_window(app);
+                    // Same rule as the other platforms: a bare activation prefers whatever is
+                    // still playing, anything naming paths belongs to the main window.
+                    if has_filesystem_paths || !show_playing_quick_view(app) {
+                        system_tray::focus_main_window(app);
+                    }
                 }
 
                 if has_filesystem_paths {
@@ -483,7 +558,14 @@ pub fn run() {
                     return;
                 }
 
-                system_tray::focus_main_window(app);
+                // An activation carrying nothing to open is a request for the session the user
+                // can already hear, when there is one — that is the way back a backgrounded
+                // Quick View owes them, and the launcher is where they will reach for it.
+                // Anything naming a path belongs to the main window as before.
+                if !(is_bare_activation(&argv) && show_playing_quick_view(app)) {
+                    system_tray::focus_main_window(app);
+                }
+
                 let launch_context = build_launch_context(argv, Some(cwd), false, false);
                 let _ = app.emit("app-launch-args", launch_context);
             }
@@ -535,6 +617,7 @@ pub fn run() {
             system_tray::reload_webview,
             system_tray::update_tray_shortcut,
             dismiss_main_window_to_background,
+            set_quick_view_background_playback,
             exit_if_no_windows_left,
             file_manager1::drain_show_in_folder_requests,
             file_picker::file_picker_finish,
@@ -905,6 +988,39 @@ mod tests {
 }
 
 #[cfg(test)]
+mod activation_tests {
+    use super::is_bare_activation;
+
+    fn argv(args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| (*arg).to_string()).collect()
+    }
+
+    #[test]
+    fn a_launch_with_no_arguments_is_bare() {
+        assert!(is_bare_activation(&argv(&["sigma-file-manager"])));
+    }
+
+    /// Autostart and friends say how to start, not what to open.
+    #[test]
+    fn flags_leave_an_activation_bare() {
+        assert!(is_bare_activation(&argv(&[
+            "sigma-file-manager",
+            "--autostart"
+        ])));
+    }
+
+    /// The case that must not steal the launch: opening a folder is for the main window, even
+    /// while something is playing in the background.
+    #[test]
+    fn a_path_is_not_a_bare_activation() {
+        assert!(!is_bare_activation(&argv(&[
+            "sigma-file-manager",
+            "/home/user/Documents"
+        ])));
+    }
+}
+
+#[cfg(test)]
 mod window_lifetime_tests {
     use super::should_exit_after_close;
 
@@ -991,8 +1107,8 @@ mod window_lifetime_tests {
         ));
     }
 
-    /// The extension point for a future mini player: a registered reason outranks the window
-    /// count entirely.
+    /// A registered reason outranks the window count entirely. Quick View playing on after
+    /// being dismissed is the case this was written for, and now registers one.
     #[test]
     fn stays_alive_while_something_asks_it_to() {
         assert!(!should_exit_after_close(

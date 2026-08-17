@@ -554,4 +554,23 @@ describe('MediaPlayer', () => {
       expect(play).toHaveBeenCalledTimes(1);
     });
   });
+
+  /**
+   * Quick View closes by dropping the file, which unmounts this component while the window
+   * itself is only hidden. Leaving the element to be paused by the engine let a video go on
+   * playing — audible, with nothing on screen to stop it.
+   */
+  it('stops playback when it is unmounted', async () => {
+    const wrapper = mountPlayer({ autoplay: true });
+    await loadMetadata(wrapper);
+
+    const media = wrapper.get('video').element as HTMLVideoElement;
+    const pause = media.pause as unknown as ReturnType<typeof vi.fn>;
+
+    expect(pause).not.toHaveBeenCalled();
+
+    wrapper.unmount();
+
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
 });

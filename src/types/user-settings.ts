@@ -318,11 +318,27 @@ export type LastTabCloseBehavior = 'createDefaultTab' | 'closeWindow' | 'navigat
 
 export type SplitViewMode = 'split' | 'linked';
 
+/**
+ * What becomes of playback when Quick View is dismissed with something still playing.
+ *
+ * Backgrounding keeps the file going behind a hidden window; the way back is pressing the
+ * Quick View shortcut again on the same file, or activating the app from its launcher or
+ * tray, which brings the playing window forward instead of the main one.
+ */
+export type QuickViewPlaybackOnDismiss
+  /** Dismissing keeps it playing; the window's own close button stops it. */
+  = | 'keepPlaying'
+  /** Every way of putting the window away keeps it playing, the close button included. */
+    | 'keepPlayingAlways'
+  /** Putting the window away always stops playback. */
+    | 'stop';
+
 export type UserSettingsNavigator = {
   lastTabCloseBehavior: LastTabCloseBehavior;
   boldActiveTabTitle: boolean;
   /** Opening a video, image, or audio file uses Quick View instead of the system's app. */
   openMediaInQuickView: boolean;
+  quickViewPlaybackOnDismiss: QuickViewPlaybackOnDismiss;
   layout: NavigatorLayout;
   infoPanel: UserSettingsNavigatorInfoPanel;
   showHiddenFiles: boolean;

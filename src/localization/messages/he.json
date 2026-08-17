@@ -268,6 +268,13 @@
       "openMediaInQuickView": {
         "title": "Open media in Quick View",
         "description": "Opening a video, image, or audio file shows it in Quick View instead of launching the system's default application."
+      },
+      "quickViewPlaybackOnDismiss": {
+        "title": "Playback when Quick View is dismissed",
+        "description": "Quick View can go on playing after its window is put away. To bring the playing window back, press the Quick View shortcut on the same file again, or open the app from its launcher or tray.",
+        "keepPlaying": "Keep playing; close button stops it",
+        "keepPlayingAlways": "Keep playing, always",
+        "stop": "Stop playback"
       }
     },
     "actions": {
@@ -710,6 +717,8 @@
     "updateDownloaded": "העדכון הורד",
     "installerSavedAs": "נשמר בשם: {name}",
     "quickViewFileIsNotSupported": "תצוגה מהירה: הקובץ אינו נתמך",
+    "quickViewStillPlaying": "Quick View is still playing",
+    "quickViewStillPlayingDescription": "Press the Quick View shortcut on this file again, or open the app from its launcher or tray, to bring the window back.",
     "printViewFileIsNotSupported": "הדפסה: הקובץ אינו נתמך",
     "createdNLinks": "נוצרו 0 קישורים | נוצר קישור אחד | נוצרו {n} קישורים | נוצרו {n} קישורים",
     "createdNOfNLinks": "נוצרו {created} מתוך {total} קישורים",

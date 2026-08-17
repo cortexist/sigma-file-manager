@@ -71,7 +71,11 @@ pub fn on_system_tray_event<R: Runtime>(app: &AppHandle<R>, event: TrayIconEvent
             button_state: tauri::tray::MouseButtonState::Up,
             ..
         } => {
-            focus_main_window(app);
+            // Same order as a launcher activation: whatever is still playing is what the user
+            // is reaching for, and the main window is only the fallback.
+            if !crate::show_playing_quick_view(app) {
+                focus_main_window(app);
+            }
         }
         TrayIconEvent::Click {
             button: tauri::tray::MouseButton::Right,

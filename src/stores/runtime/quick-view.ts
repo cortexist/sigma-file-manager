@@ -171,6 +171,14 @@ export const QUICK_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file';
  */
 export const OPEN_MEDIA_REQUEST_EVENT = 'open-media-request';
 export const QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT = 'quick-view:sibling-paths-changed';
+/**
+ * Quick View reporting that it was dismissed with something still playing, or that the
+ * session has ended. The main window keeps it so the shortcut can bring that window back
+ * instead of reloading the file from the start.
+ */
+export const QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT = 'quick-view:background-playback';
+/** Tells Quick View it is back on screen, so it stops counting as a background session. */
+export const QUICK_VIEW_RESTORED_EVENT = 'quick-view:restored';
 export const PRINT_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file:print-view';
 
 async function runAuxiliaryWindowSteps(
@@ -198,6 +206,12 @@ export const useQuickViewStore = defineStore('quickView', () => {
   const lastOpenedPath = ref<string | null>(null);
   /** Folder Quick View is bound to; outlives the displayed file being deleted. */
   const lastOpenedDirectory = ref<string | null>(null);
+  /**
+   * The file a dismissed Quick View is still playing behind its hidden window, if any. Kept
+   * apart from `lastOpenedPath` because it answers a different question: not what was shown
+   * last, but what is still running and can be brought back rather than reopened.
+   */
+  const backgroundPlaybackPath = ref<string | null>(null);
   const displayedPathEventUnlisteners = shallowRef<UnlistenFn[]>([]);
 
   const fileType = computed((): QuickViewFileType => {
@@ -388,6 +402,40 @@ export const useQuickViewStore = defineStore('quickView', () => {
     return false;
   }
 
+  /**
+   * Puts a still-playing Quick View back on screen without reloading it, which is what makes
+   * the shortcut a way back rather than a fresh start: the file is where the ear left it, not
+   * at the beginning again.
+   */
+  async function restoreBackgroundPlayback(): Promise<boolean> {
+    /**
+     * Checked before the task below, which would otherwise build a window to satisfy the
+     * request: a session whose window has gone has nothing to restore, and putting up an
+     * empty Quick View is worse than reopening the file.
+     */
+    if (!(await getQuickViewWindow())) {
+      backgroundPlaybackPath.value = null;
+      return false;
+    }
+
+    const restored = await runAuxiliaryWindowTask('quick-view', async ({ window: quickWindow, isCurrent }) => {
+      return runAuxiliaryWindowSteps(isCurrent, [
+        () => quickWindow.show(),
+        () => quickWindow.setFocus(),
+        () => emitAuxiliaryWindowEvent('quick-view', QUICK_VIEW_RESTORED_EVENT, {}),
+      ]);
+    });
+
+    if (restored) {
+      markAuxiliaryWindowShown('quick-view');
+      lastOpenedPath.value = backgroundPlaybackPath.value;
+      lastOpenedDirectory.value = canonicalizePath(getParentDirectory(backgroundPlaybackPath.value ?? ''));
+      backgroundPlaybackPath.value = null;
+    }
+
+    return restored ?? false;
+  }
+
   async function toggleQuickView(
     path: string,
     siblingPaths?: string[] | null,
@@ -396,6 +444,13 @@ export const useQuickViewStore = defineStore('quickView', () => {
 
     if (isVisible && lastOpenedPath.value === path) {
       await closeWindow();
+      return true;
+    }
+
+    // Pressing the shortcut again on the file you can still hear asks for that window back.
+    // Reopening would reload it and lose the position, so this shows what is already running.
+    // A session with no window left behind it falls through to opening the file properly.
+    if (!isVisible && backgroundPlaybackPath.value === path && await restoreBackgroundPlayback()) {
       return true;
     }
 
@@ -424,7 +479,37 @@ export const useQuickViewStore = defineStore('quickView', () => {
       },
     );
 
-    displayedPathEventUnlisteners.value = [unlisten];
+    /**
+     * Playing on after being dismissed is only defensible if the way back is discoverable, so
+     * the first thing the main window does with the news is say it out loud.
+     */
+    const unlistenBackgroundPlayback = await listen<{
+      path: string | null;
+      active: boolean;
+    }>(
+      QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT,
+      (event) => {
+        backgroundPlaybackPath.value = event.payload.active ? event.payload.path : null;
+
+        if (!event.payload.active || !event.payload.path) {
+          return;
+        }
+
+        const { t } = i18n.global;
+
+        toast.custom(markRaw(ToastStatic), {
+          componentProps: {
+            data: {
+              title: t('notifications.quickViewStillPlaying'),
+              description: t('notifications.quickViewStillPlayingDescription'),
+            },
+          },
+          duration: 5000,
+        });
+      },
+    );
+
+    displayedPathEventUnlisteners.value = [unlisten, unlistenBackgroundPlayback];
   }
 
   return {
@@ -435,6 +520,8 @@ export const useQuickViewStore = defineStore('quickView', () => {
     fileAssetUrl,
     lastOpenedPath,
     lastOpenedDirectory,
+    backgroundPlaybackPath,
+    restoreBackgroundPlayback,
     loadFile,
     openFileFromMainWindow,
     openPrintViewFromMainWindow,
