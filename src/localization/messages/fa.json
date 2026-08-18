@@ -2,9 +2,9 @@
   "app": {
     "name": "Sigma File Manager",
     "description": "یک برنامه مدیریت فایل رایگان، منبع باز، پیشرفته و مدرن است که تحت مجوز GNU GPLv3 یا جدیدتر است.",
-    "copyright": "Copyright © 2021 - present Aleksey Hoffman. All rights reserved.",
-    "forkCopyright": "Linux fork modifications copyright © 2026 Cortexist, LLC.",
-    "forkNotice": "Modified Linux/Wayland fork of the original — not an official release. Source: github.com/cortexist/sigma-file-manager"
+    "copyright": "Copyright © 2021 - present Aleksey Hoffman",
+    "forkCopyright": "Copyright © 2026 Cortexist, LLC — Linux/Wayland fork modifications",
+    "forkNotice": "Modified fork, not an official release. Source: github.com/cortexist/sigma-file-manager"
   },
   "units": {
     "px": "px"
