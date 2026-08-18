@@ -2,9 +2,7 @@
   "app": {
     "name": "Sigma File Manager",
     "description": "はフリー、オープンソース、高機能、モダンなファイルマネージャーアプリで、GNU GPLv3またはそれ以降でライセンスされています。",
-    "copyright": "Copyright © 2021 - present Aleksey Hoffman. All rights reserved.",
-    "forkCopyright": "Linux fork modifications copyright © 2026 Cortexist, LLC.",
-    "forkNotice": "Modified Linux/Wayland fork of the original — not an official release. Source: github.com/cortexist/sigma-file-manager"
+    "copyright": "Copyright © 2021 - present Aleksey Hoffman. All rights reserved."
   },
   "units": {
     "px": "px"

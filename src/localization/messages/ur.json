@@ -2,9 +2,7 @@
   "app": {
     "name": "سگما فائل مینیجر",
     "description": "یہ ایک مفت، اوپن سورس، جدید اور پیشَرفتہ فائل مینیجر ایپ ہے، جو GNU GPLv3 یا اس کے بعد کے ورژن کے تحت لائسنس یافتہ ہے۔",
-    "copyright": "Copyright © 2021 - present Aleksey Hoffman. All rights reserved.",
-    "forkCopyright": "Linux fork modifications copyright © 2026 Cortexist, LLC.",
-    "forkNotice": "Modified Linux/Wayland fork of the original — not an official release. Source: github.com/cortexist/sigma-file-manager"
+    "copyright": "Copyright © 2021 - present Aleksey Hoffman. All rights reserved."
   },
   "units": {
     "px": "px"

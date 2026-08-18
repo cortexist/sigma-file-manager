@@ -2,9 +2,7 @@
   "app": {
     "name": "सिग्मा फ़ाइल प्रबंधक",
     "description": "एक मुफ़्त, खुला स्रोत, उन्नत, आधुनिक फ़ाइल प्रबंधक ऐप है, जो GNU GPLv3 या उसके बाद के संस्करण के तहत लाइसेंस प्राप्त है।",
-    "copyright": "Copyright © 2021 - present Aleksey Hoffman. All rights reserved.",
-    "forkCopyright": "Linux fork modifications copyright © 2026 Cortexist, LLC.",
-    "forkNotice": "Modified Linux/Wayland fork of the original — not an official release. Source: github.com/cortexist/sigma-file-manager"
+    "copyright": "Copyright © 2021 - present Aleksey Hoffman. All rights reserved."
   },
   "units": {
     "px": "पिक्सल"

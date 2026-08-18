@@ -41,8 +41,6 @@ const { t } = useI18n();
         <strong>"{{ t('app.name') }}"</strong>
         {{ t('app.description') }}
         <br>{{ t('app.copyright') }}
-        <br>{{ t('app.forkCopyright') }}
-        <br>{{ t('app.forkNotice') }}
       </p>
     </div>
   </div>
