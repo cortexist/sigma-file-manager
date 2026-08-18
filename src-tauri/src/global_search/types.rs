@@ -59,6 +59,10 @@ pub struct GlobalSearchQueryOptions {
     pub exact_match: bool,
     pub typo_tolerance: bool,
     pub min_score_threshold: Option<f32>,
+    /// Reads the query as a regular expression instead of a term to fuzzy-match. Takes
+    /// precedence over `exact_match` and `typo_tolerance`, which describe term matching.
+    #[serde(default)]
+    pub regex: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

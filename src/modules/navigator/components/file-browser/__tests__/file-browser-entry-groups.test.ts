@@ -8,6 +8,7 @@ import {
   getFileBrowserGridEntryOrder,
   getFileBrowserVisualEntryOrder,
   groupFileBrowserEntries,
+  groupFileBrowserEntriesByFolder,
 } from '../file-browser-entry-groups';
 import { sortFileBrowserEntries } from '../utils/file-browser-sort';
 
@@ -134,6 +135,72 @@ describe('file browser entry groups', () => {
       'clips',
       'photo.png',
       'notes.txt',
+    ]);
+  });
+});
+
+describe('file browser folder groups', () => {
+  const basePath = 'C:/project';
+
+  function createSubtreeEntries(): DirEntry[] {
+    return [
+      createEntry('main.rs', { path: `${basePath}/src/bin/main.rs` }),
+      createEntry('readme.md', { path: `${basePath}/readme.md` }),
+      createEntry('lib.rs', { path: `${basePath}/src/lib.rs` }),
+      createEntry('bin', {
+        path: `${basePath}/src/bin`,
+        is_dir: true,
+        is_file: false,
+      }),
+    ];
+  }
+
+  it('gathers subtree results under the folder each one came from', () => {
+    const groups = groupFileBrowserEntriesByFolder(createSubtreeEntries(), basePath);
+
+    expect(groups.map(group => ({
+      label: group.label,
+      names: group.entries.map(entry => entry.name),
+    }))).toEqual([
+      {
+        label: '',
+        names: ['readme.md'],
+      },
+      {
+        label: 'src',
+        names: ['lib.rs', 'bin'],
+      },
+      {
+        label: 'src/bin',
+        names: ['main.rs'],
+      },
+    ]);
+  });
+
+  it('keeps a path that is not below the searched folder recognisable', () => {
+    const groups = groupFileBrowserEntriesByFolder(
+      [createEntry('elsewhere.txt', { path: 'C:/other/elsewhere.txt' })],
+      basePath,
+    );
+
+    expect(groups.map(group => group.label)).toEqual(['C:/other']);
+  });
+
+  it('orders entries folder by folder, and by kind inside a folder in the grid', () => {
+    const entries = createSubtreeEntries();
+
+    expect(getFileBrowserVisualEntryOrder(entries, 'list', { basePath }).map(entry => entry.name)).toEqual([
+      'readme.md',
+      'lib.rs',
+      'bin',
+      'main.rs',
+    ]);
+    // The grid lays directories out before files, but only within their own folder.
+    expect(getFileBrowserVisualEntryOrder(entries, 'grid', { basePath }).map(entry => entry.name)).toEqual([
+      'readme.md',
+      'bin',
+      'lib.rs',
+      'main.rs',
     ]);
   });
 });

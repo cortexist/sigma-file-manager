@@ -101,4 +101,52 @@ describe('isContextMenuActionVisible', () => {
 
     expect(isContextMenuActionVisible('disconnect', entries, { platform: 'windows' })).toBe(false);
   });
+
+  describe('open containing directory', () => {
+    function createFileEntry(path: string): DirEntry {
+      return {
+        ...createDirectoryEntry(path),
+        is_file: true,
+        is_dir: false,
+      };
+    }
+
+    it('is offered for a result shown away from its own folder', () => {
+      const entries = [createFileEntry('/home/zero/project/src/main.rs')];
+
+      expect(isContextMenuActionVisible('open-containing-directory', entries, {
+        currentDirectoryPath: '/home/zero/project',
+      })).toBe(true);
+    });
+
+    it('is hidden in a plain listing of the folder the entry is already in', () => {
+      const entries = [createFileEntry('/home/zero/project/main.rs')];
+
+      expect(isContextMenuActionVisible('open-containing-directory', entries, {
+        currentDirectoryPath: '/home/zero/project',
+      })).toBe(false);
+    });
+
+    it('is offered when there is no listing behind the entries at all', () => {
+      // Global search results, favourites, recent files: no directory is on screen.
+      const entries = [createFileEntry('/home/zero/project/main.rs')];
+
+      expect(isContextMenuActionVisible('open-containing-directory', entries)).toBe(true);
+    });
+
+    it('is hidden for more than one entry', () => {
+      const entries = [
+        createFileEntry('/home/zero/a/one.txt'),
+        createFileEntry('/home/zero/b/two.txt'),
+      ];
+
+      expect(isContextMenuActionVisible('open-containing-directory', entries)).toBe(false);
+    });
+
+    it('is hidden for an entry with no folder above it', () => {
+      expect(isContextMenuActionVisible('open-containing-directory', [
+        createDirectoryEntry('/'),
+      ])).toBe(false);
+    });
+  });
 });

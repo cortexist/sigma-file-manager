@@ -18,7 +18,7 @@ use super::types::{
 };
 
 #[derive(Debug, Clone, Copy)]
-struct ReadEntryOptions {
+pub(super) struct ReadEntryOptions {
     include_shortcut_targets: bool,
     include_hard_link_counts: bool,
     include_item_counts: bool,
@@ -563,7 +563,7 @@ fn needs_followed_metadata(symlink_metadata: &fs::Metadata) -> bool {
     }
 }
 
-fn read_entry(path: &Path, options: ReadEntryOptions) -> Option<DirEntry> {
+pub(super) fn read_entry(path: &Path, options: ReadEntryOptions) -> Option<DirEntry> {
     if should_skip_path(path) {
         return None;
     }

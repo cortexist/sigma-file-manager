@@ -594,6 +594,7 @@ watch(
  * whatever follows sit beside them. Stacking those one per row left a modal that was
  * mostly empty space to the right of a thumbnail.
  */
+
 .ext-form-view__content {
   display: flex;
   flex-wrap: wrap;
@@ -603,8 +604,8 @@ watch(
 }
 
 .ext-form-view__content > * {
-  flex: 1 1 100%;
   min-width: 0;
+  flex: 1 1 100%;
 }
 
 .ext-form-view__content > .ext-form-view__inline-button,

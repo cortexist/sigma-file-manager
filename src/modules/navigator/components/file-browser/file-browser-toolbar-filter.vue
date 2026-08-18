@@ -16,8 +16,12 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip';
 import { ContextMenuShortcut } from '@/components/ui/context-menu';
-import { TextSearchIcon, XIcon, ChevronDownIcon } from '@lucide/vue';
+import {
+  TextSearchIcon, XIcon, ChevronDownIcon, RegexIcon, FolderSearchIcon, LoaderCircleIcon,
+} from '@lucide/vue';
 import { useShortcutsStore } from '@/stores/runtime/shortcuts';
+import { useUserSettingsStore } from '@/stores/storage/user-settings';
+import { compileFileBrowserQuickSearchPattern } from '@/modules/navigator/components/file-browser/utils/file-browser-entry-quick-search';
 import {
   QUICK_SEARCH_PROPERTY_KEYS,
   parseQuickSearchQuery,
@@ -26,11 +30,18 @@ import {
 } from '@/modules/navigator/components/file-browser/utils/file-browser-quick-search-query';
 import { useIsSmallScreen } from '@/composables/use-responsive-query';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   filterQuery: string;
   isFilterOpen: boolean;
   focusInput: boolean;
-}>();
+  isRecursiveSearchRunning?: boolean;
+  isRecursiveSearchTruncated?: boolean;
+  recursiveSearchError?: string | null;
+}>(), {
+  isRecursiveSearchRunning: false,
+  isRecursiveSearchTruncated: false,
+  recursiveSearchError: null,
+});
 
 const emit = defineEmits<{
   (event: 'update:filterQuery', value: string): void;
@@ -40,6 +51,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const shortcutsStore = useShortcutsStore();
+const userSettingsStore = useUserSettingsStore();
 
 const filterInputRef = ref<InstanceType<typeof Input> | null>(null);
 const filterTriggerRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
@@ -48,6 +60,42 @@ const shouldFocusOnButtonOpen = ref(false);
 const isSmallScreen = useIsSmallScreen();
 
 const activeProperty = computed(() => parseQuickSearchQuery(props.filterQuery.trim()).property);
+const quickSearchSettings = computed(() => userSettingsStore.userSettings.navigator.quickSearch);
+const isRegexEnabled = computed(() => quickSearchSettings.value.regex);
+const isRecursiveEnabled = computed(() => quickSearchSettings.value.recursive);
+
+const patternError = computed(() => {
+  if (!isRegexEnabled.value || !props.filterQuery.trim()) {
+    return null;
+  }
+
+  return compileFileBrowserQuickSearchPattern(props.filterQuery).error;
+});
+
+const statusMessage = computed(() => {
+  if (patternError.value) {
+    return t('fileBrowser.quickSearchInvalidPattern');
+  }
+
+  if (props.recursiveSearchError) {
+    return props.recursiveSearchError;
+  }
+
+  if (props.isRecursiveSearchTruncated) {
+    return t('fileBrowser.quickSearchTooManyResults');
+  }
+
+  return null;
+});
+
+function toggleRegex() {
+  void userSettingsStore.set('navigator.quickSearch.regex', !isRegexEnabled.value);
+}
+
+function toggleRecursive() {
+  void userSettingsStore.set('navigator.quickSearch.recursive', !isRecursiveEnabled.value);
+}
+
 const quickSearchPopoverSide = computed<'bottom' | 'left'>(() => isSmallScreen.value ? 'bottom' : 'left');
 
 watch(() => [props.isFilterOpen, props.focusInput] as const, async ([open, focusInput]) => {
@@ -178,10 +226,54 @@ function selectProperty(property: QuickSearchProperty) {
           <Input
             ref="filterInputRef"
             :model-value="filterQuery"
-            :placeholder="t('fileBrowser.searchThisDirectory')"
+            :placeholder="isRecursiveEnabled ? t('fileBrowser.searchThisDirectoryRecursively') : t('fileBrowser.searchThisDirectory')"
             class="file-browser-toolbar-filter__input"
+            :class="{ 'file-browser-toolbar-filter__input--invalid': patternError }"
             @update:model-value="handleFilterQueryUpdate"
           />
+          <LoaderCircleIcon
+            v-if="isRecursiveSearchRunning"
+            :size="14"
+            class="file-browser-toolbar-filter__spinner"
+          />
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                class="file-browser-toolbar-filter__suffix-btn"
+                :class="{ 'file-browser-toolbar-filter__suffix-btn--active': isRegexEnabled }"
+                :aria-pressed="isRegexEnabled"
+                :aria-label="t('fileBrowser.quickSearchRegex')"
+                @click="toggleRegex"
+              >
+                <RegexIcon :size="15" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent class="file-browser-toolbar-filter__property-tooltip">
+              {{ t('fileBrowser.quickSearchRegexTooltip') }}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                class="file-browser-toolbar-filter__suffix-btn"
+                :class="{ 'file-browser-toolbar-filter__suffix-btn--active': isRecursiveEnabled }"
+                :aria-pressed="isRecursiveEnabled"
+                :aria-label="t('fileBrowser.quickSearchRecursive')"
+                @click="toggleRecursive"
+              >
+                <FolderSearchIcon :size="15" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {{ t('fileBrowser.quickSearchRecursive') }}
+            </TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger as-child>
               <Button
@@ -216,6 +308,13 @@ function selectProperty(property: QuickSearchProperty) {
           >
             <XIcon :size="14" />
           </Button>
+        </div>
+        <div
+          v-if="statusMessage"
+          class="file-browser-toolbar-filter__status"
+          :class="{ 'file-browser-toolbar-filter__status--error': patternError || recursiveSearchError }"
+        >
+          {{ statusMessage }}
         </div>
         <div
           v-show="isPropertyPanelOpen"
@@ -291,10 +390,40 @@ function selectProperty(property: QuickSearchProperty) {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
 }
 
+/* An accent foreground reads as "on" at a glance, which a background tint alone does not. */
 .file-browser-toolbar-filter__suffix-btn--active {
-  background-color: hsl(var(--secondary));
+  background-color: hsl(var(--primary) / 10%);
+  color: hsl(var(--primary));
+}
+
+.file-browser-toolbar-filter__input--invalid {
+  border-color: hsl(var(--destructive));
+}
+
+.file-browser-toolbar-filter__spinner {
+  flex-shrink: 0;
+  animation: file-browser-toolbar-filter-spin 1s linear infinite;
+  color: hsl(var(--muted-foreground));
+}
+
+@keyframes file-browser-toolbar-filter-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.file-browser-toolbar-filter__status {
+  padding: 4px 6px 2px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.file-browser-toolbar-filter__status--error {
+  color: hsl(var(--destructive));
 }
 
 .file-browser-toolbar-filter__chevron {

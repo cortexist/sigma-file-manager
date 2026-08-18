@@ -13,7 +13,10 @@ import {
 
 export function useContextMenuItems(
   selectedEntries: Ref<DirEntry[]>,
-  options?: { disableDestructiveActions?: Ref<boolean> },
+  options?: {
+    disableDestructiveActions?: Ref<boolean>;
+    currentDirectoryPath?: Ref<string | null | undefined>;
+  },
 ) {
   const platformStore = usePlatformStore();
 
@@ -23,6 +26,7 @@ export function useContextMenuItems(
     return isContextMenuActionVisible(action, selectedEntries.value, {
       platform: platformStore.currentPlatform,
       disableDestructiveActions: options?.disableDestructiveActions?.value,
+      currentDirectoryPath: options?.currentDirectoryPath?.value ?? null,
     });
   }
 

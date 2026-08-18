@@ -16,7 +16,7 @@ import {
 import { BUILTIN_NAVIGATOR_ICON_THEME_IDS } from '@/types/icon-theme';
 
 export const USER_SETTINGS_SCHEMA_VERSION_KEY = '__schemaVersion';
-export const USER_SETTINGS_SCHEMA_VERSION = 26;
+export const USER_SETTINGS_SCHEMA_VERSION = 27;
 
 export const DEFAULT_GLOBAL_SEARCH_IGNORED_PATHS = [
   '/node_modules',
@@ -447,6 +447,18 @@ async function migrateUserSettingsStep(storage: StorageAdapter, fromVersion: num
 
   if (fromVersion === 24 && toVersion === 25) {
     await setDefaultBooleanIfMissing(storage, 'navigator.openMediaInQuickView', true);
+  }
+
+  if (fromVersion === 26 && toVersion === 27) {
+    // Typo tolerance used to be the default, and it is the reason a query had to match a
+    // whole word: `ann` never found `annual-report`. Searching now reads a plain query as a
+    // fragment of the name and honours `*` and `?`, so the guesswork is opt-in. Everyone
+    // carries the old default as a stored value, so the stored value is what has to move.
+    const storedTypoTolerance = await storage.get<unknown>('globalSearch.typoTolerance');
+
+    if (storedTypoTolerance !== false) {
+      await storage.set('globalSearch.typoTolerance', false);
+    }
   }
 
   if (fromVersion === 25 && toVersion === 26) {

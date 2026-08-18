@@ -36,7 +36,10 @@ const forwarded = useForwardPropsEmits(props, emits);
 
 <style>
 .sigma-ui-tooltip-content {
-  z-index: 50;
+  /* Above the other overlays, which all sit at 50 and would otherwise be ordered against a
+     tooltip by portal order alone — an open popover covered the tooltip of a button behind
+     it. A tooltip explains whatever the pointer is on, so being covered makes it useless. */
+  z-index: 70;
   overflow: hidden;
   padding: 0.375rem 0.75rem;
   border: 1px solid hsl(var(--border));

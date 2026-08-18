@@ -7,6 +7,7 @@ import { i18n } from '@/localization';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import { formatBytes, formatDate, formatFileBrowserListModifiedDate } from '../utils';
 import { isRelativeDateDisplayEnabled } from '@/utils/relative-date-display';
+import { compileSearchPattern, looksLikeWildcard } from '@/utils/search-pattern';
 import { getFileBrowserEntryResolvedSizeBytes, type DirSizesStore } from './file-browser-sort';
 import {
   parseQuickSearchQuery,
@@ -196,11 +197,31 @@ function entryNameHaystackIncludes(entry: DirEntry, valueNormalized: string): bo
   return false;
 }
 
+function entryNameMatchesPattern(entry: DirEntry, pattern: RegExp): boolean {
+  return pattern.test(entry.name) || (entry.ext ? pattern.test(entry.ext) : false);
+}
+
+/**
+ * A pattern is tested against each searchable value on its own rather than against the
+ * whole haystack, so `^` and `$` mean the start and end of a value the user can see. The
+ * values are held in one string and separated by newlines, which is what the multiline
+ * flag anchors to, and `.` never crosses a newline so no pattern can match across two.
+ */
+const QUICK_SEARCH_PART_SEPARATOR = '\n';
+
 export function buildFileBrowserQuickSearchHaystack(
   entry: DirEntry,
   dirSizesStore: DirSizesStore,
   context: FileBrowserQuickSearchContext = getQuickSearchContext(),
 ): string {
+  return buildFileBrowserQuickSearchHaystackParts(entry, dirSizesStore, context).join(' ');
+}
+
+function buildFileBrowserQuickSearchHaystackParts(
+  entry: DirEntry,
+  dirSizesStore: DirSizesStore,
+  context: FileBrowserQuickSearchContext,
+): string[] {
   const { showRelativeDates, referenceNowMs } = context;
   const parts: string[] = [entry.name.toLowerCase()];
 
@@ -239,15 +260,15 @@ export function buildFileBrowserQuickSearchHaystack(
     parts.push(formatFileBrowserListModifiedDate(entry.modified_time, referenceNowMs).toLowerCase());
   }
 
-  return parts.join(' ');
+  return parts;
 }
 
-function buildHaystackForProperty(
+function buildHaystackPartsForProperty(
   entry: DirEntry,
   property: QuickSearchProperty,
   dirSizesStore: DirSizesStore,
   context: FileBrowserQuickSearchContext,
-): string {
+): string[] {
   if (property === 'name') {
     const parts: string[] = [entry.name.toLowerCase()];
 
@@ -256,16 +277,16 @@ function buildHaystackForProperty(
       parts.push(extensionLower, `.${extensionLower}`);
     }
 
-    return parts.join(' ');
+    return parts;
   }
 
   if (property === 'path') {
-    return entry.path.toLowerCase();
+    return [entry.path.toLowerCase()];
   }
 
   if (property === 'size') {
     const resolvedSizeBytes = getFileBrowserEntryResolvedSizeBytes(entry, dirSizesStore);
-    return formatBytes(resolvedSizeBytes).toLowerCase();
+    return [formatBytes(resolvedSizeBytes).toLowerCase()];
   }
 
   if (property === 'items') {
@@ -284,48 +305,75 @@ function buildHaystackForProperty(
       parts.push(String(sizeInfo.dirCount));
     }
 
-    return parts.join(' ');
+    return parts;
   }
 
   if (property === 'modified') {
-    if (!entry.modified_time) return '';
+    if (!entry.modified_time) return [];
     const absolute = formatDate(entry.modified_time).toLowerCase();
 
     if (!isRelativeDateDisplayEnabled(context.showRelativeDates)) {
-      return absolute;
+      return [absolute];
     }
 
     const listLabel = formatFileBrowserListModifiedDate(entry.modified_time, context.referenceNowMs).toLowerCase();
-    return `${absolute} ${listLabel}`;
+    return [absolute, listLabel];
   }
 
   if (property === 'created') {
-    return entry.created_time ? formatDate(entry.created_time).toLowerCase() : '';
+    return entry.created_time ? [formatDate(entry.created_time).toLowerCase()] : [];
   }
 
   if (property === 'accessed') {
-    return entry.accessed_time ? formatDate(entry.accessed_time).toLowerCase() : '';
+    return entry.accessed_time ? [formatDate(entry.accessed_time).toLowerCase()] : [];
   }
 
   if (property === 'mime') {
-    return entry.mime ? entry.mime.toLowerCase() : '';
+    return entry.mime ? [entry.mime.toLowerCase()] : [];
   }
 
-  return '';
+  return [];
+}
+
+export interface FileBrowserQuickSearchOptions {
+  /** Reads the query as a regular expression instead of a literal substring. */
+  regex?: boolean;
 }
 
 export function fileBrowserEntryMatchesQuickSearch(
   entry: DirEntry,
   filterQueryRaw: string,
   dirSizesStore: DirSizesStore,
+  options?: FileBrowserQuickSearchOptions,
 ): boolean {
-  return createFileBrowserQuickSearchMatcher(filterQueryRaw, dirSizesStore)(entry);
+  return createFileBrowserQuickSearchMatcher(filterQueryRaw, dirSizesStore, undefined, options)(entry);
+}
+
+/**
+ * Compiles the pattern a query would search with, or reports why it cannot be compiled.
+ * The toolbar uses the failure to mark the field while a pattern is still half-typed.
+ *
+ * The multiline flag is what makes `^` and `$` anchor to one searchable value rather than
+ * to the whole haystack, which is also what gives a wildcard its "the whole name" meaning.
+ */
+export function compileFileBrowserQuickSearchPattern(
+  filterQueryRaw: string,
+): {
+  pattern: RegExp | null;
+  error: string | null;
+} {
+  const trimmed = filterQueryRaw.trim();
+  const parsed = parseQuickSearchQuery(trimmed);
+  const valueRaw = parsed.property !== null ? parsed.value.trim() : trimmed;
+
+  return compileSearchPattern(valueRaw, 'im');
 }
 
 export function createFileBrowserQuickSearchMatcher(
   filterQueryRaw: string,
   dirSizesStore: DirSizesStore,
   cache?: FileBrowserQuickSearchCache,
+  options?: FileBrowserQuickSearchOptions,
 ): (entry: DirEntry) => boolean {
   const trimmed = filterQueryRaw.trim();
 
@@ -373,12 +421,33 @@ export function createFileBrowserQuickSearchMatcher(
     return () => true;
   }
 
+  // `*` and `?` mean what they mean in a shell whether or not the pattern toggle is on;
+  // the toggle is what turns the rest of a query into a regular expression.
+  if (options?.regex || looksLikeWildcard(valueRaw)) {
+    const { pattern } = compileFileBrowserQuickSearchPattern(filterQueryRaw);
+
+    // A pattern that does not compile matches nothing. Falling back to a literal search
+    // would quietly answer a different question than the one that was typed.
+    if (!pattern) {
+      return () => false;
+    }
+
+    return (entry) => {
+      if ((parsed.property === null || parsed.property === 'name') && entryNameMatchesPattern(entry, pattern)) {
+        return true;
+      }
+
+      const haystack = getQuickSearchHaystack(entry, parsed, dirSizesStore, context, cache, true);
+      return pattern.test(haystack);
+    };
+  }
+
   return (entry) => {
     if ((parsed.property === null || parsed.property === 'name') && entryNameHaystackIncludes(entry, valueNormalized)) {
       return true;
     }
 
-    const haystack = getQuickSearchHaystack(entry, parsed, dirSizesStore, context, cache);
+    const haystack = getQuickSearchHaystack(entry, parsed, dirSizesStore, context, cache, false);
     return haystack.includes(valueNormalized);
   };
 }
@@ -388,14 +457,18 @@ function getQuickSearchHaystack(
   parsed: QuickSearchParsedQuery,
   dirSizesStore: DirSizesStore,
   context: FileBrowserQuickSearchContext,
-  cache?: FileBrowserQuickSearchCache,
+  cache: FileBrowserQuickSearchCache | undefined,
+  separateParts: boolean,
 ): string {
-  const propertyKey = parsed.property ?? 'all';
+  const propertyKey = `${parsed.property ?? 'all'}${separateParts ? ':parts' : ''}`;
   const signature = getEntrySignature(entry, dirSizesStore, context);
+  const separator = separateParts ? QUICK_SEARCH_PART_SEPARATOR : ' ';
 
   return getCachedHaystack(cache, entry, propertyKey, signature, () => {
-    return parsed.property !== null
-      ? buildHaystackForProperty(entry, parsed.property, dirSizesStore, context)
-      : buildFileBrowserQuickSearchHaystack(entry, dirSizesStore, context);
+    const parts = parsed.property !== null
+      ? buildHaystackPartsForProperty(entry, parsed.property, dirSizesStore, context)
+      : buildFileBrowserQuickSearchHaystackParts(entry, dirSizesStore, context);
+
+    return parts.join(separator);
   });
 }

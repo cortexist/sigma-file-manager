@@ -8,7 +8,9 @@ import { FILE_BROWSER_GRID_GAP_DEFAULT } from './file-browser-layout-gaps';
 export const GRID_MIN_COLUMN_WIDTH = 170;
 export const GRID_VIEW_PADDING_X = 0;
 
-export type FileBrowserGridSectionKey = 'dirs' | 'images' | 'videos' | 'others';
+export type FileBrowserGridKindSectionKey = 'dirs' | 'images' | 'videos' | 'others';
+/** A section is either one of the fixed kinds or one directory of a subtree search. */
+export type FileBrowserGridSectionKey = FileBrowserGridKindSectionKey | `folder:${string}`;
 export type FileBrowserGridEntryVariant = 'dir' | 'image' | 'video' | 'other';
 
 interface FileBrowserVirtualRowBase {
@@ -23,12 +25,22 @@ export interface FileBrowserListVirtualRow extends FileBrowserVirtualRowBase {
   entryIndex: number;
 }
 
+export interface FileBrowserListSectionVirtualRow extends FileBrowserVirtualRowBase {
+  type: 'list-section';
+  sectionKey: string;
+  /** The directory shown in the heading, relative to the searched one. */
+  label: string;
+  count: number;
+}
+
 export interface FileBrowserGridSectionVirtualRow extends FileBrowserVirtualRowBase {
   type: 'grid-section';
   sectionKey: FileBrowserGridSectionKey;
   variant: FileBrowserGridEntryVariant;
   count: number;
   stickyIndex: number;
+  /** Set for a directory section, whose heading is a path rather than a fixed kind. */
+  label: string | null;
 }
 
 export interface FileBrowserGridItemsVirtualRow extends FileBrowserVirtualRowBase {
@@ -41,6 +53,7 @@ export interface FileBrowserGridItemsVirtualRow extends FileBrowserVirtualRowBas
 
 export type FileBrowserVirtualRow
   = FileBrowserListVirtualRow
+    | FileBrowserListSectionVirtualRow
     | FileBrowserGridSectionVirtualRow
     | FileBrowserGridItemsVirtualRow;
 

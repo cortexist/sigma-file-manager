@@ -19,7 +19,7 @@ export const RESPONSIVE_MEDIA_QUERIES = {
 
 export const RESPONSIVE_CONTAINER_WIDTHS = {
   fileBrowserToolbarAddressBarWrap: UI_CONSTANTS.FILE_BROWSER_TOOLBAR_ADDRESS_BAR_WRAP_WIDTH,
-  fileBrowserToolbarNavCollapse: UI_CONSTANTS.FILE_BROWSER_TOOLBAR_NAV_COLLAPSE_WIDTH,
+  windowToolbarNavCollapse: UI_CONSTANTS.WINDOW_TOOLBAR_NAV_COLLAPSE_WIDTH,
 } as const;
 
 export function useResponsiveMediaQuery(query: MaybeRefOrGetter<string>) {

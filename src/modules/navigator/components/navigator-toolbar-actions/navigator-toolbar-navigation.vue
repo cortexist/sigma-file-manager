@@ -58,24 +58,24 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
 </script>
 
 <template>
-  <div class="file-browser-toolbar-nav-buttons file-browser-toolbar-nav-buttons--expanded">
+  <div class="navigator-toolbar-navigation navigator-toolbar-navigation--expanded animate-fade-in">
     <Tooltip>
       <TooltipTrigger as-child>
         <Button
           variant="ghost"
           size="icon"
-          class="file-browser-toolbar-nav-buttons__button"
+          class="navigator-toolbar-navigation__button"
           :disabled="!canGoBack"
           @click="emit('goBack')"
         >
           <component
             :is="backHistoryIcon"
-            class="file-browser-toolbar-nav-buttons__icon"
+            class="navigator-toolbar-navigation__icon"
           />
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <div class="file-browser-toolbar-nav-buttons__tooltip-row">
+        <div class="navigator-toolbar-navigation__tooltip-row">
           {{ t('fileBrowser.goBack') }}
           <ContextMenuShortcut>{{ shortcutsStore.getShortcutLabel('navigateHistoryBack') }}</ContextMenuShortcut>
         </div>
@@ -86,18 +86,18 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
         <Button
           variant="ghost"
           size="icon"
-          class="file-browser-toolbar-nav-buttons__button"
+          class="navigator-toolbar-navigation__button"
           :disabled="!canGoForward"
           @click="emit('goForward')"
         >
           <component
             :is="forwardHistoryIcon"
-            class="file-browser-toolbar-nav-buttons__icon"
+            class="navigator-toolbar-navigation__icon"
           />
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <div class="file-browser-toolbar-nav-buttons__tooltip-row">
+        <div class="navigator-toolbar-navigation__tooltip-row">
           {{ t('fileBrowser.goForward') }}
           <ContextMenuShortcut>{{ shortcutsStore.getShortcutLabel('navigateHistoryForward') }}</ContextMenuShortcut>
         </div>
@@ -108,15 +108,15 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
         <Button
           variant="ghost"
           size="icon"
-          class="file-browser-toolbar-nav-buttons__button"
+          class="navigator-toolbar-navigation__button"
           :disabled="!canGoUp"
           @click="emit('goUp')"
         >
-          <ArrowUpIcon class="file-browser-toolbar-nav-buttons__icon" />
+          <ArrowUpIcon class="navigator-toolbar-navigation__icon" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <div class="file-browser-toolbar-nav-buttons__tooltip-row">
+        <div class="navigator-toolbar-navigation__tooltip-row">
           {{ t('fileBrowser.goUp') }}
           <ContextMenuShortcut>{{ shortcutsStore.getShortcutLabel('goUpDirectory') }}</ContextMenuShortcut>
         </div>
@@ -127,10 +127,10 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
         <Button
           variant="ghost"
           size="icon"
-          class="file-browser-toolbar-nav-buttons__button"
+          class="navigator-toolbar-navigation__button"
           @click="emit('goHome')"
         >
-          <HomeIcon class="file-browser-toolbar-nav-buttons__icon" />
+          <HomeIcon class="navigator-toolbar-navigation__icon" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{{ t('fileBrowser.goHome') }}</TooltipContent>
@@ -140,18 +140,18 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
         <Button
           variant="ghost"
           size="icon"
-          class="file-browser-toolbar-nav-buttons__button"
+          class="navigator-toolbar-navigation__button"
           :disabled="isLoading"
           @click="emit('refresh')"
         >
           <RefreshCwIcon
-            class="file-browser-toolbar-nav-buttons__icon"
-            :class="{ 'file-browser-toolbar-nav-buttons__icon--spin': isLoading }"
+            class="navigator-toolbar-navigation__icon"
+            :class="{ 'navigator-toolbar-navigation__icon--spin': isLoading }"
           />
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <div class="file-browser-toolbar-nav-buttons__tooltip-row">
+        <div class="navigator-toolbar-navigation__tooltip-row">
           {{ t('fileBrowser.refresh') }}
           <ContextMenuShortcut>{{ shortcutsStore.getShortcutLabel('reloadCurrentDirectory') }}</ContextMenuShortcut>
         </div>
@@ -159,22 +159,22 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
     </Tooltip>
   </div>
 
-  <div class="file-browser-toolbar-nav-buttons file-browser-toolbar-nav-buttons--collapsed">
+  <div class="navigator-toolbar-navigation navigator-toolbar-navigation--collapsed animate-fade-in">
     <DropdownMenu>
       <DropdownMenuTrigger as-child>
         <Button
           variant="ghost"
           size="icon"
-          class="file-browser-toolbar-nav-buttons__button"
+          class="navigator-toolbar-navigation__button"
           :title="t('settingsCategories.navigation')"
         >
-          <EllipsisIcon class="file-browser-toolbar-nav-buttons__icon" />
+          <EllipsisIcon class="navigator-toolbar-navigation__icon" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
         side="bottom"
-        class="file-browser-toolbar-nav-buttons__dropdown"
+        class="navigator-toolbar-navigation__dropdown"
       >
         <DropdownMenuItem
           :disabled="!canGoBack"
@@ -216,7 +216,7 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          class="file-browser-toolbar-nav-buttons__menu-item-with-shortcut"
+          class="navigator-toolbar-navigation__menu-item-with-shortcut"
           @click="emit('createNewDirectory')"
         >
           <FolderPlusIcon :size="14" />
@@ -226,7 +226,7 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
           </ContextMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
-          class="file-browser-toolbar-nav-buttons__menu-item-with-shortcut"
+          class="navigator-toolbar-navigation__menu-item-with-shortcut"
           @click="emit('createNewFile')"
         >
           <FilePlusIcon :size="14" />
@@ -241,35 +241,35 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
 </template>
 
 <style scoped>
-.file-browser-toolbar-nav-buttons {
+.navigator-toolbar-navigation {
   display: flex;
   flex-shrink: 0;
   gap: 4px;
 }
 
-.file-browser-toolbar-nav-buttons--expanded {
+.navigator-toolbar-navigation--expanded {
   display: flex;
 }
 
-.file-browser-toolbar-nav-buttons--collapsed {
+.navigator-toolbar-navigation--collapsed {
   display: none;
 }
 
-.file-browser-toolbar-nav-buttons__button {
+.navigator-toolbar-navigation__button {
   width: 36px;
   height: 36px;
 }
 
-.file-browser-toolbar-nav-buttons__icon {
+.navigator-toolbar-navigation__icon {
   width: 18px;
   height: 18px;
 }
 
-.file-browser-toolbar-nav-buttons__icon--spin {
-  animation: toolbar-nav-buttons-spin 1s linear infinite;
+.navigator-toolbar-navigation__icon--spin {
+  animation: navigator-toolbar-navigation-spin 1s linear infinite;
 }
 
-@keyframes toolbar-nav-buttons-spin {
+@keyframes navigator-toolbar-navigation-spin {
   from {
     transform: rotate(0deg);
   }
@@ -279,28 +279,33 @@ const forwardHistoryIcon = computed(() => isRtl.value ? ArrowLeftIcon : ArrowRig
   }
 }
 
-.file-browser-toolbar-nav-buttons__dropdown {
+.navigator-toolbar-navigation__dropdown {
   min-width: 180px;
 }
 
-.file-browser-toolbar-nav-buttons__tooltip-row {
+.navigator-toolbar-navigation__tooltip-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.file-browser-toolbar-nav-buttons__menu-item-with-shortcut {
+.navigator-toolbar-navigation__menu-item-with-shortcut {
   display: flex;
   align-items: center;
 }
 
-@container (width < 600px) {
-  .file-browser-toolbar-nav-buttons--expanded {
+/* Collapses only when the toolbar itself runs out of room for five buttons. Narrowing the
+   window does not squeeze this row the way it might look: at 800px the tabs move to a row
+   of their own, which leaves the toolbar with more space, not less. The buttons used to
+   collapse on the width of a single pane, which a split view or an info panel reached
+   constantly. Keep in step with UI_CONSTANTS.WINDOW_TOOLBAR_NAV_COLLAPSE_WIDTH. */
+@media (width < 600px) {
+  .navigator-toolbar-navigation--expanded {
     display: none;
   }
 
-  .file-browser-toolbar-nav-buttons--collapsed {
+  .navigator-toolbar-navigation--collapsed {
     display: flex;
   }
 }

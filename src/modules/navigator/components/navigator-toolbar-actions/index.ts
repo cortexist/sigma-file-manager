@@ -3,3 +3,4 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 export { default as NavigatorToolbarActions } from './navigator-toolbar-actions.vue';
+export { default as NavigatorToolbarNavigation } from './navigator-toolbar-navigation.vue';

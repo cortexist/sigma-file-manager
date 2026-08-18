@@ -31,6 +31,7 @@ import { useFileBrowserNavigation } from './use-file-browser-navigation';
 import { useFileBrowserSelection } from './use-file-browser-selection';
 import { useFileBrowserEntries } from './use-file-browser-entries';
 import { useFileBrowserFilter } from './use-file-browser-filter';
+import { useFileBrowserRecursiveSearch } from './use-file-browser-recursive-search';
 import { useFileBrowserFocus } from './use-file-browser-focus';
 import { useFileBrowserDialogs } from './use-file-browser-dialogs';
 import { useFileBrowserActions } from './use-file-browser-actions';
@@ -47,6 +48,7 @@ import { useNavigatorImageThumbnails } from '@/modules/navigator/composables/use
 import { useVideoThumbnails } from './use-video-thumbnails';
 import { useAudioCovers } from '@/composables/use-audio-covers';
 import { getNavigatorSortSettingsForLayout } from '@/modules/navigator/components/file-browser/utils/file-browser-sort-columns';
+import type { FileBrowserFolderGrouping } from '@/modules/navigator/components/file-browser/file-browser-entry-groups';
 
 function createNavigatorSortSettingsComputed(
   getNavigator: () => UserSettingsNavigator,
@@ -104,6 +106,10 @@ interface DataSource {
   focusFilter: () => void;
   clearFilterInputFocusRequest: () => void;
   closeFilter: () => void;
+  isRecursiveSearchActive: ComputedRef<boolean>;
+  isRecursiveSearchRunning: Ref<boolean> | ComputedRef<boolean>;
+  isRecursiveSearchTruncated: Ref<boolean> | ComputedRef<boolean>;
+  recursiveSearchError: Ref<string | null> | ComputedRef<string | null>;
 }
 
 function setupNavigationDataSource(
@@ -132,6 +138,27 @@ function setupNavigationDataSource(
   });
 
   const showHiddenFiles = computed(() => userSettingsStore.userSettings.navigator.showHiddenFiles);
+  const quickSearchSettings = computed(() => userSettingsStore.userSettings.navigator.quickSearch);
+  const useQuickSearchRegex = computed(() => quickSearchSettings.value.regex);
+
+  const recursiveSearch = useFileBrowserRecursiveSearch({
+    currentPath: navigation.currentPath,
+    filterQuery: filter.filterQuery,
+    isEnabled: computed(() => quickSearchSettings.value.recursive),
+    useRegex: useQuickSearchRegex,
+    includeHidden: showHiddenFiles,
+  });
+
+  // The subtree results stand in for the directory listing, so everything downstream —
+  // filtering, sorting, grouping, selection — keeps working on one kind of input.
+  const entriesSource = computed(() => {
+    if (!recursiveSearch.isActive.value) {
+      return navigation.dirContents.value;
+    }
+
+    return { entries: recursiveSearch.entries.value };
+  });
+
   const sortSettings = createNavigatorSortSettingsComputed(
     () => userSettingsStore.userSettings.navigator,
     options.layout,
@@ -143,12 +170,13 @@ function setupNavigationDataSource(
     entries: filteredEntries,
     isDirectoryEmpty: filteredIsDirectoryEmpty,
   } = useFileBrowserEntries(
-    navigation.dirContents,
+    entriesSource,
     filter.filterQuery,
     showHiddenFiles,
     sortColumn,
     sortDirection,
     applySort,
+    useQuickSearchRegex,
   );
 
   const tabRef = toRef(options.tab);
@@ -164,7 +192,8 @@ function setupNavigationDataSource(
   return {
     entries: computed(() => filteredEntries.value),
     currentPath: computed(() => navigation.currentPath.value),
-    isDirectoryEmpty: computed(() => filteredIsDirectoryEmpty.value),
+    // A subtree search that found nothing is an empty result, not an empty directory.
+    isDirectoryEmpty: computed(() => !recursiveSearch.isActive.value && filteredIsDirectoryEmpty.value),
     dirContents: navigation.dirContents,
     isLoading: navigation.isLoading,
     isRefreshing: navigation.isRefreshing,
@@ -191,6 +220,10 @@ function setupNavigationDataSource(
     focusFilter: filter.focusFilter,
     clearFilterInputFocusRequest: filter.clearFilterInputFocusRequest,
     closeFilter: filter.closeFilter,
+    isRecursiveSearchActive: recursiveSearch.isActive,
+    isRecursiveSearchRunning: recursiveSearch.isSearching,
+    isRecursiveSearchTruncated: recursiveSearch.isTruncated,
+    recursiveSearchError: recursiveSearch.error,
   };
 }
 
@@ -254,6 +287,10 @@ function setupExternalDataSource(options: UseFileBrowserOptions): DataSource {
     focusFilter: () => {},
     clearFilterInputFocusRequest: () => {},
     closeFilter: () => {},
+    isRecursiveSearchActive: computed(() => false),
+    isRecursiveSearchRunning: ref(false),
+    isRecursiveSearchTruncated: ref(false),
+    recursiveSearchError: ref(null),
   };
 }
 
@@ -277,6 +314,18 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
         boxSelection.stopBoxSelection();
       });
   const visualEntries = computed(() => dataSource.entries.value);
+
+  // Results gathered from all over a subtree are shown under the directory they came from;
+  // an ordinary listing is one directory already and needs no headings.
+  const folderGrouping = computed<FileBrowserFolderGrouping | null>(() => {
+    return dataSource.isRecursiveSearchActive.value
+      ? { basePath: dataSource.currentPath.value }
+      : null;
+  });
+
+  function getFolderGrouping() {
+    return folderGrouping.value;
+  }
 
   let openPropertiesForSelection: (entries: DirEntry[]) => void = () => {};
 
@@ -302,6 +351,7 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
     },
     dataSource.silentRefresh,
     options.layout,
+    getFolderGrouping,
   );
 
   const virtualLayout = useFileBrowserVirtualLayout({
@@ -309,6 +359,7 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
     layout: options.layout,
     entryDescription: options.entryDescription,
     increaseFileViewGaps: () => increaseFileViewGaps.value,
+    folderGrouping: getFolderGrouping,
   });
   const scrollStateKey = computed(() => options.scrollStateKey?.());
 
@@ -449,6 +500,7 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
     entries: visualEntries,
     selectedEntries: selection.selectedEntries,
     layout: options.layout,
+    folderGrouping: getFolderGrouping,
     selectEntryByPath: selection.selectEntryByPath,
     scrollToPath: virtualLayout.scrollToPath,
     getEntryElement: virtualLayout.getEntryElement,
@@ -595,6 +647,10 @@ export function useFileBrowser(options: UseFileBrowserOptions) {
     filterQuery: dataSource.filterQuery,
     isFilterOpen: dataSource.isFilterOpen,
     shouldFocusFilterInput: dataSource.shouldFocusFilterInput,
+    isRecursiveSearchActive: dataSource.isRecursiveSearchActive,
+    isRecursiveSearchRunning: dataSource.isRecursiveSearchRunning,
+    isRecursiveSearchTruncated: dataSource.isRecursiveSearchTruncated,
+    recursiveSearchError: dataSource.recursiveSearchError,
     toggleFilter: dataSource.toggleFilter,
     openFilter: dataSource.openFilter,
     focusFilter: dataSource.focusFilter,

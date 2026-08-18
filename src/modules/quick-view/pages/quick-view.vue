@@ -893,10 +893,16 @@ async function endBackgroundPlayback(): Promise<void> {
 }
 
 /**
- * A file that plays itself out behind a hidden window has nothing left to come back to, so
- * the session ends on its own rather than holding the app open in silence.
+ * Playback is reported as it changes, whether this window is hidden or in plain sight: it is
+ * what tells the backend that a click on the launcher or the tray belongs to this window
+ * rather than the file manager. Sound is what a user follows, and it does not stop being the
+ * thing they are reaching for just because the window is visible on another workspace.
  */
 watch(() => mediaPlayerRef.value?.isPlaying === true, (playing) => {
+  void invoke('set_quick_view_playing', { playing }).catch(() => {});
+
+  // A file that plays itself out behind a hidden window has nothing left to come back to, so
+  // the session ends on its own rather than holding the app open in silence.
   if (!playing && isPlayingInBackground.value) {
     void endBackgroundPlayback();
   }

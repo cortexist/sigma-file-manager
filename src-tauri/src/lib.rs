@@ -32,6 +32,7 @@ mod open_with;
 #[cfg(target_os = "linux")]
 mod portal_file_chooser;
 mod process_runner;
+mod search_pattern;
 mod standalone_viewer;
 mod startup_storage_bootstrap;
 mod system_clipboard;
@@ -46,6 +47,7 @@ pub mod utils;
 #[cfg(target_os = "linux")]
 mod video_thumbnails;
 mod webview_file_chooser;
+mod window_activation;
 mod window_manager;
 mod windows_installation;
 #[cfg(windows)]
@@ -80,19 +82,42 @@ impl BackgroundResidency {
     }
 }
 
-/// Set while Quick View was dismissed with something still playing. The window is hidden but
-/// its page runs on, so the media keeps going; the session ends when the user brings the
-/// window back, closes it outright, or the file reaches its end.
+/// What Quick View is doing with a file, as the page reports it — the only side that knows.
+///
+/// Two facts, because they answer two different questions. Whether anything is playing at all
+/// decides where an activation goes: sound is what the user is following, and the window
+/// making it is the one they are reaching for. Whether it plays on behind a *hidden* window
+/// is the narrower case, and the only one that is a reason for the app to still be running.
 #[derive(Default)]
-struct QuickViewBackgroundPlayback(std::sync::atomic::AtomicBool);
+struct QuickViewPlayback {
+    playing: std::sync::atomic::AtomicBool,
+    behind_hidden_window: std::sync::atomic::AtomicBool,
+}
 
-impl QuickViewBackgroundPlayback {
-    fn set(&self, playing: bool) {
-        self.0.store(playing, std::sync::atomic::Ordering::Relaxed);
+impl QuickViewPlayback {
+    fn set_playing(&self, playing: bool) {
+        self.playing
+            .store(playing, std::sync::atomic::Ordering::Relaxed);
     }
 
-    fn active(&self) -> bool {
-        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    fn is_playing(&self) -> bool {
+        self.playing.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn set_behind_hidden_window(&self, playing: bool) {
+        self.behind_hidden_window
+            .store(playing, std::sync::atomic::Ordering::Relaxed);
+
+        // A window put away while playing is playing; the page reports both facts, but not
+        // necessarily in that order, and the lesser must never outlive the greater.
+        if playing {
+            self.set_playing(true);
+        }
+    }
+
+    fn is_behind_hidden_window(&self) -> bool {
+        self.behind_hidden_window
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -107,7 +132,7 @@ impl QuickViewBackgroundPlayback {
 /// `show_playing_quick_view`, reached from the launcher and the tray.
 fn should_keep_running_without_windows(app: &tauri::AppHandle) -> bool {
     app.state::<BackgroundResidency>().active()
-        || app.state::<QuickViewBackgroundPlayback>().active()
+        || app.state::<QuickViewPlayback>().is_behind_hidden_window()
 }
 
 /// Reports whether Quick View kept playing after being dismissed. Called by the page itself:
@@ -115,11 +140,28 @@ fn should_keep_running_without_windows(app: &tauri::AppHandle) -> bool {
 /// it calls again when playback ends so a finished file stops holding the process open.
 #[tauri::command]
 fn set_quick_view_background_playback(app: tauri::AppHandle, playing: bool) {
-    app.state::<QuickViewBackgroundPlayback>().set(playing);
+    app.state::<QuickViewPlayback>()
+        .set_behind_hidden_window(playing);
 
     // A file that played itself out while hidden leaves nothing on screen and no reason to
     // stay, which is the moment the app would have quit had it not been playing.
     if !playing {
+        exit_if_last_window_closed(&app, &[]);
+    }
+}
+
+/// Reports whether Quick View is playing anything at all, hidden or in plain sight. Called by
+/// the page whenever that changes, and it is what lets an activation find the window making
+/// the sound instead of the file manager the user was not asking for.
+#[tauri::command]
+fn set_quick_view_playing(app: tauri::AppHandle, playing: bool) {
+    let playback = app.state::<QuickViewPlayback>();
+    playback.set_playing(playing);
+
+    // Silence ends a background session by definition: there is nothing left to come back to,
+    // and the window it was holding open is one the user cannot even see.
+    if !playing && playback.is_behind_hidden_window() {
+        playback.set_behind_hidden_window(false);
         exit_if_last_window_closed(&app, &[]);
     }
 }
@@ -130,14 +172,15 @@ fn is_bare_activation(argv: &[String]) -> bool {
     !argv.iter().skip(1).any(|arg| !arg.starts_with('-'))
 }
 
-/// Brings a backgrounded Quick View back, and reports whether there was one.
+/// Brings a playing Quick View forward, and reports whether there was one.
 ///
-/// This is the way back that playing in the background obliges the app to provide. Activation
-/// paths try it before falling back to the main window: a user who dismissed Quick View by
-/// accident and reaches for the launcher is asking for what they can hear, not for the file
-/// manager behind it.
+/// This is the way back that playing in the background obliges the app to provide, and it
+/// covers the visible case for the same reason: a user who reaches for the launcher while
+/// something is playing is asking for what they can hear, not for the file manager behind it.
+/// Hidden, or sitting on another workspace, is the same question with the same answer — and
+/// it has to be answered once, because a raise is granted to one window, not to a list.
 pub(crate) fn show_playing_quick_view<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
-    if !app.state::<QuickViewBackgroundPlayback>().active() {
+    if !app.state::<QuickViewPlayback>().is_playing() {
         return false;
     }
 
@@ -146,8 +189,9 @@ pub(crate) fn show_playing_quick_view<R: tauri::Runtime>(app: &tauri::AppHandle<
     };
 
     let _ = quick_view.show();
-    let _ = quick_view.set_focus();
-    app.state::<QuickViewBackgroundPlayback>().set(false);
+    window_activation::focus(&quick_view);
+    app.state::<QuickViewPlayback>()
+        .set_behind_hidden_window(false);
 
     // The page keeps its own half of the session — what it tells the main window, and what it
     // does when the file ends — so being put back on screen has to reach it too.
@@ -158,6 +202,71 @@ pub(crate) fn show_playing_quick_view<R: tauri::Runtime>(app: &tauri::AppHandle<
     );
 
     true
+}
+
+/// The one window an activation that names nothing should bring forward.
+///
+/// A compositor grants a raise to a single surface, so this is a choice rather than a list to
+/// walk: sending focus to the main window and then to Quick View would leave whichever landed
+/// second in front, which is a coin toss, not a decision. The two may also be on different
+/// workspaces, so choosing wrongly takes the user somewhere they did not ask to go.
+#[derive(Debug, PartialEq, Eq)]
+enum ActivationTarget {
+    /// Sound is what a user follows: the window making it outranks the file manager, whether
+    /// it is hidden behind a background session or simply sitting on another workspace.
+    QuickView,
+    MainWindow,
+    /// Nothing playing, no window to raise — a session that has hidden everything it has, or
+    /// one whose only window is gone. The launcher's own click still started a process, and
+    /// that process is the one already running, so there is nothing more to do.
+    Nothing,
+}
+
+/// Decides between them from what the session has, so the order is stated once and can be
+/// read without following three call sites through the platform branches.
+fn activation_target(
+    quick_view_is_playing: bool,
+    has_quick_view: bool,
+    has_main_window: bool,
+) -> ActivationTarget {
+    if quick_view_is_playing && has_quick_view {
+        return ActivationTarget::QuickView;
+    }
+
+    if has_main_window {
+        return ActivationTarget::MainWindow;
+    }
+
+    // A standalone viewer, opened by another application, is a session with no file manager
+    // behind it. Raising the viewer is the only answer that is not silence.
+    if has_quick_view {
+        return ActivationTarget::QuickView;
+    }
+
+    ActivationTarget::Nothing
+}
+
+/// Answers an activation that names nothing to open by bringing exactly one window forward.
+pub(crate) fn raise_for_bare_activation<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let quick_view = app.get_webview_window("quick-view");
+    let target = activation_target(
+        app.state::<QuickViewPlayback>().is_playing(),
+        quick_view.is_some(),
+        app.get_webview_window("main").is_some(),
+    );
+
+    match target {
+        ActivationTarget::QuickView => {
+            if !show_playing_quick_view(app) {
+                if let Some(quick_view) = quick_view {
+                    let _ = quick_view.show();
+                    window_activation::focus(&quick_view);
+                }
+            }
+        }
+        ActivationTarget::MainWindow => system_tray::focus_main_window(app),
+        ActivationTarget::Nothing => {}
+    }
 }
 
 /// The main window's own close button: hide, and stay resident for an instant next open.
@@ -482,6 +591,14 @@ pub fn run() {
     let picker_request = file_picker::picker_request_from_args(&raw_args);
     let is_picker_process = picker_request.is_some();
 
+    // Before the builder, because that is where a second instance's life ends: it forwards its
+    // arguments from inside single-instance setup and exits, and the compositor's permission to
+    // raise a window — this launch's activation token — has to be on disk by then or it dies
+    // with the process. A picker is a window of its own and spends its token itself.
+    if !is_picker_process {
+        window_activation::stash_launch_token();
+    }
+
     // The portal role is claimed here, before any GTK or webview work, because
     // xdg-desktop-portal blocks its own startup waiting for this bus name (25-second
     // activation timeout, after which the session simply has no FileChooser), while GTK init
@@ -503,7 +620,7 @@ pub fn run() {
         .manage(startup_storage_bootstrap::StartupStorageBootstrapState::default())
         .manage(BackgroundResidency::default())
         .manage(QuickViewOwnership::default())
-        .manage(QuickViewBackgroundPlayback::default())
+        .manage(QuickViewPlayback::default())
         .manage(file_picker::PickerSession(picker_request))
         .manage(file_manager1::PendingShowRequests::default());
 
@@ -523,8 +640,10 @@ pub fn run() {
                 if should_focus {
                     // Same rule as the other platforms: a bare activation prefers whatever is
                     // still playing, anything naming paths belongs to the main window.
-                    if has_filesystem_paths || !show_playing_quick_view(app) {
+                    if has_filesystem_paths {
                         system_tray::focus_main_window(app);
+                    } else {
+                        raise_for_bare_activation(app);
                     }
                 }
 
@@ -562,7 +681,9 @@ pub fn run() {
                 // can already hear, when there is one — that is the way back a backgrounded
                 // Quick View owes them, and the launcher is where they will reach for it.
                 // Anything naming a path belongs to the main window as before.
-                if !(is_bare_activation(&argv) && show_playing_quick_view(app)) {
+                if is_bare_activation(&argv) {
+                    raise_for_bare_activation(app);
+                } else {
                     system_tray::focus_main_window(app);
                 }
 
@@ -618,6 +739,7 @@ pub fn run() {
             system_tray::update_tray_shortcut,
             dismiss_main_window_to_background,
             set_quick_view_background_playback,
+            set_quick_view_playing,
             exit_if_no_windows_left,
             file_manager1::drain_show_in_folder_requests,
             file_picker::file_picker_finish,
@@ -626,6 +748,8 @@ pub fn run() {
             set_quick_view_ownership,
             dir_reader::read_dir,
             dir_reader::read_dir_with_timeout,
+            dir_reader::search_dir_recursive,
+            dir_reader::cancel_dir_search,
             dir_reader::get_dir_entry_with_timeout,
             dir_reader::get_link_metadata_batch,
             dir_reader::get_dir_item_counts_batch,
@@ -847,6 +971,12 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         return Ok(());
     }
 
+    // Reaching here means this process owns the session rather than handing off to it, so its
+    // own launch token was already spent by GTK on its own first window. Left on disk it would
+    // be found by the next launcher click and refused by the compositor as the stale thing it
+    // is — the exact failure the stash exists to prevent.
+    window_activation::discard_launch_token();
+
     if cfg!(debug_assertions) {
         app.handle().plugin(
             tauri_plugin_log::Builder::default()
@@ -989,7 +1119,7 @@ mod tests {
 
 #[cfg(test)]
 mod activation_tests {
-    use super::is_bare_activation;
+    use super::{activation_target, is_bare_activation, ActivationTarget as Target};
 
     fn argv(args: &[&str]) -> Vec<String> {
         args.iter().map(|arg| (*arg).to_string()).collect()
@@ -1017,6 +1147,38 @@ mod activation_tests {
             "sigma-file-manager",
             "/home/user/Documents"
         ])));
+    }
+
+    /// Playing outranks the file manager, and the two windows can be on different workspaces —
+    /// so this is the difference between arriving at the video and arriving somewhere else.
+    #[test]
+    fn playback_wins_the_activation() {
+        assert_eq!(activation_target(true, true, true), Target::QuickView);
+    }
+
+    #[test]
+    fn a_silent_quick_view_leaves_the_activation_to_the_main_window() {
+        assert_eq!(activation_target(false, true, true), Target::MainWindow);
+    }
+
+    /// A session whose Quick View has been closed outright: whatever the last report said, the
+    /// window it referred to is gone.
+    #[test]
+    fn playback_without_a_window_falls_back_to_the_main_window() {
+        assert_eq!(activation_target(true, false, true), Target::MainWindow);
+    }
+
+    /// A standalone viewer another application opened. There is no file manager to raise, and
+    /// a launcher click that does nothing reads as a broken button.
+    #[test]
+    fn a_viewer_only_session_raises_the_viewer_either_way() {
+        assert_eq!(activation_target(false, true, false), Target::QuickView);
+        assert_eq!(activation_target(true, true, false), Target::QuickView);
+    }
+
+    #[test]
+    fn a_session_with_nothing_to_raise_does_nothing() {
+        assert_eq!(activation_target(false, false, false), Target::Nothing);
     }
 }
 

@@ -14,8 +14,14 @@ import {
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import {
-  ChevronDownIcon, HardDriveIcon, LoaderCircleIcon, SearchIcon, SettingsIcon, SlidersHorizontalIcon, UsbIcon, XIcon,
+  ChevronDownIcon, HardDriveIcon, LoaderCircleIcon, RegexIcon, SearchIcon, SettingsIcon,
+  SlidersHorizontalIcon, UsbIcon, XIcon,
 } from '@lucide/vue';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -34,6 +40,7 @@ import type { DirEntry } from '@/types/dir-entry';
 import type { DriveInfo } from '@/types/drive-info';
 import FileBrowser from '@/modules/navigator/components/file-browser/file-browser.vue';
 import { SEARCH_CONSTANTS } from '@/constants';
+import { compileSearchPattern } from '@/utils/search-pattern';
 
 type FileBrowserInstance = InstanceType<typeof FileBrowser>;
 
@@ -56,6 +63,27 @@ const includeFiles = computed(() => userSettingsStore.userSettings.globalSearch.
 const includeDirectories = computed(() => userSettingsStore.userSettings.globalSearch.includeDirectories);
 const exactMatch = computed(() => userSettingsStore.userSettings.globalSearch.exactMatch);
 const typoTolerance = computed(() => userSettingsStore.userSettings.globalSearch.typoTolerance);
+const useRegex = computed(() => userSettingsStore.userSettings.globalSearch.regex);
+
+/**
+ * A pattern is checked here as it is typed so a half-finished one is marked immediately,
+ * and the backend's own verdict is shown when it rejects a pattern this check accepts —
+ * its term-dictionary engine does not support everything this one does.
+ */
+const patternError = computed(() => {
+  if (!useRegex.value || !globalSearchStore.query.trim()) {
+    return null;
+  }
+
+  return compileSearchPattern(globalSearchStore.query, 'i').error === null
+    ? globalSearchStore.queryError
+    : t('globalSearch.invalidPattern');
+});
+
+function toggleRegex() {
+  void userSettingsStore.set('globalSearch.regex', !useRegex.value);
+}
+
 const scanDepth = computed(() => userSettingsStore.userSettings.globalSearch.scanDepth);
 
 function openSearchSettings() {
@@ -326,15 +354,35 @@ onMounted(() => {
           :disabled="!hasIndexData && globalSearchStore.scanPhase === 'idle'"
           @update:model-value="globalSearchStore.setQuery(String($event ?? ''))"
         />
-        <Button
-          v-if="globalSearchStore.query"
-          variant="ghost"
-          size="icon"
-          class="global-search-view__clear-button"
-          @click="clearQuery"
-        >
-          <XIcon :size="16" />
-        </Button>
+        <div class="global-search-view__input-actions">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="global-search-view__input-action"
+                :data-active="useRegex || undefined"
+                :aria-pressed="useRegex"
+                :aria-label="t('globalSearch.regex')"
+                @click="toggleRegex"
+              >
+                <RegexIcon :size="16" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent class="global-search-view__regex-tooltip">
+              {{ t('globalSearch.regexTooltip') }}
+            </TooltipContent>
+          </Tooltip>
+          <Button
+            v-if="globalSearchStore.query"
+            variant="ghost"
+            size="icon"
+            class="global-search-view__input-action"
+            @click="clearQuery"
+          >
+            <XIcon :size="16" />
+          </Button>
+        </div>
       </div>
       <div class="global-search-view__header-actions">
         <Button
@@ -355,6 +403,13 @@ onMounted(() => {
           <XIcon :size="18" />
         </Button>
       </div>
+    </div>
+
+    <div
+      v-if="patternError"
+      class="global-search-view__pattern-error"
+    >
+      {{ patternError }}
     </div>
 
     <div
@@ -582,6 +637,16 @@ onMounted(() => {
   </div>
 </template>
 
+<style>
+/* Portalled out of this component, so this rule is deliberately unscoped. Without a width
+   the sentence renders as one line and runs off the side of the window. */
+
+.global-search-view__regex-tooltip.sigma-ui-tooltip-content {
+  max-width: 22rem;
+  line-height: 1.35;
+}
+</style>
+
 <style scoped>
 .global-search-view {
   --results-header-height: 36px;
@@ -631,15 +696,33 @@ onMounted(() => {
 
 .global-search-view__input {
   flex: 1;
-  padding-right: 40px;
+
+  /* Room for both buttons whether or not the clear button is there, so the text a
+     pattern is being typed into never shifts under the cursor. */
+  padding-right: 76px;
   padding-left: 40px;
 }
 
-.global-search-view__clear-button {
+.global-search-view__input-actions {
   position: absolute;
   right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.global-search-view__input-action {
   width: 32px;
   height: 32px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Matches the options toggle beside it: an accent foreground reads as "on" at a glance,
+   which a background tint alone does not. */
+
+.global-search-view__input-action[data-active] {
+  background-color: hsl(var(--primary) / 10%);
+  color: hsl(var(--primary));
 }
 
 .global-search-view__content {
@@ -761,6 +844,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.global-search-view__pattern-error {
+  padding: 4px 12px 8px;
+  color: hsl(var(--destructive));
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .global-search-view__options-toggle {

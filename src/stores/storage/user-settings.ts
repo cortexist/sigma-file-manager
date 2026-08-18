@@ -160,6 +160,10 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       gridSortDirection: 'asc',
       enableBoxSelection: false,
       increaseFileViewGaps: false,
+      quickSearch: {
+        regex: false,
+        recursive: false,
+      },
     },
     globalSearch: {
       scanDepth: 7,
@@ -172,7 +176,10 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       includeFiles: true,
       includeDirectories: true,
       exactMatch: false,
-      typoTolerance: true,
+      // Off by default: a plain query searches for a fragment of the name, which is both
+      // what people expect and something the fuzzy matcher cannot do.
+      typoTolerance: false,
+      regex: false,
       lastManualCancelTime: null,
     },
     UIZoomLevel: 1.0,

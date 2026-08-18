@@ -226,6 +226,8 @@ export type UserSettingsGlobalSearch = {
   includeDirectories: boolean;
   exactMatch: boolean;
   typoTolerance: boolean;
+  /** Reads the query as a regular expression; overrides exact match and typo tolerance. */
+  regex: boolean;
   lastManualCancelTime: number | null;
 };
 
@@ -356,6 +358,14 @@ export type UserSettingsNavigator = {
   gridSortDirection: ListSortDirection;
   enableBoxSelection: boolean;
   increaseFileViewGaps: boolean;
+  quickSearch: UserSettingsQuickSearch;
+};
+
+export type UserSettingsQuickSearch = {
+  /** Reads the quick search query as a regular expression instead of a literal. */
+  regex: boolean;
+  /** Searches the whole subtree below the open directory instead of only its listing. */
+  recursive: boolean;
 };
 
 export type UserSettingsNavigatorInfoPanel = {

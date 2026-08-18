@@ -14,7 +14,12 @@ import {
 import type { DirEntry } from '@/types/dir-entry';
 import normalizePath from '@/utils/normalize-path';
 import { buildSectionedVirtualRows, computeVerticalVirtualRange } from '@/composables/use-vertical-virtual-list';
-import { groupFileBrowserEntries } from '../file-browser-entry-groups';
+import {
+  groupFileBrowserEntries,
+  groupFileBrowserEntriesByFolder,
+  type FileBrowserFolderGroup,
+  type FileBrowserFolderGrouping,
+} from '../file-browser-entry-groups';
 import { getFileBrowserGridGap } from '../utils/file-browser-layout-gaps';
 import { getElementContentBoxWidth } from '../utils/file-browser-content-box';
 import {
@@ -32,6 +37,7 @@ export type {
   FileBrowserGridItemsVirtualRow,
   FileBrowserGridSectionKey,
   FileBrowserGridSectionVirtualRow,
+  FileBrowserListSectionVirtualRow,
   FileBrowserListVirtualRow,
   FileBrowserVirtualRow,
 } from '../utils/file-browser-virtual-rows';
@@ -39,6 +45,7 @@ export { getGridColumnCount } from '../utils/file-browser-virtual-rows';
 
 const LIST_ENTRY_HEIGHT = 42;
 const LIST_ENTRY_WITH_DESCRIPTION_HEIGHT = 56;
+const LIST_SECTION_HEADER_HEIGHT = 34;
 const GRID_SECTION_HEADER_HEIGHT = 42;
 const GRID_DIR_ENTRY_HEIGHT = 52;
 const GRID_ENTRY_HEIGHT = 120;
@@ -133,20 +140,29 @@ function getEntryDescriptionHeight(
   return entryDescription?.(entry) ? LIST_ENTRY_WITH_DESCRIPTION_HEIGHT : LIST_ENTRY_HEIGHT;
 }
 
+/**
+ * The width the grid lays its columns out in.
+ *
+ * Capped at the scroll viewport, because this width decides the column count and the column
+ * count decides the layout: anything inside the grid that can push it wider than its
+ * viewport would otherwise feed its own width back in and oscillate. A caller only ever
+ * wants the room actually on screen, so the cap costs nothing.
+ */
 export function resolveViewportContentWidth(viewport: HTMLElement): number {
+  const viewportWidth = getElementContentBoxWidth(viewport);
   const entriesContainer = viewport.querySelector<HTMLElement>(ENTRIES_CONTAINER_SELECTOR);
 
   if (entriesContainer) {
-    return getElementContentBoxWidth(entriesContainer);
+    return Math.min(getElementContentBoxWidth(entriesContainer), viewportWidth);
   }
 
   const contentInner = viewport.querySelector<HTMLElement>(CONTENT_INNER_SELECTOR);
 
   if (contentInner) {
-    return getElementContentBoxWidth(contentInner);
+    return Math.min(getElementContentBoxWidth(contentInner), viewportWidth);
   }
 
-  return getElementContentBoxWidth(viewport);
+  return viewportWidth;
 }
 
 function createListRows(
@@ -169,6 +185,47 @@ function createListRows(
     offset += size;
     return row;
   });
+}
+
+function createFolderGroupedListRows(
+  groups: readonly FileBrowserFolderGroup[],
+  entryDescription?: (entry: DirEntry) => string | undefined,
+): FileBrowserVirtualRow[] {
+  const rows: FileBrowserVirtualRow[] = [];
+  let offset = 0;
+  let entryIndex = 0;
+
+  for (const group of groups) {
+    rows.push({
+      type: 'list-section',
+      key: `list-section:${group.key}`,
+      sectionKey: group.key,
+      label: group.label,
+      count: group.entries.length,
+      start: offset,
+      size: LIST_SECTION_HEADER_HEIGHT,
+    });
+
+    offset += LIST_SECTION_HEADER_HEIGHT;
+
+    for (const entry of group.entries) {
+      const size = getEntryDescriptionHeight(entry, entryDescription);
+
+      rows.push({
+        type: 'list-entry',
+        key: `list:${entry.path}`,
+        entry,
+        entryIndex,
+        start: offset,
+        size,
+      });
+
+      offset += size;
+      entryIndex += 1;
+    }
+  }
+
+  return rows;
 }
 
 function createGridRows(
@@ -233,6 +290,7 @@ function createGridRows(
         variant,
         count: row.count,
         stickyIndex: stickyIndexesBySection.get(row.key) ?? 0,
+        label: null,
         start: row.start,
         size: row.size,
       };
@@ -251,23 +309,118 @@ function createGridRows(
   });
 }
 
+/**
+ * Grid rows for a subtree search: one heading per directory, and inside it the same
+ * kind order the grid uses everywhere else. The kinds get no headings of their own — a row
+ * of cards has one height, so the kinds stay separate rows without becoming sections.
+ */
+function createFolderGroupedGridRows(
+  groups: readonly FileBrowserFolderGroup[],
+  columnCount: number,
+  gridGap: number,
+): FileBrowserVirtualRow[] {
+  const rows: FileBrowserVirtualRow[] = [];
+  const columns = Math.max(1, Math.floor(columnCount));
+  let offset = 0;
+
+  for (const group of groups) {
+    const headerSize = GRID_SECTION_HEADER_HEIGHT + gridGap;
+    const sectionKey: FileBrowserGridSectionKey = `folder:${group.key}`;
+
+    rows.push({
+      type: 'grid-section',
+      key: `grid-section:${sectionKey}`,
+      sectionKey,
+      variant: 'other',
+      count: group.entries.length,
+      stickyIndex: 10,
+      label: group.label,
+      start: offset,
+      size: headerSize,
+    });
+
+    offset += headerSize;
+
+    const groupedEntries = groupFileBrowserEntries(group.entries);
+    const kinds: Array<{
+      entries: DirEntry[];
+      variant: FileBrowserGridEntryVariant;
+      entryHeight: number;
+    }> = [
+      {
+        entries: groupedEntries.dirs,
+        variant: 'dir',
+        entryHeight: GRID_DIR_ENTRY_HEIGHT,
+      },
+      {
+        entries: groupedEntries.images,
+        variant: 'image',
+        entryHeight: GRID_ENTRY_HEIGHT,
+      },
+      {
+        entries: groupedEntries.videos,
+        variant: 'video',
+        entryHeight: GRID_ENTRY_HEIGHT,
+      },
+      {
+        entries: groupedEntries.others,
+        variant: 'other',
+        entryHeight: GRID_ENTRY_HEIGHT,
+      },
+    ];
+
+    let rowIndex = 0;
+
+    for (const kind of kinds) {
+      const size = kind.entryHeight + gridGap;
+
+      for (let itemIndex = 0; itemIndex < kind.entries.length; itemIndex += columns) {
+        const rowEntries = kind.entries.slice(itemIndex, itemIndex + columns);
+
+        rows.push({
+          type: 'grid-items',
+          key: `grid-items:${sectionKey}:${rowIndex}:${rowEntries.map(entry => entry.path).join('|')}`,
+          sectionKey,
+          variant: kind.variant,
+          entries: rowEntries,
+          rowIndex,
+          start: offset,
+          size,
+        });
+
+        offset += size;
+        rowIndex += 1;
+      }
+    }
+  }
+
+  return rows;
+}
+
 export function createFileBrowserVirtualRows(options: {
   entries: readonly DirEntry[];
   layout: 'list' | 'grid' | undefined;
   viewportWidth: number;
   entryDescription?: (entry: DirEntry) => string | undefined;
   increaseFileViewGaps?: boolean;
+  folderGrouping?: FileBrowserFolderGrouping | null;
 }): FileBrowserVirtualRow[] {
+  const folderGroups = options.folderGrouping
+    ? groupFileBrowserEntriesByFolder(options.entries, options.folderGrouping.basePath)
+    : null;
+
   if (options.layout === 'grid') {
     const gridGap = getFileBrowserGridGap(!!options.increaseFileViewGaps);
-    return createGridRows(
-      options.entries,
-      getGridColumnCount(options.viewportWidth, gridGap),
-      gridGap,
-    );
+    const columnCount = getGridColumnCount(options.viewportWidth, gridGap);
+
+    return folderGroups
+      ? createFolderGroupedGridRows(folderGroups, columnCount, gridGap)
+      : createGridRows(options.entries, columnCount, gridGap);
   }
 
-  return createListRows(options.entries, options.entryDescription);
+  return folderGroups
+    ? createFolderGroupedListRows(folderGroups, options.entryDescription)
+    : createListRows(options.entries, options.entryDescription);
 }
 
 export function getFileBrowserGridNavigationEntry(
@@ -301,6 +454,7 @@ export function useFileBrowserVirtualLayout(options: {
   layout: () => 'list' | 'grid' | undefined;
   entryDescription?: (entry: DirEntry) => string | undefined;
   increaseFileViewGaps?: () => boolean;
+  folderGrouping?: () => FileBrowserFolderGrouping | null;
 }) {
   const scrollViewportRef = ref<HTMLElement | null>(null);
   const viewportHeight = ref(0);
@@ -320,6 +474,7 @@ export function useFileBrowserVirtualLayout(options: {
       viewportWidth: viewportWidth.value,
       entryDescription: options.entryDescription,
       increaseFileViewGaps: options.increaseFileViewGaps?.(),
+      folderGrouping: options.folderGrouping?.(),
     });
   });
 

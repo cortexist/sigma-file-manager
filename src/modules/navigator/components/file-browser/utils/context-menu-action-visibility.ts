@@ -5,6 +5,7 @@
 import type { DirEntry } from '@/types/dir-entry';
 import type { ContextMenuAction, ContextMenuItemConfig, EntryType, SelectionType } from '@/modules/navigator/components/file-browser/types';
 import { isActionBlockedByEntryPolicy } from '@/utils/entry-action-policy';
+import { arePathsEquivalent, getParentPath } from '@/utils/file-operation-paths';
 import { canDisconnectDriveEntry } from '@/utils/drive-disconnect-policy';
 
 const CONTEXT_MENU_ITEMS: ContextMenuItemConfig[] = [
@@ -83,6 +84,11 @@ const CONTEXT_MENU_ITEMS: ContextMenuItemConfig[] = [
     selectionTypes: ['single', 'multiple'],
     entryTypes: ['file', 'directory'],
   },
+  {
+    action: 'open-containing-directory',
+    selectionTypes: ['single'],
+    entryTypes: ['file', 'directory'],
+  },
 ];
 
 const WINDOWS_ONLY_ACTIONS = new Set<ContextMenuAction>(['properties']);
@@ -110,9 +116,20 @@ export function isContextMenuActionVisible(
   options?: {
     platform?: string | null;
     disableDestructiveActions?: boolean;
+    /** The directory whose listing is on screen, when the entries came from one. */
+    currentDirectoryPath?: string | null;
   },
 ): boolean {
   if (entries.length === 0) {
+    return false;
+  }
+
+  // Offered where an entry is shown away from its own folder — search results, favourites,
+  // recent files — and pointless in a plain listing, where the folder is already open.
+  if (action === 'open-containing-directory' && !isEntryShownAwayFromItsDirectory(
+    entries,
+    options?.currentDirectoryPath ?? null,
+  )) {
     return false;
   }
 
@@ -160,6 +177,23 @@ export function isContextMenuActionVisible(
   }
 
   return true;
+}
+
+function isEntryShownAwayFromItsDirectory(
+  entries: DirEntry[],
+  currentDirectoryPath: string | null,
+): boolean {
+  if (entries.length !== 1) {
+    return false;
+  }
+
+  const parentPath = getParentPath(entries[0].path);
+
+  if (!parentPath || arePathsEquivalent(parentPath, entries[0].path)) {
+    return false;
+  }
+
+  return !currentDirectoryPath || !arePathsEquivalent(parentPath, currentDirectoryPath);
 }
 
 export function getContextMenuSelectionStats(entries: DirEntry[]) {

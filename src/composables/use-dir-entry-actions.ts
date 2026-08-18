@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { invoke } from '@tauri-apps/api/core';
 import type { DirEntry } from '@/types/dir-entry';
+import { openContainingDirectory } from '@/utils/open-containing-directory';
 import type { ContextMenuAction } from '@/modules/navigator/components/file-browser/types';
 import { useWorkspacesStore } from '@/stores/storage/workspaces';
 import { useUserStatsStore } from '@/stores/storage/user-stats';
@@ -508,6 +509,12 @@ export function useDirEntryActions() {
         break;
       case 'copy-path':
         copyPath(entries);
+        break;
+      case 'open-containing-directory':
+        if (entries.length === 1) {
+          void openContainingDirectory(entries[0]);
+        }
+
         break;
       case 'quick-view':
         quickView(entries);
