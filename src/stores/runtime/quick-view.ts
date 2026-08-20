@@ -179,6 +179,11 @@ export const QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT = 'quick-view:sibling-paths-
 export const QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT = 'quick-view:background-playback';
 /** Tells Quick View it is back on screen, so it stops counting as a background session. */
 export const QUICK_VIEW_RESTORED_EVENT = 'quick-view:restored';
+/**
+ * The outside world asking a background session to stop — the backend relaying the stop CLI
+ * flag, sent by whatever consumes the background-playback marker (a status-bar button, say).
+ */
+export const QUICK_VIEW_STOP_PLAYBACK_EVENT = 'quick-view:stop-playback';
 export const PRINT_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file:print-view';
 
 async function runAuxiliaryWindowSteps(

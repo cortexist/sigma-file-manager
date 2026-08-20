@@ -825,11 +825,45 @@ if (typeof document !== 'undefined') {
 }
 
 /**
+ * Stops the sound on the owner's behalf. Quick View needs it for a background session being
+ * stopped from outside: pausing is the whole request — the owner's own isPlaying watcher
+ * treats the silence exactly like a file that played itself out.
+ */
+function pause() {
+  mediaRef.value?.pause();
+}
+
+/**
+ * Starts the open file over, the way a new source begins: rewound, and playing if autoplay
+ * asks for it. Quick View needs this when the file it already holds is opened again — after
+ * a background session has played itself out, say. Only a changed `src` resets the player,
+ * and the same path arriving twice is not a change, so the fresh start has to be asked for.
+ */
+function restart() {
+  const media = mediaRef.value;
+  if (!media) return;
+
+  if (props.autoplay) {
+    // Handles the engine dropping the play that follows a seek out of the ended state.
+    restartFromStart(media);
+    return;
+  }
+
+  media.pause();
+  media.currentTime = 0;
+  currentTime.value = 0;
+}
+
+/**
  * Whether anything is actually playing right now. Quick View asks at the moment it is
  * dismissed, to decide between letting the file play on in the background and stopping with
  * the window; it also watches it, so a file that reaches its end releases the session.
  */
-defineExpose({ isPlaying });
+defineExpose({
+  isPlaying,
+  pause,
+  restart,
+});
 
 onBeforeUnmount(() => {
   /**

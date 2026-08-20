@@ -74,6 +74,34 @@ async function loadMetadata(wrapper: VueWrapper) {
   await wrapper.get('video').trigger('loadedmetadata');
 }
 
+/** jsdom never really plays, so the finished state has to be described to the element. */
+function stubFinished(wrapper: VueWrapper, duration = 120) {
+  const media = stubMediaElement(wrapper, duration);
+  let time = duration;
+
+  Object.defineProperty(media, 'currentTime', {
+    configurable: true,
+    get: () => time,
+    set: (next: number) => {
+      time = next;
+    },
+  });
+  Object.defineProperty(media, 'ended', {
+    configurable: true,
+    get: () => time >= duration,
+  });
+  Object.defineProperty(media, 'paused', {
+    configurable: true,
+    value: true,
+  });
+
+  return media;
+}
+
+function exposedPlayer(wrapper: VueWrapper) {
+  return wrapper.vm as unknown as { restart: () => void };
+}
+
 describe('MediaPlayer', () => {
   beforeEach(() => {
     play = vi.fn(() => Promise.resolve());
@@ -492,30 +520,6 @@ describe('MediaPlayer', () => {
   });
 
   describe('replaying a file that has finished', () => {
-    /** jsdom never really plays, so the finished state has to be described to the element. */
-    function stubFinished(wrapper: VueWrapper, duration = 120) {
-      const media = stubMediaElement(wrapper, duration);
-      let time = duration;
-
-      Object.defineProperty(media, 'currentTime', {
-        configurable: true,
-        get: () => time,
-        set: (next: number) => {
-          time = next;
-        },
-      });
-      Object.defineProperty(media, 'ended', {
-        configurable: true,
-        get: () => time >= duration,
-      });
-      Object.defineProperty(media, 'paused', {
-        configurable: true,
-        value: true,
-      });
-
-      return media;
-    }
-
     /**
      * The regression this guards: `play()` on an ended element carries an implicit rewind by
      * spec, and WebKitGTK takes that seek while dropping the play. The clock snapped back to
@@ -552,6 +556,64 @@ describe('MediaPlayer', () => {
 
       expect(media.currentTime).toBe(30);
       expect(play).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * Quick View keeps one player across files, and only a changed `src` resets it. When the
+   * file it already holds is opened again — the main window reopening a file whose background
+   * session played itself out — the path does not change, so the owner asks for the fresh
+   * start directly. Without it the reopened file sat paused while any other file autoplayed.
+   */
+  describe('restarting on the owner\'s request', () => {
+    it('rewinds a finished file and plays it once the seek lands', async () => {
+      const wrapper = mountPlayer({ autoplay: true });
+      const media = stubFinished(wrapper);
+
+      await wrapper.get('video').trigger('loadedmetadata');
+      await wrapper.get('video').trigger('ended');
+      play.mockClear();
+
+      exposedPlayer(wrapper).restart();
+
+      expect(media.currentTime).toBe(0);
+      expect(play).not.toHaveBeenCalled();
+
+      media.dispatchEvent(new Event('seeked'));
+      await flushPromises();
+
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+
+    it('rewinds a file stopped midway rather than resuming it', async () => {
+      const wrapper = mountPlayer({ autoplay: true });
+      const media = stubFinished(wrapper);
+      media.currentTime = 30;
+
+      await wrapper.get('video').trigger('loadedmetadata');
+      play.mockClear();
+
+      exposedPlayer(wrapper).restart();
+      media.dispatchEvent(new Event('seeked'));
+      await flushPromises();
+
+      expect(media.currentTime).toBe(0);
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+
+    it('only rewinds when autoplay is off', async () => {
+      const wrapper = mountPlayer();
+      const media = stubFinished(wrapper);
+      media.currentTime = 30;
+
+      await wrapper.get('video').trigger('loadedmetadata');
+
+      exposedPlayer(wrapper).restart();
+      media.dispatchEvent(new Event('seeked'));
+      await flushPromises();
+
+      expect(media.currentTime).toBe(0);
+      expect(play).not.toHaveBeenCalled();
     });
   });
 
