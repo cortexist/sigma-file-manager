@@ -98,7 +98,11 @@ const siblingPathsProvidedByMain = ref(false);
 
 const userSettingsStore = useUserSettingsStore();
 /** The mounted player, whichever of the two kinds is on screen. Absent for everything else. */
-const mediaPlayerRef = ref<{ isPlaying: boolean; pause: () => void } | null>(null);
+const mediaPlayerRef = ref<{
+  isPlaying: boolean;
+  pause: () => void;
+  restart: () => void;
+} | null>(null);
 /** Set while this window is hidden but still playing. See `sendToBackgroundPlayback`. */
 const isPlayingInBackground = ref(false);
 
@@ -1329,8 +1333,23 @@ async function applyLoadedFile(payload: {
   // was holding open ends here rather than outliving the thing it was about.
   await endBackgroundPlayback();
 
+  /**
+   * The file already here arriving again is still a request to open it. It happens once a
+   * background session has ended on its own — the file played itself out, or was stopped from
+   * outside — and this window was left hidden with the file still mounted: the main window
+   * knows of no session to bring back, so it opens the file the way it would any other. For
+   * any other file that means starting from the top, and the same file must not be the one
+   * exception. Assigning an unchanged path changes nothing the player can see, so it is told.
+   */
+  const isReopeningDisplayedFile = payload.path === currentFilePath.value;
+
   stashCurrentTextIfDirty();
   currentFilePath.value = payload.path;
+
+  if (isReopeningDisplayedFile) {
+    mediaPlayerRef.value?.restart();
+  }
+
   resolvedSiblingPaths.value = uniqueSiblingPaths(payload.siblingPaths ?? []);
   siblingPathsProvidedByMain.value = payload.siblingPaths !== null;
   isLoading.value = false;
