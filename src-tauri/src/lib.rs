@@ -59,9 +59,16 @@ use serde::Serialize;
 use tauri::{Emitter, Manager};
 
 const SIGMA_AUTOSTART_CLI_FLAG: &str = "--sigma-autostart";
+/// A request to end a background-playback session, sent by whoever consumes the marker file —
+/// a status-bar button, say. It rides the same single-instance handoff every launch uses, so
+/// it needs no channel of its own; the running session intercepts it before activation logic,
+/// because a stop is not a request to raise anything.
+const SIGMA_STOP_PLAYBACK_CLI_FLAG: &str = "--sigma-stop-playback";
 const AUXILIARY_WINDOW_RELEASE_EVENT: &str = "auxiliary-window:release";
 /// Mirrors `QUICK_VIEW_RESTORED_EVENT` in `stores/runtime/quick-view.ts`.
 const QUICK_VIEW_RESTORED_EVENT: &str = "quick-view:restored";
+/// Mirrors `QUICK_VIEW_STOP_PLAYBACK_EVENT` in `stores/runtime/quick-view.ts`.
+const QUICK_VIEW_STOP_PLAYBACK_EVENT: &str = "quick-view:stop-playback";
 const PRINT_VIEW_NATIVE_CLOSE_REQUESTED_EVENT: &str = "print-view:native-close-requested";
 
 /// Set while the user has dismissed the main window to the background — its own titlebar
@@ -113,12 +120,42 @@ impl QuickViewPlayback {
         if playing {
             self.set_playing(true);
         }
+
+        sync_background_playback_marker(playing);
     }
 
     fn is_behind_hidden_window(&self) -> bool {
         self.behind_hidden_window
             .load(std::sync::atomic::Ordering::Relaxed)
     }
+}
+
+/// Where the outward form of `behind_hidden_window` lives; `None` without a runtime dir.
+///
+/// A session playing on behind a hidden window is invisible by definition, so anything that
+/// wants to offer a way back to it — a status-bar button, say — has to be told it exists. The
+/// runtime directory is per-user and cleared at logout, the same lifetime as the session
+/// itself, and the same place the activation-token handoff lives.
+#[cfg(target_os = "linux")]
+fn background_playback_marker_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(|dir| std::path::PathBuf::from(dir).join("sigma-file-manager-background-playback"))
+}
+
+/// Keeps the marker file matching `behind_hidden_window`: present exactly while a dismissed
+/// Quick View is still playing. It holds this process's PID because the file can outlive a
+/// crash — a reader owes the PID a liveness check before believing the marker.
+fn sync_background_playback_marker(playing: bool) {
+    #[cfg(target_os = "linux")]
+    if let Some(path) = background_playback_marker_path() {
+        if playing {
+            let _ = std::fs::write(&path, std::process::id().to_string());
+        } else {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = playing;
 }
 
 /// Reasons the app should outlive its last window; the lifetime rule lives in one place
@@ -202,6 +239,34 @@ pub(crate) fn show_playing_quick_view<R: tauri::Runtime>(app: &tauri::AppHandle<
     );
 
     true
+}
+
+/// Ends a background-playback session on request from outside — the stop flag arriving
+/// through the single-instance handoff, sent by whatever consumes the marker file.
+///
+/// The page owns the session, so the request is relayed to it: it pauses the player, and the
+/// existing silence-ends-the-session plumbing clears the state, removes the marker, and lets
+/// the app quit if nothing is left on screen. A session whose window has somehow gone is
+/// cleared directly, so a stop request can never leave a phantom marker behind.
+fn stop_quick_view_background_playback(app: &tauri::AppHandle) {
+    let playback = app.state::<QuickViewPlayback>();
+
+    if !playback.is_behind_hidden_window() {
+        return;
+    }
+
+    if app.get_webview_window("quick-view").is_some() {
+        let _ = app.emit_to(
+            tauri::EventTarget::webview_window("quick-view"),
+            QUICK_VIEW_STOP_PLAYBACK_EVENT,
+            (),
+        );
+        return;
+    }
+
+    playback.set_behind_hidden_window(false);
+    playback.set_playing(false);
+    exit_if_last_window_closed(app, &[]);
 }
 
 /// The one window an activation that names nothing should bring forward.
@@ -628,6 +693,15 @@ pub fn run() {
         builder
     } else {
         builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // A stop request is addressed to the background-playback session, not to a
+            // window: nothing must be raised, and nothing must reach the page as launch
+            // arguments. Handled ahead of the platform activation logic below for that
+            // reason.
+            if argv.iter().any(|arg| arg == SIGMA_STOP_PLAYBACK_CLI_FLAG) {
+                stop_quick_view_background_playback(app);
+                return;
+            }
+
             #[cfg(windows)]
             {
                 let filter_result = filter_shell_namespace_args(argv);
@@ -949,6 +1023,14 @@ pub fn run() {
 }
 
 fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // A launch carrying the stop flag is a messenger, not a session: had there been a running
+    // instance to hear it, the single-instance lock would have taken the arguments and this
+    // process would already be gone. Reaching here means there is nothing to stop, and a stop
+    // request must never boot a file manager of its own.
+    if std::env::args().any(|arg| arg == SIGMA_STOP_PLAYBACK_CLI_FLAG) {
+        std::process::exit(0);
+    }
+
     // Seeded ahead of the standalone branches below, because every process role draws
     // file icons and each one would otherwise probe from an uninitialized directory.
     if let Ok(app_data_dir) = app.path().app_data_dir() {
@@ -976,6 +1058,11 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     // be found by the next launcher click and refused by the compositor as the stale thing it
     // is — the exact failure the stash exists to prevent.
     window_activation::discard_launch_token();
+
+    // Same reasoning for the playback marker: a live session would have answered this launch
+    // through the single-instance lock, so a marker already on disk can only be the leftover
+    // of a crash, advertising a session that no longer exists.
+    sync_background_playback_marker(false);
 
     if cfg!(debug_assertions) {
         app.handle().plugin(

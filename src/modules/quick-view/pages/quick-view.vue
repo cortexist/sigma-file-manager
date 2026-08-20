@@ -39,6 +39,7 @@ import {
   QUICK_VIEW_SIBLING_PATHS_CHANGED_EVENT,
   QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT,
   QUICK_VIEW_RESTORED_EVENT,
+  QUICK_VIEW_STOP_PLAYBACK_EVENT,
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
@@ -97,7 +98,7 @@ const siblingPathsProvidedByMain = ref(false);
 
 const userSettingsStore = useUserSettingsStore();
 /** The mounted player, whichever of the two kinds is on screen. Absent for everything else. */
-const mediaPlayerRef = ref<{ isPlaying: boolean } | null>(null);
+const mediaPlayerRef = ref<{ isPlaying: boolean; pause: () => void } | null>(null);
 /** Set while this window is hidden but still playing. See `sendToBackgroundPlayback`. */
 const isPlayingInBackground = ref(false);
 
@@ -152,6 +153,7 @@ let unlistenCloseRequested: UnlistenFn | null = null;
 let unlistenSiblingPathsChanged: UnlistenFn | null = null;
 let unlistenWindowReleased: UnlistenFn | null = null;
 let unlistenRestored: UnlistenFn | null = null;
+let unlistenStopRequested: UnlistenFn | null = null;
 let unlistenOpenMediaRequest: UnlistenFn | null = null;
 
 watch(
@@ -1414,6 +1416,19 @@ async function setupEventListeners() {
     void endBackgroundPlayback();
   });
 
+  /**
+   * The outside world asking the background session to stop. Pausing is the whole job: the
+   * isPlaying watcher above treats the silence exactly like a file that played itself out,
+   * ends the session, and lets the app quit if nothing is left on screen.
+   */
+  unlistenStopRequested = await listen(QUICK_VIEW_STOP_PLAYBACK_EVENT, () => {
+    if (!isPlayingInBackground.value) {
+      return;
+    }
+
+    mediaPlayerRef.value?.pause();
+  });
+
   unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
     event.preventDefault();
     // The window manager's close ends the file, like the window's own close button.
@@ -1569,6 +1584,10 @@ onUnmounted(() => {
 
   if (unlistenRestored) {
     unlistenRestored();
+  }
+
+  if (unlistenStopRequested) {
+    unlistenStopRequested();
   }
 });
 </script>
