@@ -19,12 +19,9 @@ import {
   FileImageIcon,
   FileTextIcon,
   Music2Icon,
-  SaveIcon,
-  Undo2Icon,
   VideoIcon,
 } from '@lucide/vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toaster';
 import {
   determineFileType,
@@ -40,10 +37,13 @@ import {
   QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT,
   QUICK_VIEW_RESTORED_EVENT,
   QUICK_VIEW_STOP_PLAYBACK_EVENT,
+  QUICK_VIEW_SETTLE_UNSAVED_EDITS_EVENT,
   type QuickViewFileType,
 } from '@/stores/runtime/quick-view';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import {
+  backgroundPlayerAfterViewChange,
+  isPlaybackFileType,
   shouldKeepPlayingAfterDismissal,
   type QuickViewDismissal,
 } from '@/modules/quick-view/utils/background-playback';
@@ -53,13 +53,17 @@ import { useWatchedFileContentVersion } from '@/composables/use-file-content-ver
 import { MediaPlayer } from '@/components/ui/media-player';
 import { ImageViewer } from '@/components/ui/image-viewer';
 import WindowActions from '@/modules/window-toolbar/window-actions.vue';
+import UnsavedChangesDialog from '@/modules/quick-view/components/unsaved-changes-dialog.vue';
+import { quickViewWindowTitle } from '@/modules/quick-view/utils/window-title';
 import {
   decodeTextFileBytesWithEncoding,
   encodeTextFileBytes,
   type TextFileSourceEncoding,
 } from '@/utils/decode-text-file-bytes';
-import { rewriteMarkdownAssetUrls } from '@/utils/readme-relative-urls';
-import { renderMarkdownToSafeHtml } from '@/utils/safe-html';
+import {
+  TextEditor,
+  type TextEditorMarkdownMode,
+} from '@/components/ui/text-editor';
 import type { DirContents, DirEntry } from '@/types/dir-entry';
 import { getParentDirectory } from '@/utils/normalize-path';
 import {
@@ -103,8 +107,32 @@ const mediaPlayerRef = ref<{
   pause: () => void;
   restart: () => void;
 } | null>(null);
-/** Set while this window is hidden but still playing. See `sendToBackgroundPlayback`. */
+/** Set while a background session is registered with the backend. See `isPlaybackOutOfView`. */
 const isPlayingInBackground = ref(false);
+/**
+ * A playback file kept mounted behind whatever the view shows — a song left playing under a
+ * text file opened over it. The window being hidden is the other way playback gets out of
+ * sight, and the session the backend is told about covers both; see `isPlaybackOutOfView`.
+ */
+const backgroundMediaPath = ref<string | null>(null);
+/** Set from this window being put away until it is brought back, by whichever side does it. */
+const isWindowHidden = ref(false);
+
+/**
+ * Whether what this window shows may be edited. Only sigma's own opens say yes: another
+ * application is handed a viewer — the desktop entry offers it media types alone — and the
+ * text files it can reach through the strip must not turn that viewer into an editor. Stamped
+ * by every load, so it follows ownership of the window.
+ */
+const isEditingAllowed = ref(false);
+/** Set while `settleAllUnsavedEdits` runs, when stashed edits are brought back even if editing is off. */
+let isSettlingUnsavedEdits = false;
+
+type UnsavedChangesChoice = 'save' | 'discard' | 'cancel';
+/** The open question about unsaved edits, holding the resolver its answer goes to. */
+const unsavedChangesPrompt = ref<{ resolve: (choice: UnsavedChangesChoice) => void } | null>(null);
+const isUnsavedChangesPromptOpen = computed(() => unsavedChangesPrompt.value !== null);
+let pendingUnsavedChangesAnswer: Promise<UnsavedChangesChoice> | null = null;
 
 const stripThumbnails = useImageThumbnails();
 const stripAudioCovers = useAudioCovers();
@@ -141,7 +169,7 @@ watch([stripScrollAreaRef, () => resolvedSiblingPaths.value.length], () => {
 }, { immediate: true });
 
 const pdfIframeRef = ref<HTMLIFrameElement | null>(null);
-const textEditorRef = ref<HTMLTextAreaElement | null>(null);
+const textEditorRef = ref<InstanceType<typeof TextEditor> | null>(null);
 const textEditorValue = ref('');
 const textSavedBaseline = ref('');
 const textSourceEncoding = ref<TextFileSourceEncoding>('utf8');
@@ -151,7 +179,6 @@ const textPreviewError = ref<string | null>(null);
 const textPreviewLoading = ref(false);
 const textSaveInProgress = ref(false);
 let textPreviewRequestId = 0;
-let markdownPreviewRequestId = 0;
 let unlistenLoadFile: UnlistenFn | null = null;
 let unlistenCloseRequested: UnlistenFn | null = null;
 let unlistenSiblingPathsChanged: UnlistenFn | null = null;
@@ -159,6 +186,7 @@ let unlistenWindowReleased: UnlistenFn | null = null;
 let unlistenRestored: UnlistenFn | null = null;
 let unlistenStopRequested: UnlistenFn | null = null;
 let unlistenOpenMediaRequest: UnlistenFn | null = null;
+let unlistenSettleRequested: UnlistenFn | null = null;
 
 watch(
   resolvedSiblingPaths,
@@ -248,19 +276,7 @@ interface ReadTextPreviewResult {
   truncated: boolean;
 }
 
-interface MarkdownSplitViewports {
-  source: HTMLElement;
-  preview: HTMLElement;
-}
-
 const pendingTextEdits = ref<Record<string, PendingTextState>>({});
-
-const markdownSplitSourcePane = ref<HTMLElement | null>(null);
-const markdownSplitPreviewPane = ref<HTMLElement | null>(null);
-const plainTextScrollPane = ref<HTMLElement | null>(null);
-
-let markdownScrollSyncLock = false;
-let markdownScrollSyncTeardown: (() => void) | null = null;
 
 const fileType = computed((): QuickViewFileType => {
   if (!currentFilePath.value) return 'unsupported';
@@ -273,13 +289,32 @@ const fileName = computed((): string => {
 });
 
 /**
+ * The file the player is mounted for: the one in view when that is a playback file, else the
+ * one playing behind the view. Kept apart from `currentFilePath` so the player's source never
+ * follows the view to a text file — unmounting is what would stop the sound.
+ */
+const playerPath = computed((): string | null => {
+  if (currentFilePath.value && isPlaybackFileType(fileType.value)) {
+    return currentFilePath.value;
+  }
+
+  return backgroundMediaPath.value;
+});
+
+const playerKind = computed((): QuickViewFileType => (
+  playerPath.value ? determineFileType(playerPath.value) : 'unsupported'
+));
+
+const isPlayerInView = computed(() => playerPath.value !== null && playerPath.value === currentFilePath.value);
+
+/**
  * Artwork for the open track: the picture embedded in the file, else a cover image sitting
  * beside it. Returning nothing leaves the player on its music-glyph fallback.
  */
 const audioArtworkSrc = computed((): string | undefined => {
-  const path = currentFilePath.value;
+  const path = playerPath.value;
 
-  if (!path || fileType.value !== 'audio' || isHttpOrHttpsUrl(path)) {
+  if (!path || playerKind.value !== 'audio' || isHttpOrHttpsUrl(path)) {
     return undefined;
   }
 
@@ -317,26 +352,36 @@ const fileAssetUrl = computed((): string => {
   );
 });
 
+/**
+ * The player's file is watched on its own: behind the view it is not the displayed file, and
+ * a save to the text file in front must not reach the player's source and restart the song.
+ */
+const playerContentVersion = useWatchedFileContentVersion(() => (
+  playerPath.value && !isHttpOrHttpsUrl(playerPath.value)
+    ? playerPath.value
+    : null
+));
+
 // Video and audio go through the loopback media server on Linux, where the asset
 // protocol cannot feed WebKitGTK's media backend. See @/utils/media-src.
-const fileMediaUrl = computed((): string => {
-  if (!currentFilePath.value) return '';
-  if (isHttpOrHttpsUrl(currentFilePath.value)) return currentFilePath.value;
+const playerMediaUrl = computed((): string => {
+  if (!playerPath.value) return '';
+  if (isHttpOrHttpsUrl(playerPath.value)) return playerPath.value;
 
   return withContentVersion(
-    convertMediaSrc(currentFilePath.value),
-    displayedFileContentVersion.value,
+    convertMediaSrc(playerPath.value),
+    playerContentVersion.value,
   );
 });
 
 /**
  * The file on disk behind whatever is playing, which is what media details are read from and
  * what the native frame decoder opens. A remote URL handed in by an extension has neither, so
- * those keep a plain player. The element is only rendered for a matching `fileType`, so this
- * does not need to check the kind itself.
+ * those keep a plain player. The element is only rendered for a `playerPath` of its kind, so
+ * this does not need to check the kind itself.
  */
 const playerSourcePath = computed(() => {
-  const path = currentFilePath.value;
+  const path = playerPath.value;
 
   if (!path || isHttpOrHttpsUrl(path)) {
     return undefined;
@@ -371,7 +416,23 @@ const canSaveText = computed(() => {
   return textIsDirty.value;
 });
 
-const textEditorReadOnly = computed(() => textWasTruncated.value || !textSaveRoundTripSafe.value);
+const textEditorReadOnly = computed(() => (
+  textWasTruncated.value || !textSaveRoundTripSafe.value || !isEditingAllowed.value
+));
+
+/**
+ * Edits not on disk anywhere in this window — in the editor, or stashed for files it moved
+ * away from. Reported to the backend as it changes, so a session ending (the main window
+ * closing, a quit) knows to give this window the chance to ask rather than taking them with
+ * it. Reported at once on start, so a fresh page clears whatever a previous one left behind.
+ */
+const hasUnsavedEdits = computed(() => (
+  textIsDirty.value || Object.keys(pendingTextEdits.value).length > 0
+));
+
+watch(hasUnsavedEdits, (unsaved) => {
+  void invoke('set_quick_view_unsaved_edits', { unsaved }).catch(() => {});
+}, { immediate: true });
 
 const isMarkdownQuickView = computed(() => {
   if (!currentFilePath.value) {
@@ -381,48 +442,38 @@ const isMarkdownQuickView = computed(() => {
   return getFileExtension(currentFilePath.value) === 'md';
 });
 
-const markdownPreviewHtml = ref('');
+/** Where a markdown file's relative links resolve; a document fetched from a URL has no such place. */
+const markdownSourcePath = computed(() => {
+  const path = currentFilePath.value;
 
-watch(
-  [textEditorValue, currentFilePath, isMarkdownQuickView, textPreviewLoading],
-  async () => {
-    if (!isMarkdownQuickView.value || textPreviewLoading.value) {
-      markdownPreviewHtml.value = '';
-      return;
-    }
+  if (!path || isHttpOrHttpsUrl(path)) {
+    return null;
+  }
 
-    const markdownPath = currentFilePath.value;
+  return path;
+});
 
-    if (!markdownPath || isHttpOrHttpsUrl(markdownPath)) {
-      markdownPreviewHtml.value = renderMarkdownToSafeHtml(textEditorValue.value);
-      return;
-    }
+/**
+ * Read or edit (or, for markdown, both): a preference about the editor rather than the file,
+ * so it outlives the window — one for markdown and one for plain text, since a split view
+ * means nothing to the latter and the two are different habits.
+ */
+const editorMode = computed((): TextEditorMarkdownMode => (
+  isMarkdownQuickView.value
+    ? userSettingsStore.userSettings.navigator.quickViewMarkdownMode
+    : userSettingsStore.userSettings.navigator.quickViewTextMode
+));
 
-    const requestId = ++markdownPreviewRequestId;
-    const baseHtml = renderMarkdownToSafeHtml(textEditorValue.value);
+function setEditorMode(mode: TextEditorMarkdownMode) {
+  if (isMarkdownQuickView.value) {
+    void userSettingsStore.set('navigator.quickViewMarkdownMode', mode);
+    return;
+  }
 
-    try {
-      const rewritten = await rewriteMarkdownAssetUrls(baseHtml, {
-        kind: 'localMarkdownFile',
-        markdownFilePath: markdownPath,
-      });
+  void userSettingsStore.set('navigator.quickViewTextMode', mode === 'read' ? 'read' : 'edit');
+}
 
-      if (requestId !== markdownPreviewRequestId) {
-        return;
-      }
-
-      markdownPreviewHtml.value = rewritten;
-    }
-    catch {
-      if (requestId !== markdownPreviewRequestId) {
-        return;
-      }
-
-      markdownPreviewHtml.value = baseHtml;
-    }
-  },
-  { immediate: true },
-);
+// A preference about the editor rather than the file, so it outlives the window.
 
 function thumbStripKind(path: string): 'image' | 'video' | 'audio' | 'document' {
   const type = determineFileType(path);
@@ -624,178 +675,6 @@ watch(
   { flush: 'post' },
 );
 
-function getScrollViewportFromPane(pane: HTMLElement | null): HTMLElement | null {
-  return pane?.querySelector('.sigma-ui-scroll-area__viewport') ?? null;
-}
-
-function getTextEditorScrollViewport(): HTMLElement | null {
-  if (isMarkdownQuickView.value) {
-    return getScrollViewportFromPane(markdownSplitSourcePane.value);
-  }
-
-  return getScrollViewportFromPane(plainTextScrollPane.value);
-}
-
-function clampScrollTop(viewport: HTMLElement, scrollTop: number): number {
-  const maxScroll = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-
-  return Math.min(Math.max(0, scrollTop), maxScroll);
-}
-
-function getMarkdownSplitViewports(): MarkdownSplitViewports | null {
-  const sourceViewport = getScrollViewportFromPane(markdownSplitSourcePane.value);
-  const previewViewport = getScrollViewportFromPane(markdownSplitPreviewPane.value);
-
-  if (!sourceViewport || !previewViewport) {
-    return null;
-  }
-
-  return {
-    source: sourceViewport,
-    preview: previewViewport,
-  };
-}
-
-function syncMarkdownPreviewToSourceRatio() {
-  if (markdownScrollSyncLock) {
-    return;
-  }
-
-  const viewports = getMarkdownSplitViewports();
-
-  if (!viewports) {
-    return;
-  }
-
-  const { source: sourceViewport, preview: previewViewport } = viewports;
-  const sourceRange = sourceViewport.scrollHeight - sourceViewport.clientHeight;
-  const previewRange = previewViewport.scrollHeight - previewViewport.clientHeight;
-
-  if (previewRange <= 0) {
-    return;
-  }
-
-  const ratio = sourceRange > 0 ? sourceViewport.scrollTop / sourceRange : 0;
-  const nextPreviewTop = ratio * previewRange;
-
-  if (Math.abs(previewViewport.scrollTop - nextPreviewTop) < 0.5) {
-    return;
-  }
-
-  markdownScrollSyncLock = true;
-  previewViewport.scrollTop = nextPreviewTop;
-  queueMicrotask(() => {
-    markdownScrollSyncLock = false;
-  });
-}
-
-function syncMarkdownSourceToPreviewRatio() {
-  if (markdownScrollSyncLock) {
-    return;
-  }
-
-  const viewports = getMarkdownSplitViewports();
-
-  if (!viewports) {
-    return;
-  }
-
-  const { source: sourceViewport, preview: previewViewport } = viewports;
-  const sourceRange = sourceViewport.scrollHeight - sourceViewport.clientHeight;
-  const previewRange = previewViewport.scrollHeight - previewViewport.clientHeight;
-
-  if (sourceRange <= 0) {
-    return;
-  }
-
-  const ratio = previewRange > 0 ? previewViewport.scrollTop / previewRange : 0;
-  const nextSourceTop = ratio * sourceRange;
-
-  if (Math.abs(sourceViewport.scrollTop - nextSourceTop) < 0.5) {
-    return;
-  }
-
-  markdownScrollSyncLock = true;
-  sourceViewport.scrollTop = nextSourceTop;
-  queueMicrotask(() => {
-    markdownScrollSyncLock = false;
-  });
-}
-
-function teardownMarkdownScrollSync() {
-  markdownScrollSyncTeardown?.();
-  markdownScrollSyncTeardown = null;
-}
-
-function setupMarkdownScrollSync(): (() => void) | null {
-  const sourceViewport = getScrollViewportFromPane(markdownSplitSourcePane.value);
-  const previewViewport = getScrollViewportFromPane(markdownSplitPreviewPane.value);
-
-  if (!sourceViewport || !previewViewport) {
-    return null;
-  }
-
-  function onSourceScroll() {
-    syncMarkdownPreviewToSourceRatio();
-  }
-
-  function onPreviewScroll() {
-    syncMarkdownSourceToPreviewRatio();
-  }
-
-  sourceViewport.addEventListener('scroll', onSourceScroll, { passive: true });
-  previewViewport.addEventListener('scroll', onPreviewScroll, { passive: true });
-
-  const resizeObserver = new ResizeObserver(() => {
-    syncMarkdownPreviewToSourceRatio();
-  });
-
-  resizeObserver.observe(sourceViewport);
-  resizeObserver.observe(previewViewport);
-
-  return () => {
-    sourceViewport.removeEventListener('scroll', onSourceScroll);
-    previewViewport.removeEventListener('scroll', onPreviewScroll);
-    resizeObserver.disconnect();
-  };
-}
-
-function syncTextEditorScrollHeight() {
-  const element = textEditorRef.value;
-
-  if (!element) {
-    return;
-  }
-
-  element.style.height = 'auto';
-  element.style.height = `${element.scrollHeight}px`;
-}
-
-function onTextEditorInput() {
-  const viewport = getTextEditorScrollViewport();
-  const scrollTopBefore = viewport?.scrollTop ?? 0;
-
-  syncTextEditorScrollHeight();
-
-  if (!viewport) {
-    return;
-  }
-
-  const textScrollViewport: HTMLElement = viewport;
-
-  function restoreScrollPosition() {
-    textScrollViewport.scrollTop = clampScrollTop(textScrollViewport, scrollTopBefore);
-  }
-
-  void nextTick(() => {
-    restoreScrollPosition();
-    requestAnimationFrame(() => {
-      restoreScrollPosition();
-      requestAnimationFrame(restoreScrollPosition);
-    });
-  });
-}
-
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -810,8 +689,12 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
 }
 
 function resetQuickViewWindowState(shouldNotifyMainWindow = true) {
-  pendingTextEdits.value = {};
+  // Putting the window away is not closing the file: what was typed waits in the stash, as it
+  // does when moving between files, and reopening the file finds it. Only saving or discarding
+  // lets go of it — see `closeWindow`, which asks before a close that would lose it.
+  stashCurrentTextIfDirty();
   currentFilePath.value = null;
+  backgroundMediaPath.value = null;
   resolvedSiblingPaths.value = [];
   siblingPathsProvidedByMain.value = false;
 
@@ -836,15 +719,17 @@ function shouldKeepPlayingAfter(dismissal: QuickViewDismissal): boolean {
 }
 
 /**
- * Leaves the file playing behind the hidden window and registers it with the backend, which
- * is what stops the nothing-visible rule from quitting the app mid-track. The main window is
- * told too, so its shortcut can bring this window back instead of reloading the file.
+ * Registers the file playing out of sight with the backend — which is what stops the
+ * nothing-visible rule from quitting the app mid-track, and what the outside world's marker
+ * advertises. The main window is told too, so its shortcut can bring the file back instead of
+ * reloading it.
  */
 async function sendToBackgroundPlayback(): Promise<void> {
   /**
-   * Dismissing from in here hides the window through the main window, which answers by
-   * telling this one it was released — so the same dismissal arrives twice. Only the first
-   * starts a session; without this the main window would announce it twice over.
+   * The same session is asked for more than once: dismissing from in here hides the window
+   * through the main window, which answers by telling this one it was released, and the
+   * derived `isPlaybackOutOfView` asks again on its own schedule. Only the first starts it;
+   * without this the main window would announce it twice over.
    */
   if (isPlayingInBackground.value) {
     return;
@@ -862,7 +747,7 @@ async function sendToBackgroundPlayback(): Promise<void> {
       },
       QUICK_VIEW_BACKGROUND_PLAYBACK_EVENT,
       {
-        path: currentFilePath.value,
+        path: playerPath.value,
         active: true,
       },
     );
@@ -904,24 +789,168 @@ async function endBackgroundPlayback(): Promise<void> {
  * rather than the file manager. Sound is what a user follows, and it does not stop being the
  * thing they are reaching for just because the window is visible on another workspace.
  */
-watch(() => mediaPlayerRef.value?.isPlaying === true, (playing) => {
-  void invoke('set_quick_view_playing', { playing }).catch(() => {});
+const isPlayerPlaying = computed(() => mediaPlayerRef.value?.isPlaying === true);
 
-  // A file that plays itself out behind a hidden window has nothing left to come back to, so
-  // the session ends on its own rather than holding the app open in silence.
-  if (!playing && isPlayingInBackground.value) {
-    void endBackgroundPlayback();
-  }
+watch(isPlayerPlaying, (playing) => {
+  void invoke('set_quick_view_playing', { playing }).catch(() => {});
 });
 
+/**
+ * What a background session *is*: playback the user cannot see — behind a hidden window, or
+ * behind another file shown in a visible one. Derived from those facts rather than set at each
+ * transition, so the marker the outside world watches can never say one thing while the sound
+ * does another. A file that plays itself out ends the session the same way, and lets the app
+ * quit if nothing is left on screen.
+ *
+ * Flushed after render because the player reports through its component ref, which lags a
+ * tick behind the view: judged before the render, a file being dropped as the window is put
+ * away would still read as playing and register a session it is about to end.
+ */
+const isPlaybackOutOfView = computed(() => (
+  isPlayerPlaying.value && (isWindowHidden.value || !isPlayerInView.value)
+));
+
+watch(isPlaybackOutOfView, (outOfView) => {
+  if (outOfView) {
+    void sendToBackgroundPlayback();
+  }
+  else {
+    void endBackgroundPlayback();
+  }
+}, { flush: 'post' });
+
+/**
+ * Asks what to do with edits about to be lost, and waits for the answer. Asked from within
+ * this window, of this window — no caller has to know, which is what lets another application
+ * use Quick View as its viewer and still get the question. A second request while it is open
+ * (the window manager's close on top of the close button, say) joins the first rather than
+ * asking twice.
+ */
+function askAboutUnsavedChanges(): Promise<UnsavedChangesChoice> {
+  if (pendingUnsavedChangesAnswer) {
+    return pendingUnsavedChangesAnswer;
+  }
+
+  pendingUnsavedChangesAnswer = new Promise<UnsavedChangesChoice>((resolve) => {
+    unsavedChangesPrompt.value = { resolve };
+  }).finally(() => {
+    unsavedChangesPrompt.value = null;
+    pendingUnsavedChangesAnswer = null;
+  });
+
+  return pendingUnsavedChangesAnswer;
+}
+
+function answerUnsavedChanges(choice: UnsavedChangesChoice) {
+  unsavedChangesPrompt.value?.resolve(choice);
+}
+
+/**
+ * Settles unsaved edits before a close that would lose them. Resolves false when the close
+ * should not go ahead: the user said so, or a save they asked for failed — the toast has said
+ * why, and the edits stay where they can see them.
+ */
+async function settleUnsavedChangesBeforeClosing(): Promise<boolean> {
+  const choice = await askAboutUnsavedChanges();
+
+  if (choice === 'cancel') {
+    return false;
+  }
+
+  if (choice === 'save') {
+    await saveTextFile();
+    return !textIsDirty.value;
+  }
+
+  // Discarded: back to the saved text, so nothing downstream stashes what was just let go.
+  textEditorValue.value = textSavedBaseline.value;
+
+  if (currentFilePath.value) {
+    removePendingEditForPath(currentFilePath.value);
+  }
+
+  return true;
+}
+
+/**
+ * Waits for the text pane to have loaded `path` — the watcher on `currentFilePath` does the
+ * loading, on its own schedule.
+ */
+async function waitForTextPreview(path: string) {
+  await nextTick();
+
+  while (currentFilePath.value === path && textPreviewLoading.value) {
+    await new Promise<void>(resolve => setTimeout(resolve, 16));
+  }
+}
+
+/**
+ * Settles every unsaved edit this window holds before they would be lost: the file in view
+ * first, then each stashed file in turn, brought into view so the question is about something
+ * the user can see. Resolves false as soon as one answer is "cancel", leaving the rest where
+ * they were — nothing has been lost yet, and nothing is.
+ */
+async function settleAllUnsavedEdits(): Promise<boolean> {
+  isSettlingUnsavedEdits = true;
+
+  try {
+    for (;;) {
+      if (textIsDirty.value) {
+        if (!(await settleUnsavedChangesBeforeClosing())) {
+          return false;
+        }
+
+        continue;
+      }
+
+      const [stashedPath] = Object.keys(pendingTextEdits.value);
+
+      if (!stashedPath) {
+        return true;
+      }
+
+      if (currentFilePath.value === stashedPath) {
+        // Already in view, showing the disk's version because editing was off when it loaded.
+        await loadTextPreview(stashedPath);
+      }
+      else {
+        await showFile(stashedPath);
+        await waitForTextPreview(stashedPath);
+      }
+
+      // A stash that turns out to match the file has nothing to ask about.
+      if (!textIsDirty.value) {
+        removePendingEditForPath(stashedPath);
+      }
+    }
+  }
+  finally {
+    isSettlingUnsavedEdits = false;
+  }
+}
+
 async function closeWindow(dismissal: QuickViewDismissal = 'dismiss') {
+  // Only a close takes edits away: hiding keeps the page, and with it the stash that moving
+  // between files uses, so Space and Escape cost nothing. (A session ending with the window
+  // hidden asks through `QUICK_VIEW_SETTLE_UNSAVED_EDITS_EVENT` instead.)
+  if (dismissal === 'close' && hasUnsavedEdits.value) {
+    if (!(await settleAllUnsavedEdits())) {
+      return;
+    }
+  }
+
   if (shouldKeepPlayingAfter(dismissal)) {
-    // Deliberately keeps the file mounted: the player going away is what stops the sound.
+    isWindowHidden.value = true;
+    // Deliberately keeps the file mounted: the player going away is what stops the sound. The
+    // session is registered before the window goes, so the exit check that follows the hide
+    // finds its reason to stay rather than racing the derived watcher for it.
     await sendToBackgroundPlayback();
+    await bringBackgroundPlayerIntoView();
   }
   else {
     await endBackgroundPlayback();
     resetQuickViewWindowState(!isStandaloneViewer);
+    isWindowHidden.value = true;
     await nextTick();
   }
 
@@ -956,7 +985,18 @@ function clearDisplayedFile() {
 
   // Retire any in-flight read so a late reply cannot repopulate the pane.
   textPreviewRequestId += 1;
-  markdownPreviewRequestId += 1;
+
+  // A file still playing behind the view is the natural thing to show in place of one that is
+  // gone. Its view change runs synchronously, so the stash it takes is removed right after.
+  if (backgroundMediaPath.value) {
+    void bringBackgroundPlayerIntoView();
+
+    if (removedPath) {
+      removePendingEditForPath(removedPath);
+    }
+
+    return;
+  }
 
   currentFilePath.value = null;
   textEditorValue.value = '';
@@ -966,7 +1006,7 @@ function clearDisplayedFile() {
   textWasTruncated.value = false;
   textSaveRoundTripSafe.value = true;
 
-  void getCurrentWindow().setTitle('Sigma File Manager | Quick View');
+  void getCurrentWindow().setTitle(quickViewWindowTitle());
   void emitTo(
     {
       kind: 'WebviewWindow',
@@ -1009,7 +1049,7 @@ async function discardDisplayedFileIfDeleted(paths: string[]) {
 
 async function setQuickViewWindowTitle(path: string) {
   const quickWindow = getCurrentWindow();
-  await quickWindow.setTitle(`Sigma File Manager | Quick View - ${getFileName(path)}`);
+  await quickWindow.setTitle(quickViewWindowTitle(getFileName(path)));
 }
 
 async function ensureResolvedSiblingPaths(): Promise<string[]> {
@@ -1065,14 +1105,43 @@ function removePendingEditForPath(path: string) {
   pendingTextEdits.value = next;
 }
 
-async function selectPath(path: string) {
-  if (path === currentFilePath.value) {
-    return;
+/**
+ * Settles what the player does when `path` takes the view, then shows the file. Quick View
+ * shows one thing at a time, and this is the one place that rule meets the player — see
+ * `backgroundPlayerAfterViewChange` for what becomes of a file that was playing.
+ */
+function takeView(path: string) {
+  const displayed = currentFilePath.value;
+
+  backgroundMediaPath.value = backgroundPlayerAfterViewChange({
+    displayed: displayed
+      ? {
+          path: displayed,
+          isPlayback: isPlaybackFileType(fileType.value),
+        }
+      : null,
+    background: backgroundMediaPath.value,
+    incoming: {
+      path,
+      isPlayback: isPlaybackFileType(determineFileType(path)),
+    },
+    behavior: userSettingsStore.userSettings.navigator.quickViewPlaybackOnDismiss,
+    isPlaying: mediaPlayerRef.value?.isPlaying === true,
+  });
+
+  if (displayed !== path) {
+    stashCurrentTextIfDirty();
   }
 
-  stashCurrentTextIfDirty();
-
   currentFilePath.value = path;
+}
+
+/**
+ * Puts a file in the view and tells the main window, whose shortcut toggles on what is shown.
+ * Every way into the view from within this window goes through here.
+ */
+async function showFile(path: string) {
+  takeView(path);
   await setQuickViewWindowTitle(path);
   void emitTo(
     {
@@ -1084,6 +1153,42 @@ async function selectPath(path: string) {
   );
 }
 
+/**
+ * The playing file takes the view back from whatever was opened over it — where the EQ
+ * button, the launcher and the shortcut on the file all lead. The file in front is simply
+ * dropped: the view holds one thing, and the editor here is for quick edits, not for guarding
+ * a document against the user's own next move. Unsaved text is stashed the way moving between
+ * siblings stashes it, so reopening the document in this window finds it again.
+ */
+async function bringBackgroundPlayerIntoView() {
+  const path = backgroundMediaPath.value;
+
+  if (!path) {
+    return;
+  }
+
+  await showFile(path);
+
+  // The strip belonged to the other file's folder; one that does not list this file is
+  // replaced by its own folder, as a file opened from disk gets.
+  if (!resolvedSiblingPaths.value.includes(path)) {
+    resolvedSiblingPaths.value = [];
+    siblingPathsProvidedByMain.value = false;
+    await ensureResolvedSiblingPaths();
+  }
+
+  await nextTick();
+  scrollActiveThumbIntoView();
+}
+
+async function selectPath(path: string) {
+  if (path === currentFilePath.value) {
+    return;
+  }
+
+  await showFile(path);
+}
+
 async function loadTextPreview(path: string) {
   if (isHttpOrHttpsUrl(path)) {
     textPreviewLoading.value = false;
@@ -1093,7 +1198,10 @@ async function loadTextPreview(path: string) {
 
   const pending = pendingTextEdits.value[path];
 
-  if (pending) {
+  // Stashed edits come back only where they can be acted on: a viewer that may not edit shows
+  // the file as it is on disk and leaves the stash for when editing is back, or for the
+  // settling a session's end runs.
+  if (pending && (isEditingAllowed.value || isSettlingUnsavedEdits)) {
     ++textPreviewRequestId;
     textPreviewLoading.value = true;
     textPreviewError.value = null;
@@ -1104,8 +1212,6 @@ async function loadTextPreview(path: string) {
     textEditorValue.value = pending.text;
     textSavedBaseline.value = pending.baseline;
     textPreviewLoading.value = false;
-    await nextTick();
-    syncTextEditorScrollHeight();
     return;
   }
 
@@ -1149,23 +1255,14 @@ async function loadTextPreview(path: string) {
       textPreviewLoading.value = false;
     }
   }
-
-  if (requestId !== textPreviewRequestId) {
-    return;
-  }
-
-  await nextTick();
-  syncTextEditorScrollHeight();
 }
 
-async function revertTextChanges() {
+function revertTextChanges() {
   if (!canSaveText.value) {
     return;
   }
 
   textEditorValue.value = textSavedBaseline.value;
-  await nextTick();
-  syncTextEditorScrollHeight();
 }
 
 async function saveTextFile() {
@@ -1220,18 +1317,7 @@ async function goToSibling(offset: number) {
     return;
   }
 
-  stashCurrentTextIfDirty();
-
-  currentFilePath.value = nextPath;
-  await setQuickViewWindowTitle(nextPath);
-  void emitTo(
-    {
-      kind: 'WebviewWindow',
-      label: 'main',
-    },
-    QUICK_VIEW_DISPLAYED_PATH_CHANGED_EVENT,
-    { path: nextPath },
-  );
+  await showFile(nextPath);
 }
 
 function scrollActiveThumbIntoView() {
@@ -1255,13 +1341,18 @@ function scrollActiveThumbIntoView() {
 }
 
 async function handleKeydown(event: KeyboardEvent) {
+  // The open question owns the keyboard: Escape answers it (cancel) rather than closing again.
+  if (isUnsavedChangesPromptOpen.value) {
+    return;
+  }
+
   const saveShortcut = (event.ctrlKey || event.metaKey) && event.code === 'KeyS';
 
   if (saveShortcut) {
     if (currentFilePath.value && determineFileType(currentFilePath.value) === 'text') {
       event.preventDefault();
 
-      if (canSaveText.value) {
+      if (canSaveText.value && isEditingAllowed.value) {
         await saveTextFile();
       }
     }
@@ -1293,6 +1384,12 @@ async function handleKeydown(event: KeyboardEvent) {
 
   if (event.code === 'Escape') {
     event.preventDefault();
+
+    // An open find bar takes Escape first, the way a dialog would; only then does it mean close.
+    if (textEditorRef.value?.closeFind()) {
+      return;
+    }
+
     await closeWindow();
     return;
   }
@@ -1316,6 +1413,8 @@ async function handleKeydown(event: KeyboardEvent) {
 async function applyLoadedFile(payload: {
   path: string;
   siblingPaths: string[] | null;
+  /** Whether the caller is sigma itself; see `isEditingAllowed`. */
+  editable: boolean;
 }) {
   /**
    * The first file a fresh process receives arrives while this window is still being mapped —
@@ -1329,24 +1428,25 @@ async function applyLoadedFile(payload: {
     await waitForFirstPaint(FIRST_PAINT_TIMEOUT_MS);
   }
 
-  // A file arriving replaces whatever was playing behind the hidden window, so the session it
-  // was holding open ends here rather than outliving the thing it was about.
-  await endBackgroundPlayback();
+  // Whoever sent the file shows the window around it; the standalone viewer shows itself.
+  isWindowHidden.value = false;
+  isEditingAllowed.value = payload.editable;
 
   /**
-   * The file already here arriving again is still a request to open it. It happens once a
-   * background session has ended on its own — the file played itself out, or was stopped from
-   * outside — and this window was left hidden with the file still mounted: the main window
-   * knows of no session to bring back, so it opens the file the way it would any other. For
-   * any other file that means starting from the top, and the same file must not be the one
-   * exception. Assigning an unchanged path changes nothing the player can see, so it is told.
+   * The file the player already has arriving again is still a request to open it. It happens
+   * once a background session has ended on its own — the file played itself out, or was
+   * stopped from outside — and this window was left hidden with the file still mounted: the
+   * main window knows of no session to bring back, so it opens the file the way it would any
+   * other. For any other file that means starting from the top, and the same file must not be
+   * the one exception. Taking the view changes nothing the player can see, so it is told.
+   * (The main window brings a file it knows to be playing back through `QUICK_VIEW_RESTORED_EVENT`
+   * instead, which is what keeps the position.)
    */
-  const isReopeningDisplayedFile = payload.path === currentFilePath.value;
+  const isReopeningPlayerFile = payload.path === playerPath.value;
 
-  stashCurrentTextIfDirty();
-  currentFilePath.value = payload.path;
+  takeView(payload.path);
 
-  if (isReopeningDisplayedFile) {
+  if (isReopeningPlayerFile) {
     mediaPlayerRef.value?.restart();
   }
 
@@ -1365,6 +1465,7 @@ async function setupEventListeners() {
   unlistenLoadFile = await listen<{
     path: string;
     siblingPaths: string[] | null;
+    editable: boolean;
   }>(
     QUICK_VIEW_LOAD_FILE_EVENT,
     event => applyLoadedFile(event.payload),
@@ -1378,12 +1479,16 @@ async function setupEventListeners() {
         return;
       }
 
+      // Shown before the file lands, as on the viewer's first load: a file arriving may end
+      // a background session, and the exit check that ends with must find this window on
+      // screen — the viewer is the whole process, and a hidden one is nothing to keep it for.
+      const currentWindow = getCurrentWindow();
+      await currentWindow.show();
       await applyLoadedFile({
         path: event.payload.path,
         siblingPaths: null,
+        editable: false,
       });
-      const currentWindow = getCurrentWindow();
-      await currentWindow.show();
       await currentWindow.setFocus();
     },
   );
@@ -1422,23 +1527,32 @@ async function setupEventListeners() {
     }
 
     if (shouldKeepPlayingAfter('dismiss')) {
+      isWindowHidden.value = true;
       await sendToBackgroundPlayback();
+      // A hidden window shows what it plays: a text file opened over the song was closed by
+      // this very gesture, so the song takes the view back now rather than on the way back.
+      await bringBackgroundPlayerIntoView();
       return;
     }
 
     await endBackgroundPlayback();
     resetQuickViewWindowState(false);
-  });
-
-  /** Back on screen: whatever is playing is visible again, so it is no longer a session. */
-  unlistenRestored = await listen(QUICK_VIEW_RESTORED_EVENT, () => {
-    void endBackgroundPlayback();
+    isWindowHidden.value = true;
   });
 
   /**
-   * The outside world asking the background session to stop. Pausing is the whole job: the
-   * isPlaying watcher above treats the silence exactly like a file that played itself out,
-   * ends the session, and lets the app quit if nothing is left on screen.
+   * Back on screen: whatever is playing takes the view back from anything opened over it, and
+   * being visible again is what ends the session — `isPlaybackOutOfView` sees to that.
+   */
+  unlistenRestored = await listen(QUICK_VIEW_RESTORED_EVENT, async () => {
+    isWindowHidden.value = false;
+    await bringBackgroundPlayerIntoView();
+  });
+
+  /**
+   * The outside world asking the background session to stop. Pausing is the whole job:
+   * `isPlaybackOutOfView` treats the silence exactly like a file that played itself out, ends
+   * the session, and lets the app quit if nothing is left on screen.
    */
   unlistenStopRequested = await listen(QUICK_VIEW_STOP_PLAYBACK_EVENT, () => {
     if (!isPlayingInBackground.value) {
@@ -1447,6 +1561,30 @@ async function setupEventListeners() {
 
     mediaPlayerRef.value?.pause();
   });
+
+  /**
+   * The session is ending and this window holds unsaved edits; the backend has put it back on
+   * screen. Ask, then finish what was started: quit if that was the request, otherwise put the
+   * window away as a dismissal would — what is left, a song playing on say, decides whether
+   * the process stays. A cancel leaves the window up, and the session with it.
+   */
+  unlistenSettleRequested = await listen<{ quitAfter: boolean }>(
+    QUICK_VIEW_SETTLE_UNSAVED_EDITS_EVENT,
+    async (event) => {
+      isWindowHidden.value = false;
+
+      if (!(await settleAllUnsavedEdits())) {
+        return;
+      }
+
+      if (event.payload.quitAfter) {
+        await invoke('exit_app');
+        return;
+      }
+
+      await closeWindow('dismiss');
+    },
+  );
 
   unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
     event.preventDefault();
@@ -1461,47 +1599,22 @@ watch(fileType, (newType) => {
   }
 });
 
-watch(
-  [isMarkdownQuickView, textPreviewLoading],
-  async () => {
-    teardownMarkdownScrollSync();
-
-    if (textPreviewLoading.value) {
-      return;
-    }
-
-    await nextTick();
-    syncTextEditorScrollHeight();
-
-    if (!isMarkdownQuickView.value) {
-      return;
-    }
-
-    await nextTick();
-    let scrollSyncCleanup = setupMarkdownScrollSync();
-
-    if (!scrollSyncCleanup) {
-      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-      scrollSyncCleanup = setupMarkdownScrollSync();
-    }
-
-    markdownScrollSyncTeardown = scrollSyncCleanup ?? null;
-  },
-);
-
-watch(currentFilePath, (path) => {
-  void nextTick(() => {
-    scrollActiveThumbIntoView();
-  });
-
-  // Resolved ahead of the show being asked for, so a track left playing has its material ready
-  // by the time the ten-second countdown runs out.
+// Resolved ahead of the show being asked for, so a track left playing has its material ready
+// by the time the ten-second countdown runs out. Follows the player rather than the view: a
+// song playing behind a text file keeps its material for when it takes the view back.
+watch(playerPath, (path) => {
   if (path && !isHttpOrHttpsUrl(path) && determineFileType(path) === 'audio') {
     void artistShow.load(path);
   }
   else {
     void artistShow.load(null);
   }
+});
+
+watch(currentFilePath, (path) => {
+  void nextTick(() => {
+    scrollActiveThumbIntoView();
+  });
 
   if (!path || determineFileType(path) !== 'text') {
     textEditorValue.value = '';
@@ -1560,6 +1673,7 @@ onMounted(async () => {
     await applyLoadedFile({
       path: standaloneFile,
       siblingPaths: null,
+      editable: false,
     });
     return;
   }
@@ -1577,7 +1691,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown, true);
-  teardownMarkdownScrollSync();
   stripThumbnails.clearThumbnails();
   stripVideoThumbnails.clearThumbnails();
 
@@ -1607,6 +1720,10 @@ onUnmounted(() => {
 
   if (unlistenStopRequested) {
     unlistenStopRequested();
+  }
+
+  if (unlistenSettleRequested) {
+    unlistenSettleRequested();
   }
 });
 </script>
@@ -1642,41 +1759,18 @@ onUnmounted(() => {
         class="quick-view__body"
         :class="{
           'quick-view__body--stretch': fileType === 'text',
-          'quick-view__body--media': fileType === 'video' || fileType === 'audio',
+          'quick-view__body--media': isPlayerInView,
         }"
       >
-        <!-- Deliberately *not* keyed on the file path. These three own the element that
-             `requestFullscreen` was called on, and remounting it on every next-file dropped
-             the window out of fullscreen mid-browse. Both components reset themselves when
-             `src` changes, so one instance can carry the whole folder. -->
+        <!-- Deliberately *not* keyed on the file path. The viewer and the players own the
+             element that `requestFullscreen` was called on, and remounting it on every
+             next-file dropped the window out of fullscreen mid-browse. Both components reset
+             themselves when `src` changes, so one instance can carry the whole folder. -->
         <ImageViewer
           v-if="fileType === 'image'"
           :src="fileAssetUrl"
           :alt="fileName"
           class="quick-view__image"
-        />
-
-        <MediaPlayer
-          v-else-if="fileType === 'video'"
-          ref="mediaPlayerRef"
-          :src="fileMediaUrl"
-          kind="video"
-          class="quick-view__video"
-          :source-path="playerSourcePath"
-          allow-frame-capture
-          autoplay
-        />
-
-        <MediaPlayer
-          v-else-if="fileType === 'audio'"
-          ref="mediaPlayerRef"
-          :src="fileMediaUrl"
-          kind="audio"
-          :source-path="playerSourcePath"
-          :poster="audioArtworkSrc"
-          :now-playing="artistShow.show.value"
-          class="quick-view__audio"
-          autoplay
         />
 
         <iframe
@@ -1687,122 +1781,32 @@ onUnmounted(() => {
           class="quick-view__pdf"
         />
 
-        <div
+        <TextEditor
           v-else-if="fileType === 'text'"
+          ref="textEditorRef"
           :key="`${currentFilePath}-text`"
-          class="quick-view__text-panel"
+          v-model="textEditorValue"
+          :readonly="textEditorReadOnly"
+          :markdown="isMarkdownQuickView"
+          :source-path="markdownSourcePath"
+          :mode="editorMode"
+          :can-save="canSaveText"
+          :saving="textSaveInProgress"
+          :loading="textPreviewLoading"
+          :error="textPreviewError"
+          @update:mode="setEditorMode"
+          @save="void saveTextFile()"
+          @revert="revertTextChanges()"
         >
-          <div class="quick-view__text-toolbar">
-            <Button
-              size="xs"
-              variant="outline"
-              :disabled="!canSaveText"
-              @click="void revertTextChanges()"
-            >
-              <Undo2Icon
-                :size="16"
-                class="quick-view__toolbar-icon"
-                aria-hidden="true"
-              />
-              {{ t('quickView.revertText') }}
-            </Button>
-            <Button
-              size="xs"
-              :disabled="!canSaveText"
-              :is-loading="textSaveInProgress"
-              @click="void saveTextFile()"
-            >
-              <SaveIcon
-                v-if="!textSaveInProgress"
-                :size="16"
-                class="quick-view__toolbar-icon"
-                aria-hidden="true"
-              />
-              {{ t('quickView.saveText') }}
-            </Button>
-            <span
-              v-if="textWasTruncated"
-              class="quick-view__text-toolbar-hint"
-            >
-              {{ t('quickView.readOnlyTruncated') }}
-            </span>
-            <span
-              v-else-if="!textSaveRoundTripSafe"
-              class="quick-view__text-toolbar-hint"
-            >
-              {{ t('quickView.readOnlyEncoding') }}
-            </span>
-          </div>
-          <div
-            v-if="textPreviewLoading"
-            class="quick-view__text-loading"
-          >
-            <Loader2Icon
-              :size="48"
-              class="quick-view__loading-icon"
-            />
-          </div>
-          <p
-            v-else-if="textPreviewError"
-            class="quick-view__text-error"
-          >
-            {{ textPreviewError }}
-          </p>
-          <div
-            v-else-if="isMarkdownQuickView"
-            class="quick-view__text-split"
-            role="group"
-            :aria-label="t('quickView.markdownSplitGroup')"
-          >
-            <div
-              ref="markdownSplitSourcePane"
-              class="quick-view__text-split-pane quick-view__text-split-pane--source"
-              :aria-label="t('quickView.markdownSource')"
-            >
-              <ScrollArea class="quick-view__text-scroll">
-                <textarea
-                  ref="textEditorRef"
-                  v-model="textEditorValue"
-                  class="quick-view__text-area"
-                  spellcheck="false"
-                  :readonly="textEditorReadOnly"
-                  @input="onTextEditorInput"
-                />
-              </ScrollArea>
-            </div>
-            <div
-              ref="markdownSplitPreviewPane"
-              class="quick-view__text-split-pane quick-view__text-split-pane--preview"
-              :aria-label="t('quickView.markdownPreview')"
-            >
-              <ScrollArea class="quick-view__text-scroll">
-                <div
-                  class="markdown-content quick-view__markdown-preview"
-                  v-html="markdownPreviewHtml"
-                />
-              </ScrollArea>
-            </div>
-          </div>
-          <div
-            v-else
-            ref="plainTextScrollPane"
-            class="quick-view__text-scroll-wrap"
-          >
-            <ScrollArea class="quick-view__text-scroll">
-              <textarea
-                ref="textEditorRef"
-                v-model="textEditorValue"
-                class="quick-view__text-area"
-                spellcheck="false"
-                :readonly="textEditorReadOnly"
-                @input="onTextEditorInput"
-              />
-            </ScrollArea>
-          </div>
-        </div>
+          <template #status>
+            <span v-if="textWasTruncated">{{ t('quickView.readOnlyTruncated') }}</span>
+            <span v-else-if="!textSaveRoundTripSafe">{{ t('quickView.readOnlyEncoding') }}</span>
+            <span v-else-if="!isEditingAllowed">{{ t('quickView.readOnlyExternal') }}</span>
+          </template>
+        </TextEditor>
 
         <div
-          v-else
+          v-else-if="!isPlayerInView"
           :key="`${currentFilePath}-unsupported`"
           class="quick-view__unsupported"
         >
@@ -1814,6 +1818,34 @@ onUnmounted(() => {
             {{ t('quickView.unsupportedFileType') }}
           </p>
         </div>
+
+        <!-- Mounted for `playerPath`, not for the file in view: a song plays on behind a text
+             file opened over it, and hiding its element rather than unmounting it is what
+             keeps the sound. One player at a time, so there is never a second one to duet. -->
+        <MediaPlayer
+          v-if="playerKind === 'video'"
+          v-show="isPlayerInView"
+          ref="mediaPlayerRef"
+          :src="playerMediaUrl"
+          kind="video"
+          class="quick-view__video"
+          :source-path="playerSourcePath"
+          allow-frame-capture
+          autoplay
+        />
+
+        <MediaPlayer
+          v-else-if="playerKind === 'audio'"
+          v-show="isPlayerInView"
+          ref="mediaPlayerRef"
+          :src="playerMediaUrl"
+          kind="audio"
+          :source-path="playerSourcePath"
+          :poster="audioArtworkSrc"
+          :now-playing="isPlayerInView ? artistShow.show.value : null"
+          class="quick-view__audio"
+          autoplay
+        />
       </div>
     </template>
 
@@ -1922,6 +1954,14 @@ onUnmounted(() => {
     <div class="quick-view__hint">
       {{ t('quickView.closeHint') }}
     </div>
+
+    <UnsavedChangesDialog
+      :open="isUnsavedChangesPromptOpen"
+      :file-name="fileName"
+      @save="answerUnsavedChanges('save')"
+      @discard="answerUnsavedChanges('discard')"
+      @cancel="answerUnsavedChanges('cancel')"
+    />
   </div>
 </template>
 
@@ -2033,136 +2073,6 @@ onUnmounted(() => {
   min-height: 0;
   border: none;
   background: white;
-}
-
-.quick-view__text-panel {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  flex: 1 1 0;
-  flex-direction: column;
-  align-self: stretch;
-}
-
-.quick-view__text-toolbar {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  padding: 8px 10px;
-  border-bottom: 1px solid hsl(var(--border, 0 0% 90%));
-  gap: 12px;
-}
-
-.quick-view__text-toolbar-hint {
-  color: hsl(var(--muted-foreground, 0 0% 45%));
-  font-size: 12px;
-}
-
-.quick-view__toolbar-icon {
-  flex-shrink: 0;
-}
-
-.quick-view__text-loading {
-  display: flex;
-  min-height: 120px;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.quick-view__text-error {
-  padding: 16px;
-  margin: 0;
-  color: hsl(var(--destructive, 0 84% 45%));
-  font-size: 14px;
-}
-
-.quick-view__text-split {
-  display: flex;
-  width: 100%;
-  min-height: 0;
-  flex: 1 1 0;
-  flex-direction: row;
-}
-
-.quick-view__text-split-pane {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 50%;
-  flex-direction: column;
-}
-
-.quick-view__text-split-pane--source {
-  border-right: 1px solid hsl(var(--border, 0 0% 90%));
-}
-
-.quick-view__text-split-pane--source .quick-view__text-scroll {
-  min-height: 0;
-  flex: 1 1 0;
-}
-
-.quick-view__text-scroll-wrap {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 0;
-  flex-direction: column;
-}
-
-.quick-view__text-scroll {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  flex: 1 1 0;
-}
-
-.quick-view__text-scroll :deep(.sigma-ui-scroll-area__viewport) {
-  max-height: 100%;
-  overflow-anchor: none;
-}
-
-.quick-view__markdown-preview {
-  box-sizing: border-box;
-  padding: 12px 16px;
-  margin: 0;
-  color: hsl(var(--foreground, 0 0% 9%));
-  font-size: 0.875rem;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-@media (width <= 720px) {
-  .quick-view__text-split {
-    flex-direction: column;
-  }
-
-  .quick-view__text-split-pane--source {
-    min-height: 120px;
-    flex: 1 1 40%;
-    border-right: none;
-    border-bottom: 1px solid hsl(var(--border, 0 0% 90%));
-  }
-}
-
-.quick-view__text-area {
-  display: block;
-  overflow: hidden;
-  width: 100%;
-  min-height: 3.6em;
-  box-sizing: border-box;
-  padding: 12px 16px;
-  border: none;
-  margin: 0;
-  background: hsl(var(--background, 0 0% 100%));
-  color: hsl(var(--foreground, 0 0% 9%));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.45;
-  outline: none;
-  overflow-x: auto;
-  resize: none;
 }
 
 .quick-view__unsupported {
@@ -2299,19 +2209,6 @@ onUnmounted(() => {
     background: hsl(var(--background, 0 0% 10%));
   }
 
-  .quick-view__text-area {
-    background: hsl(var(--background, 0 0% 10%));
-    color: hsl(var(--foreground, 0 0% 95%));
-  }
-
-  .quick-view__text-toolbar {
-    border-bottom-color: hsl(var(--border, 0 0% 20%));
-  }
-
-  .quick-view__text-split-pane--source {
-    border-right-color: hsl(var(--border, 0 0% 20%));
-  }
-
   .quick-view__strip {
     border-top-color: hsl(var(--border, 0 0% 20%));
     background: hsl(var(--background, 0 0% 10%) / 95%);
@@ -2328,19 +2225,5 @@ onUnmounted(() => {
   .quick-view__hint {
     background: hsl(var(--background, 0 0% 10%) / 90%);
   }
-
-  .quick-view__markdown-preview {
-    color: hsl(var(--foreground, 0 0% 95%));
-  }
 }
-
-@media (prefers-color-scheme: dark) and (width <= 720px) {
-  .quick-view__text-split-pane--source {
-    border-bottom-color: hsl(var(--border, 0 0% 20%));
-  }
-}
-</style>
-
-<style>
-@import '@/styles/markdown-content.css';
 </style>

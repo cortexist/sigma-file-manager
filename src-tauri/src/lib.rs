@@ -69,6 +69,8 @@ const AUXILIARY_WINDOW_RELEASE_EVENT: &str = "auxiliary-window:release";
 const QUICK_VIEW_RESTORED_EVENT: &str = "quick-view:restored";
 /// Mirrors `QUICK_VIEW_STOP_PLAYBACK_EVENT` in `stores/runtime/quick-view.ts`.
 const QUICK_VIEW_STOP_PLAYBACK_EVENT: &str = "quick-view:stop-playback";
+/// Mirrors `QUICK_VIEW_SETTLE_UNSAVED_EDITS_EVENT` in `stores/runtime/quick-view.ts`.
+const QUICK_VIEW_SETTLE_UNSAVED_EDITS_EVENT: &str = "quick-view:settle-unsaved-edits";
 const PRINT_VIEW_NATIVE_CLOSE_REQUESTED_EVENT: &str = "print-view:native-close-requested";
 
 /// Set while the user has dismissed the main window to the background — its own titlebar
@@ -93,8 +95,10 @@ impl BackgroundResidency {
 ///
 /// Two facts, because they answer two different questions. Whether anything is playing at all
 /// decides where an activation goes: sound is what the user is following, and the window
-/// making it is the one they are reaching for. Whether it plays on behind a *hidden* window
-/// is the narrower case, and the only one that is a reason for the app to still be running.
+/// making it is the one they are reaching for. Whether it plays on *out of sight* — behind a
+/// hidden window, or behind another file the page was asked to show over it — is the narrower
+/// case: it is what the marker advertises, and, once no window is visible, the only reason
+/// for the app to still be running.
 #[derive(Default)]
 struct QuickViewPlayback {
     playing: std::sync::atomic::AtomicBool,
@@ -130,6 +134,73 @@ impl QuickViewPlayback {
     }
 }
 
+/// Whether Quick View holds text edits that are not on disk — in its editor, or stashed for
+/// files it has moved away from. Reported by the page, the only side that knows. It is the
+/// reason ending the session stops to ask: the page owns the question, the backend only owes
+/// it the chance — see `defer_session_end_to_quick_view`.
+#[derive(Default)]
+struct QuickViewUnsavedEdits(std::sync::atomic::AtomicBool);
+
+impl QuickViewUnsavedEdits {
+    fn set(&self, unsaved: bool) {
+        self.0.store(unsaved, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn active(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+#[tauri::command]
+fn set_quick_view_unsaved_edits(app: tauri::AppHandle, unsaved: bool) {
+    app.state::<QuickViewUnsavedEdits>().set(unsaved);
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SettleUnsavedEditsRequest {
+    /// Whether the app is to quit once the edits are settled, as opposed to the main window
+    /// merely having closed — in which case what is left (a song playing on, say) decides.
+    quit_after: bool,
+}
+
+/// Gives a Quick View holding unsaved edits the chance to ask before the session ends.
+///
+/// The page owns the question and the answer — save, discard, or not after all — so this only
+/// puts the window where the user can answer it and says what is ending. Returns whether the
+/// page was asked; when it was, the caller leaves the window alone, and the visible-window
+/// rule keeps the process for it. A quick view serving another application never gets here
+/// in practice: it shows nothing editable.
+pub(crate) fn defer_session_end_to_quick_view<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    quit_after: bool,
+) -> bool {
+    if !app.state::<QuickViewUnsavedEdits>().active() {
+        return false;
+    }
+
+    let Some(quick_view) = app.get_webview_window("quick-view") else {
+        return false;
+    };
+
+    let _ = quick_view.show();
+    window_activation::focus(&quick_view);
+    let _ = app.emit_to(
+        tauri::EventTarget::webview_window("quick-view"),
+        QUICK_VIEW_SETTLE_UNSAVED_EDITS_EVENT,
+        SettleUnsavedEditsRequest { quit_after },
+    );
+
+    true
+}
+
+/// Quits outright. The page calls this once it has settled the edits a quit was deferred for;
+/// the deferral itself lives in `system_tray::quit_app`, so this must not route back through it.
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 /// Where the outward form of `behind_hidden_window` lives; `None` without a runtime dir.
 ///
 /// A session playing on behind a hidden window is invisible by definition, so anything that
@@ -142,9 +213,9 @@ fn background_playback_marker_path() -> Option<std::path::PathBuf> {
         .map(|dir| std::path::PathBuf::from(dir).join("sigma-file-manager-background-playback"))
 }
 
-/// Keeps the marker file matching `behind_hidden_window`: present exactly while a dismissed
-/// Quick View is still playing. It holds this process's PID because the file can outlive a
-/// crash — a reader owes the PID a liveness check before believing the marker.
+/// Keeps the marker file matching `behind_hidden_window`: present exactly while Quick View is
+/// playing something the user cannot see. It holds this process's PID because the file can
+/// outlive a crash — a reader owes the PID a liveness check before believing the marker.
 fn sync_background_playback_marker(playing: bool) {
     #[cfg(target_os = "linux")]
     if let Some(path) = background_playback_marker_path() {
@@ -167,14 +238,22 @@ fn sync_background_playback_marker(playing: bool) {
 /// job. Whatever registers a reason is also responsible for giving the user a way back to a
 /// window, since quitting will no longer happen on its own; for playback that way back is
 /// `show_playing_quick_view`, reached from the launcher and the tray.
+///
+/// The third is a Quick View holding unsaved edits: a session ending has just put that window
+/// back on screen with a question in it (`defer_session_end_to_quick_view`), and nothing may
+/// quit from under it while a freshly shown window can still report itself hidden. Only while
+/// the window exists — a stale report from a page that is gone must not hold the process open.
 fn should_keep_running_without_windows(app: &tauri::AppHandle) -> bool {
     app.state::<BackgroundResidency>().active()
         || app.state::<QuickViewPlayback>().is_behind_hidden_window()
+        || (app.state::<QuickViewUnsavedEdits>().active()
+            && app.get_webview_window("quick-view").is_some())
 }
 
-/// Reports whether Quick View kept playing after being dismissed. Called by the page itself:
-/// it is the only side that knows whether anything was playing when the window went away, and
-/// it calls again when playback ends so a finished file stops holding the process open.
+/// Reports whether Quick View is playing something out of sight — dismissed with the file
+/// playing, or showing another file over it. Called by the page itself: it is the only side
+/// that knows what is playing and what is in view, and it calls again when playback ends or
+/// comes back in front, so a finished file stops holding the process open.
 #[tauri::command]
 fn set_quick_view_background_playback(app: tauri::AppHandle, playing: bool) {
     app.state::<QuickViewPlayback>()
@@ -413,14 +492,35 @@ fn set_quick_view_ownership(app: tauri::AppHandle, external: bool) {
     app.state::<QuickViewOwnership>().set_external(external);
 }
 
-/// Which windows closing the main window takes with it: its own satellites, never a viewer
-/// currently serving another application.
-fn session_closing_labels(quick_view_owned_externally: bool) -> &'static [&'static str] {
-    if quick_view_owned_externally {
+/// Which windows closing the main window takes with it: its own satellites, never a quick
+/// view that is to be left up — one serving another application, or one with a question to
+/// ask first.
+fn session_closing_labels(leave_quick_view: bool) -> &'static [&'static str] {
+    if leave_quick_view {
         &["main", "print-view"]
     } else {
         &SESSION_WINDOW_LABELS
     }
+}
+
+/// Hides the satellites closing the main window takes with it, and names them for the exit
+/// check that follows. The satellites this session owns go with it — but only those: a quick
+/// view serving another application's file is that caller's viewing session, not sigma's to
+/// end, and one holding unsaved edits is first given the chance to ask. Either stays up, and
+/// the visible-window rule keeps the process alive to serve it. See `QuickViewOwnership` and
+/// `defer_session_end_to_quick_view`.
+fn hide_main_session_satellites(app: &tauri::AppHandle) -> &'static [&'static str] {
+    let leave_quick_view = app.state::<QuickViewOwnership>().is_external()
+        || defer_session_end_to_quick_view(app, false);
+    let closing_labels = session_closing_labels(leave_quick_view);
+
+    for label in &closing_labels[1..] {
+        if let Some(auxiliary) = app.get_webview_window(label) {
+            let _ = auxiliary.hide();
+        }
+    }
+
+    closing_labels
 }
 
 /// Lets the frontend re-run the check after hiding a window itself.
@@ -686,6 +786,7 @@ pub fn run() {
         .manage(BackgroundResidency::default())
         .manage(QuickViewOwnership::default())
         .manage(QuickViewPlayback::default())
+        .manage(QuickViewUnsavedEdits::default())
         .manage(file_picker::PickerSession(picker_request))
         .manage(file_manager1::PendingShowRequests::default());
 
@@ -814,6 +915,8 @@ pub fn run() {
             dismiss_main_window_to_background,
             set_quick_view_background_playback,
             set_quick_view_playing,
+            set_quick_view_unsaved_edits,
+            exit_app,
             exit_if_no_windows_left,
             file_manager1::drain_show_in_folder_requests,
             file_picker::file_picker_finish,
@@ -962,41 +1065,16 @@ pub fn run() {
         .setup(setup_handler)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+                let own_label = [window.label()];
+                let closing_labels: &[&str] = if window.label() == "main" {
                     // Still hidden rather than destroyed: the window is reused if the app
                     // turns out to have a reason to stay alive, and hiding it first makes it
                     // disappear immediately either way.
                     let _ = window.hide();
                     api.prevent_close();
-
-                    // The satellites this session owns go with it — but only those. A quick
-                    // view serving another application's file is that caller's viewing
-                    // session, not sigma's to end; it stays up, and the visible-window rule
-                    // below keeps the process alive to serve it. See `QuickViewOwnership`.
-                    let quick_view_external = window
-                        .app_handle()
-                        .state::<QuickViewOwnership>()
-                        .is_external();
-                    let session_labels = session_closing_labels(quick_view_external);
-
-                    for label in &session_labels[1..] {
-                        if let Some(auxiliary) = window.app_handle().get_webview_window(label) {
-                            let _ = auxiliary.hide();
-                        }
-                    }
+                    hide_main_session_satellites(window.app_handle())
                 } else {
                     handle_auxiliary_window_close_requested(window, api);
-                }
-
-                let own_label = [window.label()];
-                let closing_labels: &[&str] = if window.label() == "main" {
-                    session_closing_labels(
-                        window
-                            .app_handle()
-                            .state::<QuickViewOwnership>()
-                            .is_external(),
-                    )
-                } else {
                     &own_label
                 };
                 exit_if_last_window_closed(window.app_handle(), closing_labels);

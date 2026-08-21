@@ -158,5 +158,11 @@ pub fn update_tray_shortcut(app: tauri::AppHandle, shortcut: String) {
 }
 
 pub fn quit_app<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    // A quick view holding unsaved edits asks first, and quits the app itself once they are
+    // settled; cancelling the question cancels the quit.
+    if crate::defer_session_end_to_quick_view(app, true) {
+        return;
+    }
+
     app.exit(0);
 }

@@ -20,6 +20,7 @@ import {
   releaseAuxiliaryWindow,
   runAuxiliaryWindowTask,
 } from '@/utils/auxiliary-windows';
+import { quickViewWindowTitle } from '@/modules/quick-view/utils/window-title';
 
 export type QuickViewFileType = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'unsupported';
 
@@ -184,6 +185,12 @@ export const QUICK_VIEW_RESTORED_EVENT = 'quick-view:restored';
  * flag, sent by whatever consumes the background-playback marker (a status-bar button, say).
  */
 export const QUICK_VIEW_STOP_PLAYBACK_EVENT = 'quick-view:stop-playback';
+/**
+ * The session is ending — the main window closed, or the app was told to quit — and Quick View
+ * holds unsaved edits. The backend has put the window back on screen; the page asks its own
+ * question and, once answered, closes itself or quits the app as the payload says.
+ */
+export const QUICK_VIEW_SETTLE_UNSAVED_EDITS_EVENT = 'quick-view:settle-unsaved-edits';
 export const PRINT_VIEW_LOAD_FILE_EVENT = 'quick-view:load-file:print-view';
 
 async function runAuxiliaryWindowSteps(
@@ -212,9 +219,10 @@ export const useQuickViewStore = defineStore('quickView', () => {
   /** Folder Quick View is bound to; outlives the displayed file being deleted. */
   const lastOpenedDirectory = ref<string | null>(null);
   /**
-   * The file a dismissed Quick View is still playing behind its hidden window, if any. Kept
-   * apart from `lastOpenedPath` because it answers a different question: not what was shown
-   * last, but what is still running and can be brought back rather than reopened.
+   * The file Quick View is still playing out of sight, if any — behind its hidden window, or
+   * behind another file it was asked to show over it. Kept apart from `lastOpenedPath` because
+   * it answers a different question: not what was shown last, but what is still running and
+   * can be brought back rather than reopened.
    */
   const backgroundPlaybackPath = ref<string | null>(null);
   const displayedPathEventUnlisteners = shallowRef<UnlistenFn[]>([]);
@@ -290,6 +298,12 @@ export const useQuickViewStore = defineStore('quickView', () => {
             siblingPaths === undefined || siblingPaths === null || siblingPaths.length === 0
               ? null
               : siblingPaths,
+          /**
+           * Editing is sigma's own affair: another application is handed a viewer, and only
+           * that, for everything the window shows from here on — including text files reached
+           * through the strip. The mode flips with ownership, on every load.
+           */
+          editable: caller === 'main',
         });
       }
 
@@ -310,7 +324,7 @@ export const useQuickViewStore = defineStore('quickView', () => {
       const firstOpen = !hasAuxiliaryWindowBeenShown('quick-view');
 
       return runAuxiliaryWindowSteps(isCurrent, [
-        () => quickWindow.setTitle(`Sigma File Manager | Quick View - ${getFileName(path)}`),
+        () => quickWindow.setTitle(quickViewWindowTitle(getFileName(path))),
         () => quickWindow.center(),
         ...(firstOpen ? [showWindow, loadFile] : [loadFile, showWindow]),
         () => quickWindow.setFocus(),
@@ -408,9 +422,10 @@ export const useQuickViewStore = defineStore('quickView', () => {
   }
 
   /**
-   * Puts a still-playing Quick View back on screen without reloading it, which is what makes
-   * the shortcut a way back rather than a fresh start: the file is where the ear left it, not
-   * at the beginning again.
+   * Puts a still-playing file back in front — showing the window, and letting the page take
+   * the view back from whatever was opened over the file — without reloading it, which is
+   * what makes the shortcut a way back rather than a fresh start: the file is where the ear
+   * left it, not at the beginning again.
    */
   async function restoreBackgroundPlayback(): Promise<boolean> {
     /**
@@ -452,10 +467,11 @@ export const useQuickViewStore = defineStore('quickView', () => {
       return true;
     }
 
-    // Pressing the shortcut again on the file you can still hear asks for that window back.
-    // Reopening would reload it and lose the position, so this shows what is already running.
-    // A session with no window left behind it falls through to opening the file properly.
-    if (!isVisible && backgroundPlaybackPath.value === path && await restoreBackgroundPlayback()) {
+    // Pressing the shortcut on the file you can still hear asks for it back — from behind a
+    // hidden window, or from behind another file showing in a visible one. Reopening would
+    // reload it and lose the position, so this shows what is already running. A session with
+    // no window left behind it falls through to opening the file properly.
+    if (backgroundPlaybackPath.value === path && await restoreBackgroundPlayback()) {
       return true;
     }
 

@@ -2,6 +2,8 @@
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
+import type { TextEditorMarkdownMode, TextEditorTextMode } from '@/components/ui/text-editor/types';
+
 type NestedPaths<T, K extends keyof T = keyof T> = K extends string
   ? T[K] extends Record<string, unknown>
     ? T[K] extends unknown[]
@@ -335,12 +337,21 @@ export type QuickViewPlaybackOnDismiss
   /** Putting the window away always stops playback. */
     | 'stop';
 
+/** How Quick View lays out a markdown file: the rendered page, the source, or both. */
+export type QuickViewMarkdownMode = TextEditorMarkdownMode;
+
+/** Whether a plain text file opens for reading or for editing; it has no preview to split. */
+export type QuickViewTextMode = TextEditorTextMode;
+
 export type UserSettingsNavigator = {
   lastTabCloseBehavior: LastTabCloseBehavior;
   boldActiveTabTitle: boolean;
   /** Opening a video, image, or audio file uses Quick View instead of the system's app. */
   openMediaInQuickView: boolean;
   quickViewPlaybackOnDismiss: QuickViewPlaybackOnDismiss;
+  /** Both remembered from the Quick View toolbar rather than set from the settings page. */
+  quickViewMarkdownMode: QuickViewMarkdownMode;
+  quickViewTextMode: QuickViewTextMode;
   layout: NavigatorLayout;
   infoPanel: UserSettingsNavigatorInfoPanel;
   showHiddenFiles: boolean;

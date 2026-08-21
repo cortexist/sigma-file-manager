@@ -35,7 +35,7 @@
       {
         "label": "quick-view",
         "create": false,
-        "title": "Sigma File Manager | Quick View",
+        "title": "Sigma Quick View",
         "width": 1280,
         "height": 720,
         "minWidth": 300,

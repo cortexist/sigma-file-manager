@@ -16,7 +16,7 @@ import {
 import { BUILTIN_NAVIGATOR_ICON_THEME_IDS } from '@/types/icon-theme';
 
 export const USER_SETTINGS_SCHEMA_VERSION_KEY = '__schemaVersion';
-export const USER_SETTINGS_SCHEMA_VERSION = 27;
+export const USER_SETTINGS_SCHEMA_VERSION = 29;
 
 export const DEFAULT_GLOBAL_SEARCH_IGNORED_PATHS = [
   '/node_modules',
@@ -461,6 +461,24 @@ async function migrateUserSettingsStep(storage: StorageAdapter, fromVersion: num
     }
   }
 
+  if (fromVersion === 28 && toVersion === 29) {
+    await setDefaultChoiceIfMissing(
+      storage,
+      'navigator.quickViewTextMode',
+      ['read', 'edit'],
+      'read',
+    );
+  }
+
+  if (fromVersion === 27 && toVersion === 28) {
+    await setDefaultChoiceIfMissing(
+      storage,
+      'navigator.quickViewMarkdownMode',
+      ['read', 'split', 'edit'],
+      'read',
+    );
+  }
+
   if (fromVersion === 25 && toVersion === 26) {
     const existingPlaybackOnDismiss = await storage.get<unknown>(
       'navigator.quickViewPlaybackOnDismiss',
@@ -537,6 +555,20 @@ async function setDefaultBooleanIfMissing(
   const existingValue = await storage.get<unknown>(key);
 
   if (typeof existingValue !== 'boolean') {
+    await storage.set(key, defaultValue);
+  }
+}
+
+/** Like the boolean one, for a setting that is one of a fixed set of words. */
+async function setDefaultChoiceIfMissing(
+  storage: StorageAdapter,
+  key: string,
+  choices: readonly string[],
+  defaultValue: string,
+) {
+  const existingValue = await storage.get<unknown>(key);
+
+  if (typeof existingValue !== 'string' || !choices.includes(existingValue)) {
     await storage.set(key, defaultValue);
   }
 }
