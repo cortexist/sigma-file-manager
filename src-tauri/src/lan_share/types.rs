@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
+// Copyright © 2026 Cortexist, LLC (modifications). All rights reserved.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -29,9 +30,49 @@ pub(super) struct ShareState {
     pub(super) file_hub: Option<Vec<PathBuf>>,
 }
 
+/// How the share is served, from the LAN share section of the user's settings.
+///
+/// Absent fields fall back to the historical behavior — HTTP and HTTPS both on,
+/// HTTPS under a generated self-signed certificate — so a caller that sends no
+/// config gets the same server as before the settings existed.
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanShareConfig {
+    #[serde(default = "default_true")]
+    pub enable_http: bool,
+    #[serde(default = "default_true")]
+    pub enable_https: bool,
+    /// PEM certificate for HTTPS, leaf first, chain allowed. Paired with `key_path`;
+    /// when both are unset a self-signed certificate is generated instead.
+    #[serde(default)]
+    pub cert_path: Option<String>,
+    #[serde(default)]
+    pub key_path: Option<String>,
+    /// Hostname advertised in share URLs in place of the mDNS name — for networks
+    /// whose DNS (and certificate) cover a name of the user's own.
+    #[serde(default)]
+    pub custom_hostname: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for LanShareConfig {
+    fn default() -> Self {
+        Self {
+            enable_http: true,
+            enable_https: true,
+            cert_path: None,
+            key_path: None,
+            custom_hostname: None,
+        }
+    }
+}
+
 pub(super) struct ActiveServer {
-    pub(super) http_shutdown: tokio::sync::watch::Sender<bool>,
-    pub(super) http_task: tokio::task::JoinHandle<()>,
+    pub(super) http_shutdown: Option<tokio::sync::watch::Sender<bool>>,
+    pub(super) http_task: Option<tokio::task::JoinHandle<()>>,
     pub(super) https_handle: Option<axum_server::Handle<SocketAddr>>,
     pub(super) https_task: Option<tokio::task::JoinHandle<()>>,
     pub(super) mdns_daemon: Option<mdns_sd::ServiceDaemon>,
@@ -43,7 +84,9 @@ pub(super) static ACTIVE_SERVER: once_cell::sync::Lazy<Arc<Mutex<Option<ActiveSe
 #[derive(Serialize)]
 pub struct LanShareResult {
     pub address: String,
-    pub mdns_address: Option<String>,
+    /// Full URL under a friendly name (the custom hostname, or the mDNS name when
+    /// a client following it would not hit a certificate for some other name).
+    pub hostname_address: Option<String>,
     pub ios_address: Option<String>,
 }
 

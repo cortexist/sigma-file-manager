@@ -199,6 +199,13 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
       showToolbarForExternalImages: true,
       showToolbarForExternalPaths: true,
     },
+    lanShare: {
+      protocol: 'httpAndHttps',
+      certificateSource: 'selfSigned',
+      certificatePath: '',
+      privateKeyPath: '',
+      customHostname: '',
+    },
     userDirectories: {},
     infusion: {
       /*

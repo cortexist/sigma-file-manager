@@ -282,4 +282,35 @@ describe('migrateUserSettingsStorage', () => {
     expect(storage.values.get('globalSearch.typoTolerance')).toBe(false);
     expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);
   });
+
+  it('defaults the LAN share settings when migrating from schema version 29', async () => {
+    const storage = createStorageAdapter({
+      [USER_SETTINGS_SCHEMA_VERSION_KEY]: 29,
+    });
+
+    await migrateUserSettingsStorage(storage);
+
+    expect(storage.values.get('lanShare.protocol')).toBe('httpAndHttps');
+    expect(storage.values.get('lanShare.certificateSource')).toBe('selfSigned');
+    expect(storage.values.get('lanShare.certificatePath')).toBe('');
+    expect(storage.values.get('lanShare.privateKeyPath')).toBe('');
+    expect(storage.values.get('lanShare.customHostname')).toBe('');
+    expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);
+  });
+
+  it('keeps already-chosen LAN share settings when migrating from schema version 29', async () => {
+    const storage = createStorageAdapter({
+      [USER_SETTINGS_SCHEMA_VERSION_KEY]: 29,
+      'lanShare.protocol': 'httpsOnly',
+      'lanShare.certificateSource': 'certificateFile',
+      'lanShare.certificatePath': '/certs/share.crt',
+    });
+
+    await migrateUserSettingsStorage(storage);
+
+    expect(storage.values.get('lanShare.protocol')).toBe('httpsOnly');
+    expect(storage.values.get('lanShare.certificateSource')).toBe('certificateFile');
+    expect(storage.values.get('lanShare.certificatePath')).toBe('/certs/share.crt');
+    expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);
+  });
 });

@@ -77,14 +77,6 @@ pub(super) fn format_http_url(host: &str, port: u16) -> String {
     }
 }
 
-pub(super) fn format_host_port(host: &str, port: u16) -> String {
-    if port == HTTP_DEFAULT_PORT {
-        host.to_string()
-    } else {
-        format!("{host}:{port}")
-    }
-}
-
 pub(super) fn format_https_url(host: &str, port: u16) -> String {
     if port == HTTPS_DEFAULT_PORT {
         format!("https://{host}")
