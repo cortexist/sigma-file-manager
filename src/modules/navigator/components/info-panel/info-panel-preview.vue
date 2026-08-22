@@ -28,8 +28,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { isWslPath } from '@/utils/normalize-path';
 import { fileContentVersion } from '@/utils/file-content-version';
 import type { DirEntry } from '@/types/dir-entry';
-import { determineFileType } from '@/stores/runtime/quick-view';
+import { determineFileType, getFileExtension } from '@/stores/runtime/quick-view';
 import { decodeTextFileBytesWithEncoding } from '@/utils/decode-text-file-bytes';
+import { MarkdownView } from '@/components/ui/text-editor';
 
 const { t } = useI18n();
 
@@ -75,6 +76,13 @@ const textPreviewContent = ref('');
 const textPreviewLoading = ref(false);
 const textPreviewFailed = ref(false);
 let textPreviewRequestSequence = 0;
+
+/** Markdown is shown as the page it describes; the source is for Quick View's editor. */
+const isMarkdownPreview = computed(() => {
+  const path = props.selectedEntry?.path;
+
+  return Boolean(path) && getFileExtension(path ?? '') === 'md';
+});
 
 /**
  * Changes when the selected file is written to in place, which the path alone cannot express.
@@ -344,7 +352,16 @@ watch(
         v-else
         class="info-panel-preview__text-scroll"
       >
-        <div class="info-panel-preview__text-body">
+        <MarkdownView
+          v-if="isMarkdownPreview"
+          :source="textPreviewContent"
+          :source-path="selectedEntry?.path ?? null"
+          dense
+        />
+        <div
+          v-else
+          class="info-panel-preview__text-body"
+        >
           {{ textPreviewContent }}
         </div>
       </ScrollArea>

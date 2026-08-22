@@ -3,7 +3,11 @@
 // Copyright © 2026 Cortexist, LLC. All rights reserved.
 
 import { describe, expect, it } from 'vitest';
-import { shouldKeepPlayingAfterDismissal } from '../background-playback';
+import {
+  backgroundPlayerAfterViewChange,
+  isPlaybackFileType,
+  shouldKeepPlayingAfterDismissal,
+} from '../background-playback';
 
 describe('shouldKeepPlayingAfterDismissal', () => {
   /**
@@ -61,5 +65,99 @@ describe('shouldKeepPlayingAfterDismissal', () => {
         isPlaying: true,
       })).toBe(false);
     }
+  });
+});
+
+describe('backgroundPlayerAfterViewChange', () => {
+  const SONG = '/home/user/Music/song.flac';
+  const OTHER_SONG = '/home/user/Music/other.flac';
+  const NOTES = '/home/user/Documents/notes.md';
+  const README = '/home/user/Documents/readme.md';
+
+  function playback(path: string) {
+    return {
+      path,
+      isPlayback: true,
+    };
+  }
+
+  function document(path: string) {
+    return {
+      path,
+      isPlayback: false,
+    };
+  }
+
+  /**
+   * The case the slot exists for: a text file opened over a playing song is a decision to
+   * stop looking, not to stop listening, so the song stays mounted behind the view.
+   */
+  it('moves a playing file behind the view when a document takes it', () => {
+    expect(backgroundPlayerAfterViewChange({
+      displayed: playback(SONG),
+      background: null,
+      incoming: document(NOTES),
+      behavior: 'keepPlaying',
+      isPlaying: true,
+    })).toBe(SONG);
+  });
+
+  /** Moving between documents leaves whatever is playing behind them alone. */
+  it('keeps the background player across documents', () => {
+    expect(backgroundPlayerAfterViewChange({
+      displayed: document(NOTES),
+      background: SONG,
+      incoming: document(README),
+      behavior: 'keepPlaying',
+      isPlaying: true,
+    })).toBe(SONG);
+  });
+
+  /**
+   * One player: a playback file taking the view ends whatever was behind it — and when it is
+   * the very file that was behind the view, it is simply shown where it is.
+   */
+  it('clears the slot whenever a playback file takes the view', () => {
+    expect(backgroundPlayerAfterViewChange({
+      displayed: document(NOTES),
+      background: SONG,
+      incoming: playback(OTHER_SONG),
+      behavior: 'keepPlaying',
+      isPlaying: true,
+    })).toBeNull();
+
+    expect(backgroundPlayerAfterViewChange({
+      displayed: document(NOTES),
+      background: SONG,
+      incoming: playback(SONG),
+      behavior: 'keepPlaying',
+      isPlaying: true,
+    })).toBeNull();
+  });
+
+  /** The same rule as dismissing the window: nothing playing, or told to stop, means nothing kept. */
+  it('drops a file that is not playing, or that the setting says to stop', () => {
+    expect(backgroundPlayerAfterViewChange({
+      displayed: playback(SONG),
+      background: null,
+      incoming: document(NOTES),
+      behavior: 'keepPlaying',
+      isPlaying: false,
+    })).toBeNull();
+
+    expect(backgroundPlayerAfterViewChange({
+      displayed: playback(SONG),
+      background: null,
+      incoming: document(NOTES),
+      behavior: 'stop',
+      isPlaying: true,
+    })).toBeNull();
+  });
+
+  it('knows which kinds of file the player is for', () => {
+    expect(isPlaybackFileType('audio')).toBe(true);
+    expect(isPlaybackFileType('video')).toBe(true);
+    expect(isPlaybackFileType('text')).toBe(false);
+    expect(isPlaybackFileType('image')).toBe(false);
   });
 });

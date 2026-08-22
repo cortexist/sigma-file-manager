@@ -22,6 +22,8 @@ function createNavigatorSettings(overrides: Partial<UserSettingsNavigator> = {})
     boldActiveTabTitle: false,
     openMediaInQuickView: true,
     quickViewPlaybackOnDismiss: 'keepPlaying',
+    quickViewMarkdownMode: 'read',
+    quickViewTextMode: 'read',
     splitViewMode: 'split',
     layout: {
       type: {

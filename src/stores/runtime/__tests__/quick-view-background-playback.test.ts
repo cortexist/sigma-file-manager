@@ -9,6 +9,7 @@ import {
 
 const order: string[] = [];
 const emittedEvents: string[] = [];
+const emittedPayloads: unknown[] = [];
 const isVisibleMock = vi.fn(async () => false);
 
 function recordingWindow() {
@@ -32,8 +33,9 @@ vi.mock('@/utils/auxiliary-windows', () => ({
     window: recordingWindow(),
     isCurrent: () => true,
   }),
-  emitAuxiliaryWindowEvent: async (_label: string, event: string) => {
+  emitAuxiliaryWindowEvent: async (_label: string, event: string, payload: unknown) => {
     emittedEvents.push(event);
+    emittedPayloads.push(payload);
     order.push(event === 'quick-view:load-file' ? 'load' : event);
     return true;
   },
@@ -64,6 +66,7 @@ describe('quick view background playback', () => {
   beforeEach(() => {
     order.length = 0;
     emittedEvents.length = 0;
+    emittedPayloads.length = 0;
     isVisibleMock.mockReset();
     isVisibleMock.mockResolvedValue(false);
     setActivePinia(createPinia());
@@ -99,6 +102,50 @@ describe('quick view background playback', () => {
 
     expect(emittedEvents).toContain('quick-view:load-file');
     expect(store.lastOpenedPath).toBe(OTHER_VIDEO);
+  });
+
+  /**
+   * A visible window showing another file over the song — a text file opened while it played
+   * — is the same ask: the song comes back in front, where it is, rather than from the top.
+   */
+  it('restores the playing file over another file in a visible window', async () => {
+    isVisibleMock.mockResolvedValue(true);
+
+    const { useQuickViewStore } = await import('@/stores/runtime/quick-view');
+    const store = useQuickViewStore();
+    store.lastOpenedPath = '/home/user/Documents/notes.md';
+    store.backgroundPlaybackPath = VIDEO;
+
+    const restored = await store.toggleQuickView(VIDEO);
+
+    expect(restored).toBe(true);
+    expect(order).toEqual(['show', 'setFocus', 'quick-view:restored']);
+    expect(emittedEvents).not.toContain('quick-view:load-file');
+    expect(store.backgroundPlaybackPath).toBeNull();
+    expect(store.lastOpenedPath).toBe(VIDEO);
+  });
+
+  /**
+   * Another application is handed a viewer and only that: its files arrive read-only, and so
+   * does everything the window reaches from them. Sigma's own opens may edit.
+   */
+  it('marks files from another application read-only and its own editable', async () => {
+    const { useQuickViewStore } = await import('@/stores/runtime/quick-view');
+    const store = useQuickViewStore();
+
+    await store.openFileFromMainWindow(VIDEO, null, 'external');
+    await store.openFileFromMainWindow(OTHER_VIDEO);
+
+    expect(emittedPayloads).toEqual([
+      expect.objectContaining({
+        path: VIDEO,
+        editable: false,
+      }),
+      expect.objectContaining({
+        path: OTHER_VIDEO,
+        editable: true,
+      }),
+    ]);
   });
 
   /** With the window already on screen the shortcut still means close, as it always did. */

@@ -43,6 +43,51 @@ describe('migrateUserSettingsStorage', () => {
     expect(storage.save).toHaveBeenCalledOnce();
   });
 
+  it('defaults the Quick View markdown mode for settings files that predate it', async () => {
+    const storage = createStorageAdapter({
+      [USER_SETTINGS_SCHEMA_VERSION_KEY]: 27,
+    });
+
+    await migrateUserSettingsStorage(storage);
+
+    expect(storage.values.get('navigator.quickViewMarkdownMode')).toBe('read');
+    expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);
+  });
+
+  it('keeps a Quick View markdown mode that was already chosen', async () => {
+    const storage = createStorageAdapter({
+      [USER_SETTINGS_SCHEMA_VERSION_KEY]: 27,
+      'navigator.quickViewMarkdownMode': 'edit',
+    });
+
+    await migrateUserSettingsStorage(storage);
+
+    expect(storage.values.get('navigator.quickViewMarkdownMode')).toBe('edit');
+  });
+
+  /** A plain text file opens for reading unless the user has said otherwise. */
+  it('defaults the Quick View text mode for settings files that predate it', async () => {
+    const storage = createStorageAdapter({
+      [USER_SETTINGS_SCHEMA_VERSION_KEY]: 28,
+    });
+
+    await migrateUserSettingsStorage(storage);
+
+    expect(storage.values.get('navigator.quickViewTextMode')).toBe('read');
+    expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);
+  });
+
+  it('keeps a Quick View text mode that was already chosen', async () => {
+    const storage = createStorageAdapter({
+      [USER_SETTINGS_SCHEMA_VERSION_KEY]: 28,
+      'navigator.quickViewTextMode': 'edit',
+    });
+
+    await migrateUserSettingsStorage(storage);
+
+    expect(storage.values.get('navigator.quickViewTextMode')).toBe('edit');
+  });
+
   it('preserves the previous relative modified-date preference when migrating', async () => {
     const storage = createStorageAdapter({
       [USER_SETTINGS_SCHEMA_VERSION_KEY]: 7,

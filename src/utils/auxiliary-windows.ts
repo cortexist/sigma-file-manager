@@ -9,6 +9,7 @@ import { getAllWindows } from '@tauri-apps/api/window';
 import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
+import { QUICK_VIEW_WINDOW_TITLE } from '@/modules/quick-view/utils/window-title';
 
 export type AuxiliaryWindowLabel = 'quick-view' | 'print-view';
 
@@ -26,7 +27,7 @@ const AUXILIARY_WINDOW_READY_EVENTS: Record<AuxiliaryWindowLabel, string> = {
 
 const AUXILIARY_WINDOW_OPTIONS: Record<AuxiliaryWindowLabel, ConstructorParameters<typeof WebviewWindow>[1]> = {
   'quick-view': {
-    title: 'Sigma File Manager | Quick View',
+    title: QUICK_VIEW_WINDOW_TITLE,
     url: '/quick-view',
     width: 1280,
     height: 720,
