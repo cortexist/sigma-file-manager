@@ -180,6 +180,54 @@ describe('ImageViewer', () => {
   });
 
   describe('zooming', () => {
+    /**
+     * The percentage is real magnification — screen pixels per image pixel — not a
+     * multiplier of the fitted view. A 1000px-wide image fitted into an 800px pane is
+     * showing 80% of its pixels, and the readout must say so; the regression this guards
+     * is two different panes both claiming "100%" for the same file at different sizes.
+     */
+    it('reports magnification against the image itself, not the fitted view', async () => {
+      const wrapper = mountViewer();
+
+      await completeLoad(visibleImage(wrapper), 1440, 810);
+
+      // Fit box in the 800x600 pane is 800x450: 800 / 1440 of actual size.
+      expect(zoomLabel(wrapper)).toBe('56%');
+    });
+
+    it('counts screen pixels through the device pixel ratio', async () => {
+      Object.defineProperty(window, 'devicePixelRatio', {
+        configurable: true,
+        value: 2,
+      });
+
+      try {
+        const wrapper = mountViewer();
+        await completeLoad(visibleImage(wrapper));
+
+        // 800 CSS px of fit box are 1600 screen px, showing the 1000px image past 1:1.
+        expect(zoomLabel(wrapper)).toBe('160%');
+      }
+      finally {
+        Object.defineProperty(window, 'devicePixelRatio', {
+          configurable: true,
+          value: 1,
+        });
+      }
+    });
+
+    it('shows no percentage while only the thumbnail is up', async () => {
+      const wrapper = mountViewer({ previewSrc: PREVIEW_SRC });
+
+      // The thumbnail's dimensions say nothing about the original's, so a percentage
+      // computed from them would be exactly the lie this label used to tell.
+      await completeLoad(visibleImage(wrapper), 400, 200);
+      expect(zoomLabel(wrapper)).toBe('—');
+
+      await completeLoad(wrapper.get('.image-viewer__decoder'), 1000, 500);
+      expect(zoomLabel(wrapper)).toBe('80%');
+    });
+
     it('zooms in on a wheel scroll up', async () => {
       const wrapper = mountViewer();
       await completeLoad(visibleImage(wrapper));
@@ -187,7 +235,7 @@ describe('ImageViewer', () => {
       const event = await dispatch(wrapper.element, 'wheel', { deltaY: -240 });
 
       expect(event.defaultPrevented).toBe(true);
-      expect(Number.parseInt(zoomLabel(wrapper), 10)).toBeGreaterThan(100);
+      expect(Number.parseInt(zoomLabel(wrapper), 10)).toBeGreaterThan(80);
     });
 
     /**
@@ -202,7 +250,7 @@ describe('ImageViewer', () => {
       const event = await dispatch(wrapper.element, 'wheel', { deltaY: 240 });
 
       expect(event.defaultPrevented).toBe(false);
-      expect(zoomLabel(wrapper)).toBe('100%');
+      expect(zoomLabel(wrapper)).toBe('80%');
     });
 
     it('consumes a scroll-out once zoomed, so it zooms back out instead of scrolling', async () => {
@@ -227,11 +275,11 @@ describe('ImageViewer', () => {
       expect(zoomOut.attributes('disabled')).toBeDefined();
 
       await zoomIn.trigger('click');
-      expect(zoomLabel(wrapper)).toBe('140%');
+      expect(zoomLabel(wrapper)).toBe('112%');
       expect(wrapper.get('.image-viewer__controls button').attributes('disabled')).toBeUndefined();
 
       await resetZoom.trigger('click');
-      expect(zoomLabel(wrapper)).toBe('100%');
+      expect(zoomLabel(wrapper)).toBe('80%');
     });
 
     it('never zooms out past fit', async () => {
@@ -240,10 +288,10 @@ describe('ImageViewer', () => {
 
       await dispatch(wrapper.element, 'wheel', { deltaY: 5000 });
 
-      expect(zoomLabel(wrapper)).toBe('100%');
+      expect(zoomLabel(wrapper)).toBe('80%');
     });
 
-    it('toggles zoom on double click', async () => {
+    it('double click jumps between fit and actual size', async () => {
       const wrapper = mountViewer();
       await completeLoad(visibleImage(wrapper));
 
@@ -251,12 +299,30 @@ describe('ImageViewer', () => {
         clientX: 400,
         clientY: 300,
       });
-      expect(zoomLabel(wrapper)).toBe('200%');
+      expect(zoomLabel(wrapper)).toBe('100%');
 
       await dispatch(wrapper.element, 'dblclick', {
         clientX: 400,
         clientY: 300,
       });
+      expect(zoomLabel(wrapper)).toBe('80%');
+    });
+
+    /**
+     * The fixed zoom ceiling is a multiple of the *fitted* size, and for a picture much
+     * larger than its pane that can still be a minified view. Actual size must stay
+     * reachable no matter how the pane and the picture compare.
+     */
+    it('lets a picture much larger than the pane reach actual size', async () => {
+      const wrapper = mountViewer();
+      await completeLoad(visibleImage(wrapper), 16_000, 8000);
+
+      await dispatch(wrapper.element, 'dblclick', {
+        clientX: 400,
+        clientY: 300,
+      });
+
+      // 16000px into an 800px fit box needs 20x, past the fixed 8x cap.
       expect(zoomLabel(wrapper)).toBe('100%');
     });
 
@@ -278,15 +344,19 @@ describe('ImageViewer', () => {
       const wrapper = mountViewer();
       await completeLoad(visibleImage(wrapper));
       await dispatch(wrapper.element, 'wheel', { deltaY: -400 });
-      expect(zoomLabel(wrapper)).not.toBe('100%');
+      expect(zoomLabel(wrapper)).not.toBe('80%');
 
       await wrapper.setProps({ src: 'asset://other.png' });
 
-      expect(zoomLabel(wrapper)).toBe('100%');
+      // The new file's dimensions are unknown until it loads, so no percentage yet.
+      expect(zoomLabel(wrapper)).toBe('—');
       expect(transformOf(wrapper)).toEqual({
         x: 0,
         y: 0,
       });
+
+      await completeLoad(visibleImage(wrapper));
+      expect(zoomLabel(wrapper)).toBe('80%');
     });
 
     /**
@@ -330,13 +400,13 @@ describe('ImageViewer', () => {
     });
 
     /**
-     * Clamped against the *rendered* box, not the container: a 1000x500 image in an 800x600
-     * pane letterboxes to 800x400, so at 2x only the width overflows and vertical drag has
-     * nowhere to go.
+     * Clamped against the *rendered* box, not the container: a 2400x1200 image in an
+     * 800x600 pane letterboxes to 800x400, and the double click takes it to actual size
+     * (3x), so the width overflows by more than the height.
      */
     it('pans within bounds once zoomed and refuses to drag past the edge', async () => {
       const wrapper = mountViewer();
-      await completeLoad(visibleImage(wrapper), 1000, 500);
+      await completeLoad(visibleImage(wrapper), 2400, 1200);
       await dispatch(wrapper.element, 'dblclick', {
         clientX: 400,
         clientY: 300,
@@ -354,11 +424,11 @@ describe('ImageViewer', () => {
         clientY: 10_000,
       });
 
-      // Rendered box 800x400 at 2x = 1600x800, against an 800x600 pane: 400px of horizontal
-      // slack and 100px vertical.
+      // Rendered box 800x400 at 3x = 2400x1200, against an 800x600 pane: 800px of
+      // horizontal slack and 300px vertical.
       expect(transformOf(wrapper)).toEqual({
-        x: 400,
-        y: 100,
+        x: 800,
+        y: 300,
       });
     });
 
@@ -394,20 +464,60 @@ describe('ImageViewer', () => {
     });
   });
 
+  describe('controls are inert to image gestures', () => {
+    /**
+     * The regression this guards: once zoomed, a press on +/- bubbled into the container's
+     * pan handler, whose pointer capture stole the click that followed — so the buttons
+     * worked exactly once from fit and then went dead, while wheel zoom kept working.
+     */
+    it('does not start a pan from a press on the zoom controls', async () => {
+      const wrapper = mountViewer();
+      await completeLoad(visibleImage(wrapper));
+      await dispatch(wrapper.element, 'wheel', { deltaY: -400 });
+
+      const [, , zoomIn] = wrapper.findAll('.image-viewer__controls button');
+      await dispatch(zoomIn.element, 'pointerdown', {
+        button: 0,
+        pointerId: 7,
+        clientX: 400,
+        clientY: 550,
+      });
+
+      expect(wrapper.classes()).not.toContain('image-viewer--panning');
+    });
+
+    it('does not read a quick double press on the controls as an image double click', async () => {
+      const wrapper = mountViewer();
+      await completeLoad(visibleImage(wrapper));
+      const [, , zoomIn] = wrapper.findAll('.image-viewer__controls button');
+      await zoomIn.trigger('click');
+      const zoomedLabel = zoomLabel(wrapper);
+
+      // Clicking + in quick succession lands a dblclick on the button; on the image that
+      // gesture means fit/actual-size toggling, which would yank the zoom level around.
+      await dispatch(zoomIn.element, 'dblclick', {
+        clientX: 400,
+        clientY: 550,
+      });
+
+      expect(zoomLabel(wrapper)).toBe(zoomedLabel);
+    });
+  });
+
   describe('keyboard', () => {
     it('zooms with + and - and resets with 0', async () => {
       const wrapper = mountViewer();
       await completeLoad(visibleImage(wrapper));
 
       await dispatch(wrapper.element, 'keydown', { key: '+' });
-      expect(zoomLabel(wrapper)).toBe('140%');
+      expect(zoomLabel(wrapper)).toBe('112%');
 
       await dispatch(wrapper.element, 'keydown', { key: '-' });
-      expect(zoomLabel(wrapper)).toBe('100%');
+      expect(zoomLabel(wrapper)).toBe('80%');
 
       await dispatch(wrapper.element, 'keydown', { key: '+' });
       await dispatch(wrapper.element, 'keydown', { key: '0' });
-      expect(zoomLabel(wrapper)).toBe('100%');
+      expect(zoomLabel(wrapper)).toBe('80%');
     });
 
     /**
