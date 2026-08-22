@@ -464,6 +464,46 @@ describe('ImageViewer', () => {
     });
   });
 
+  describe('controls are inert to image gestures', () => {
+    /**
+     * The regression this guards: once zoomed, a press on +/- bubbled into the container's
+     * pan handler, whose pointer capture stole the click that followed — so the buttons
+     * worked exactly once from fit and then went dead, while wheel zoom kept working.
+     */
+    it('does not start a pan from a press on the zoom controls', async () => {
+      const wrapper = mountViewer();
+      await completeLoad(visibleImage(wrapper));
+      await dispatch(wrapper.element, 'wheel', { deltaY: -400 });
+
+      const [, , zoomIn] = wrapper.findAll('.image-viewer__controls button');
+      await dispatch(zoomIn.element, 'pointerdown', {
+        button: 0,
+        pointerId: 7,
+        clientX: 400,
+        clientY: 550,
+      });
+
+      expect(wrapper.classes()).not.toContain('image-viewer--panning');
+    });
+
+    it('does not read a quick double press on the controls as an image double click', async () => {
+      const wrapper = mountViewer();
+      await completeLoad(visibleImage(wrapper));
+      const [, , zoomIn] = wrapper.findAll('.image-viewer__controls button');
+      await zoomIn.trigger('click');
+      const zoomedLabel = zoomLabel(wrapper);
+
+      // Clicking + in quick succession lands a dblclick on the button; on the image that
+      // gesture means fit/actual-size toggling, which would yank the zoom level around.
+      await dispatch(zoomIn.element, 'dblclick', {
+        clientX: 400,
+        clientY: 550,
+      });
+
+      expect(zoomLabel(wrapper)).toBe(zoomedLabel);
+    });
+  });
+
   describe('keyboard', () => {
     it('zooms with + and - and resets with 0', async () => {
       const wrapper = mountViewer();

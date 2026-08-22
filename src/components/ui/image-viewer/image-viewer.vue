@@ -580,7 +580,15 @@ onBeforeUnmount(() => {
       <ImageIcon :size="48" />
     </div>
 
-    <div class="image-viewer__top-controls">
+    <!-- The control clusters swallow pointerdown and dblclick before the container's
+         gesture handlers see them. Otherwise, once zoomed, pressing a button starts a pan
+         whose pointer capture steals the ensuing click — the buttons appear dead — and a
+         quick second press lands as a double click that flips the zoom under the pointer. -->
+    <div
+      class="image-viewer__top-controls"
+      @pointerdown.stop
+      @dblclick.stop
+    >
       <button
         type="button"
         class="image-viewer__button"
@@ -595,7 +603,11 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <div class="image-viewer__controls">
+    <div
+      class="image-viewer__controls"
+      @pointerdown.stop
+      @dblclick.stop
+    >
       <div class="image-viewer__row">
         <button
           type="button"
