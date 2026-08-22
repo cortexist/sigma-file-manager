@@ -10,6 +10,11 @@ Copyright © 2026 Cortexist, LLC. All rights reserved.
   picture behaves the same wherever it is shown: wheel to zoom, drag to pan, and the same
   fullscreen affordance video and audio already have.
 
+  The percentage readout is the picture's real magnification — screen pixels per image
+  pixel — not a multiplier of the fitted view. Fit-to-pane is the *starting* view, but two
+  panes of different sizes fit the same file at different sizes, so a fit-relative "100%"
+  would claim two contradictory things at once about one image.
+
   Sharpness comes from loading in three stages rather than one. A pane-sized thumbnail is
   cheap and usually already cached, so it lands almost immediately; the original decodes
   behind it and swaps in once ready. Zooming therefore never magnifies a thumbnail — by the
@@ -17,7 +22,13 @@ Copyright © 2026 Cortexist, LLC. All rights reserved.
 -->
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   MaximizeIcon,
@@ -60,6 +71,16 @@ const isOriginalLoaded = ref(false);
 const hasError = ref(false);
 const naturalWidth = ref(0);
 const naturalHeight = ref(0);
+// The original's pixel size, distinct from the visible layer's: the thumbnail shares its
+// aspect ratio (enough for layout and pan clamping) but not its resolution, and only the
+// resolution can anchor a truthful zoom percentage.
+const originalWidth = ref(0);
+// Mirrors the container's box so the zoom readout follows pane resizes; the DOM reads in
+// `getContainerBox` are the fallback for the moment before the observer's first delivery.
+const containerWidth = ref(0);
+const containerHeight = ref(0);
+
+let resizeObserver: ResizeObserver | null = null;
 
 let panPointerId: number | null = null;
 let panStartX = 0;
@@ -88,55 +109,109 @@ const transform = computed(
  * box rather than the container, otherwise a wide image in a tall pane could be dragged
  * until only background is visible.
  */
-function getRenderedImageSize(): {
+function getContainerBox(): {
   width: number;
   height: number;
 } | null {
   const container = containerRef.value;
 
-  if (!container || naturalWidth.value <= 0 || naturalHeight.value <= 0) {
+  if (!container) {
     return null;
   }
 
-  const containerWidth = container.clientWidth;
-  const containerHeight = container.clientHeight;
+  const width = containerWidth.value || container.clientWidth;
+  const height = containerHeight.value || container.clientHeight;
 
-  if (containerWidth <= 0 || containerHeight <= 0) {
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return {
+    width,
+    height,
+  };
+}
+
+function getRenderedImageSize(): {
+  width: number;
+  height: number;
+} | null {
+  const box = getContainerBox();
+
+  if (!box || naturalWidth.value <= 0 || naturalHeight.value <= 0) {
     return null;
   }
 
   const aspectRatio = naturalWidth.value / naturalHeight.value;
-  const containerAspectRatio = containerWidth / containerHeight;
+  const containerAspectRatio = box.width / box.height;
 
   if (aspectRatio > containerAspectRatio) {
     return {
-      width: containerWidth,
-      height: containerWidth / aspectRatio,
+      width: box.width,
+      height: box.width / aspectRatio,
     };
   }
 
   return {
-    width: containerHeight * aspectRatio,
-    height: containerHeight,
+    width: box.height * aspectRatio,
+    height: box.height,
   };
 }
 
 function clampOffsets(): void {
-  const container = containerRef.value;
+  const box = getContainerBox();
   const renderedSize = getRenderedImageSize();
 
-  if (!container || !renderedSize) {
+  if (!box || !renderedSize) {
     return;
   }
 
   const scaledWidth = renderedSize.width * scale.value;
   const scaledHeight = renderedSize.height * scale.value;
-  const maxOffsetX = Math.max(0, (scaledWidth - container.clientWidth) / 2);
-  const maxOffsetY = Math.max(0, (scaledHeight - container.clientHeight) / 2);
+  const maxOffsetX = Math.max(0, (scaledWidth - box.width) / 2);
+  const maxOffsetY = Math.max(0, (scaledHeight - box.height) / 2);
 
   offsetX.value = Math.min(maxOffsetX, Math.max(-maxOffsetX, offsetX.value));
   offsetY.value = Math.min(maxOffsetY, Math.max(-maxOffsetY, offsetY.value));
 }
+
+/**
+ * The `scale` that would show the original at exactly one image pixel per screen pixel.
+ * Physical pixels, via `devicePixelRatio`: on a scaled display, "100%" that ignored the
+ * scale factor would still be interpolating — sharpness is the whole reason to ask for it.
+ */
+const scaleForActualSize = computed<number | null>(() => {
+  if (originalWidth.value <= 0) {
+    return null;
+  }
+
+  const renderedSize = getRenderedImageSize();
+
+  if (!renderedSize) {
+    return null;
+  }
+
+  const devicePixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
+  return originalWidth.value / (renderedSize.width * devicePixelRatio);
+});
+
+/** True magnification is unknowable until the original's pixel size is — show that. */
+const zoomLabel = computed(() => {
+  const actualSizeScale = scaleForActualSize.value;
+
+  if (actualSizeScale === null) {
+    return '—';
+  }
+
+  return `${Math.round((scale.value / actualSizeScale) * 100)}%`;
+});
+
+// Raised past the fixed cap when needed: for a picture much larger than its pane, eight
+// times the fitted size can still be a minified view, and 1:1 must always be reachable.
+const effectiveMaxScale = computed(
+  () => Math.max(MAX_SCALE, scaleForActualSize.value ?? 1),
+);
 
 /**
  * Zoom about a fixed point so the pixel under the cursor stays under the cursor. Anchoring
@@ -147,7 +222,7 @@ function applyScale(nextScale: number, anchor?: {
   x: number;
   y: number;
 }): void {
-  const clampedScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
+  const clampedScale = Math.min(effectiveMaxScale.value, Math.max(MIN_SCALE, nextScale));
 
   if (clampedScale === scale.value) {
     return;
@@ -244,13 +319,23 @@ function endPan(event: PointerEvent): void {
   (event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId);
 }
 
+/**
+ * Fit and actual size are the two views worth a gesture, so a double click jumps between
+ * them. Only when 1:1 is at (or below) the fitted view already — a picture smaller than
+ * its pane — does the jump fall back to a plain magnification step.
+ */
 function onDoubleClick(event: MouseEvent): void {
   if (isZoomed.value) {
     resetView();
     return;
   }
 
-  applyScale(DOUBLE_CLICK_SCALE, getAnchorFromEvent(event));
+  const actualSizeScale = scaleForActualSize.value;
+  const targetScale = actualSizeScale !== null && actualSizeScale > 1.05
+    ? actualSizeScale
+    : DOUBLE_CLICK_SCALE;
+
+  applyScale(targetScale, getAnchorFromEvent(event));
 }
 
 function zoomInFromControls(): void {
@@ -373,6 +458,7 @@ function onVisibleImageLoad(event: Event): void {
   // With no thumbnail to show first, the visible layer *is* the original.
   if (activeSrc.value === props.src) {
     isOriginalLoaded.value = true;
+    originalWidth.value = (event.target as HTMLImageElement).naturalWidth;
   }
 
   clampOffsets();
@@ -381,6 +467,7 @@ function onVisibleImageLoad(event: Event): void {
 function onOriginalDecoded(event: Event): void {
   readNaturalSize(event);
   isOriginalLoaded.value = true;
+  originalWidth.value = (event.target as HTMLImageElement).naturalWidth;
   clampOffsets();
 }
 
@@ -400,16 +487,40 @@ watch(() => props.src, () => {
   hasError.value = false;
   naturalWidth.value = 0;
   naturalHeight.value = 0;
+  originalWidth.value = 0;
 });
 
 if (typeof document !== 'undefined') {
   document.addEventListener('fullscreenchange', syncFullscreenState);
 }
 
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !containerRef.value) {
+    return;
+  }
+
+  resizeObserver = new ResizeObserver(() => {
+    const container = containerRef.value;
+
+    if (!container) {
+      return;
+    }
+
+    containerWidth.value = container.clientWidth;
+    containerHeight.value = container.clientHeight;
+    // A shrunken pane can leave a pan past the new edge.
+    clampOffsets();
+  });
+  resizeObserver.observe(containerRef.value);
+});
+
 onBeforeUnmount(() => {
   if (typeof document !== 'undefined') {
     document.removeEventListener('fullscreenchange', syncFullscreenState);
   }
+
+  resizeObserver?.disconnect();
+  resizeObserver = null;
 });
 </script>
 
@@ -503,12 +614,12 @@ onBeforeUnmount(() => {
           :title="t('imageViewer.resetZoom')"
           @click="resetView"
         >
-          {{ Math.round(scale * 100) }}%
+          {{ zoomLabel }}
         </button>
         <button
           type="button"
           class="image-viewer__button"
-          :disabled="scale >= MAX_SCALE"
+          :disabled="scale >= effectiveMaxScale"
           :aria-label="t('imageViewer.zoomIn')"
           :title="t('imageViewer.zoomIn')"
           @click="zoomInFromControls"
