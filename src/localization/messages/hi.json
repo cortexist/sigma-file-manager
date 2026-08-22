@@ -312,6 +312,46 @@
         "keepPlaying": "Keep playing; close button stops it",
         "keepPlayingAlways": "Keep playing, always",
         "stop": "Stop playback"
+      },
+      "lanShare": {
+        "title": "LAN share",
+        "description": "How folders and files are served to other devices on your network. Changes apply when the next share starts.",
+        "protocol": {
+          "label": "Protocol",
+          "description": "HTTPS encrypts transfers; HTTP works without certificate warnings.",
+          "httpAndHttps": "HTTP + HTTPS",
+          "httpsOnly": "HTTPS only",
+          "httpOnly": "HTTP only"
+        },
+        "certificate": {
+          "label": "HTTPS certificate",
+          "description": "Self-signed certificates are generated automatically but make browsers warn. A certificate file issued by your own certificate authority avoids the warning on devices that trust it.",
+          "selfSigned": "Self-signed (automatic)",
+          "certificateFile": "Certificate file"
+        },
+        "certificatePath": {
+          "label": "Certificate file (PEM, may include the chain)",
+          "placeholder": "/path/to/server.crt"
+        },
+        "privateKeyPath": {
+          "label": "Private key file (PEM, unencrypted)",
+          "placeholder": "/path/to/server.key"
+        },
+        "hostname": {
+          "label": "Advertised hostname",
+          "description": "Shown in the share address and QR code instead of sfm.local. Use a name your network’s DNS resolves and your certificate covers. Leave empty to keep sfm.local.",
+          "placeholder": "e.g. sfm.lan"
+        },
+        "browse": "Browse",
+        "browseDialogTitle": "Choose a PEM file",
+        "httpPort": {
+          "label": "HTTP port"
+        },
+        "httpsPort": {
+          "label": "HTTPS port"
+        },
+        "portDescription": "Fixed port for the share address. If it is taken, the share fails instead of moving to another port.",
+        "portAutomatic": "Automatic"
       }
     },
     "actions": {
@@ -591,7 +631,8 @@
     "extensions": "एक्सटेंशन, प्लगइन्स, ऐडऑन, कॉन्फ़िगरेशन, सेटिंग्स",
     "infoPanelPreview": "info, panel, preview, image, thumbnail, memory, original, video, mute, autoplay",
     "performance": "performance, memory, quick view, print, window, launch, preload",
-    "fileView": "फ़ाइल दृश्य, बॉक्स चयन, खींचकर चयन, सूची, ग्रिड, अंतर, padding"
+    "fileView": "फ़ाइल दृश्य, बॉक्स चयन, खींचकर चयन, सूची, ग्रिड, अंतर, padding",
+    "lanShare": "lan share network https certificate tls ssl hostname server"
   },
   "drag": {
     "holdShiftToChangeMode": "मोड बदलने के लिए [Shift] दबाए रखें",
@@ -1322,7 +1363,8 @@
     "hubSharedSelectionCount": "{count} चयनित फ़ाइलें",
     "replaceShareDialogTitle": "वर्तमान शेयर बदलें?",
     "replaceShareDialogDescription": "फ़ाइलें पहले से ही नेटवर्क पर साझा की जा रही हैं. वर्तमान शेयर बंद कर दिया जाएगा और उसके स्थान पर नया शेयर ले लिया जाएगा।",
-    "replaceShareDialogConfirm": "प्रतिस्थापित करें"
+    "replaceShareDialogConfirm": "प्रतिस्थापित करें",
+    "missingCertificateFiles": "The LAN share is set to use a certificate file, but the certificate or private key path is not set. Choose them in Settings → General → LAN share, or switch back to the self-signed certificate."
   },
   "mediaPlayer": {
     "play": "चलाएँ",

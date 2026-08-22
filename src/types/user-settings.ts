@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
+// Copyright © 2026 Cortexist, LLC (modifications). All rights reserved.
 
 import type { TextEditorMarkdownMode, TextEditorTextMode } from '@/components/ui/text-editor/types';
 
@@ -174,6 +175,37 @@ export type ClipboardSettings = {
   showToolbarForExternalPaths: boolean;
 };
 
+export type LanShareProtocol = 'httpAndHttps' | 'httpsOnly' | 'httpOnly';
+
+/** Where the LAN share's HTTPS certificate comes from. */
+export type LanShareCertificateSource
+  /** Generated on every share start; browsers warn, but nothing has to be issued. */
+  = | 'selfSigned'
+  /** A PEM certificate the user had issued (say, by their own local CA), with its key. */
+    | 'certificateFile';
+
+export type LanShareSettings = {
+  protocol: LanShareProtocol;
+  /**
+   * Fixed ports for the share address; the share fails rather than drift to another
+   * port, since a pinned port is what keeps bookmarks, QR codes, and DNS entries
+   * valid. `null` picks a port automatically (the protocol's default if free, else
+   * the first free one from the scan range).
+   */
+  httpPort: number | null;
+  httpsPort: number | null;
+  certificateSource: LanShareCertificateSource;
+  /** PEM, leaf first; may include the chain. Used when `certificateSource` is `certificateFile`. */
+  certificatePath: string;
+  /** PEM, unencrypted. */
+  privateKeyPath: string;
+  /**
+   * Hostname advertised in share URLs instead of the mDNS name — for networks whose DNS
+   * and certificate cover a name of the user's own. Empty means the mDNS name.
+   */
+  customHostname: string;
+};
+
 export type UserSettings = {
   language: LocalizationLanguage;
   theme: Theme;
@@ -198,6 +230,7 @@ export type UserSettings = {
   homeBannerPositions: HomeBannerPositions;
   driveCard: DriveCardSettings;
   clipboard: ClipboardSettings;
+  lanShare: LanShareSettings;
   userDirectories: UserDirectoriesCustomizations;
   infusion: InfusionSettings;
   visualFilters: VisualFiltersSettings;

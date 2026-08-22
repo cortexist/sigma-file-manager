@@ -136,16 +136,16 @@ const isHubSession = computed(() => (activeSession.value?.hubPaths?.length ?? 0)
                     </Tooltip>
                   </div>
                   <div
-                    v-if="activeSession.mdnsAddress"
+                    v-if="activeSession.hostnameAddress"
                     class="lan-share-toolbar__address-row"
                   >
                     <span class="lan-share-toolbar__hint">{{ t('lanShare.urlHintMain') }}:</span>
                     <button
                       type="button"
                       class="lan-share-toolbar__address"
-                      @click="copyLanShareAddress(activeSession.mdnsAddress!)"
+                      @click="copyLanShareAddress(activeSession.hostnameAddress!)"
                     >
-                      {{ activeSession.mdnsAddress }}
+                      {{ activeSession.hostnameAddress }}
                     </button>
                   </div>
                   <div

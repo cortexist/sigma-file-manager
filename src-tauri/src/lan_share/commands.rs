@@ -3,15 +3,16 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 use super::server;
-use super::types::LanShareResult;
+use super::types::{LanShareConfig, LanShareResult};
 
 #[tauri::command]
 pub async fn start_lan_share(
     path: String,
     share_mode: String,
     hub_paths: Option<Vec<String>>,
+    config: Option<LanShareConfig>,
 ) -> Result<LanShareResult, String> {
-    server::start_lan_share(path, share_mode, hub_paths).await
+    server::start_lan_share(path, share_mode, hub_paths, config).await
 }
 
 #[tauri::command]

@@ -8,7 +8,7 @@ import type { LanShareMode, LanSharePendingReplace } from '@/types/lan-share';
 
 export type LanShareActiveSession = {
   address: string;
-  mdnsAddress?: string;
+  hostnameAddress?: string;
   iosAddress?: string;
   mode: LanShareMode;
   sharedPath: string;

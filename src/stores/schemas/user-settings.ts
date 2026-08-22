@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
+// Copyright © 2026 Cortexist, LLC (modifications). All rights reserved.
 
 import type { UserSettings } from '@/types/user-settings';
 import type { StorageAdapter } from './schema-utils';
@@ -16,7 +17,7 @@ import {
 import { BUILTIN_NAVIGATOR_ICON_THEME_IDS } from '@/types/icon-theme';
 
 export const USER_SETTINGS_SCHEMA_VERSION_KEY = '__schemaVersion';
-export const USER_SETTINGS_SCHEMA_VERSION = 29;
+export const USER_SETTINGS_SCHEMA_VERSION = 30;
 
 export const DEFAULT_GLOBAL_SEARCH_IGNORED_PATHS = [
   '/node_modules',
@@ -477,6 +478,36 @@ async function migrateUserSettingsStep(storage: StorageAdapter, fromVersion: num
       ['read', 'split', 'edit'],
       'read',
     );
+  }
+
+  if (fromVersion === 29 && toVersion === 30) {
+    const protocol = await storage.get<unknown>('lanShare.protocol');
+
+    if (protocol !== 'httpAndHttps' && protocol !== 'httpsOnly' && protocol !== 'httpOnly') {
+      await storage.set('lanShare.protocol', 'httpAndHttps');
+    }
+
+    const certificateSource = await storage.get<unknown>('lanShare.certificateSource');
+
+    if (certificateSource !== 'selfSigned' && certificateSource !== 'certificateFile') {
+      await storage.set('lanShare.certificateSource', 'selfSigned');
+    }
+
+    for (const key of ['lanShare.httpPort', 'lanShare.httpsPort']) {
+      const value = await storage.get<unknown>(key);
+
+      if (typeof value !== 'number' && value !== null) {
+        await storage.set(key, null);
+      }
+    }
+
+    for (const key of ['lanShare.certificatePath', 'lanShare.privateKeyPath', 'lanShare.customHostname']) {
+      const value = await storage.get<unknown>(key);
+
+      if (typeof value !== 'string') {
+        await storage.set(key, '');
+      }
+    }
   }
 
   if (fromVersion === 25 && toVersion === 26) {

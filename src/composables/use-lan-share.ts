@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
+// Copyright © 2026 Cortexist, LLC (modifications). All rights reserved.
 
 import { markRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -9,16 +10,52 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast, ToastStatic } from '@/components/ui/toaster';
 import { useLanShareStore } from '@/stores/runtime/lan-share';
 import { useNavigatorSelectionStore } from '@/stores/runtime/navigator-selection';
+import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import { useWorkspacesStore } from '@/stores/storage/workspaces';
 import type { LanShareMode } from '@/types/lan-share';
+import type { LanShareSettings } from '@/types/user-settings';
 import type { DirEntry } from '@/types/dir-entry';
 import { getParentDirectory } from '@/utils/normalize-path';
 
 type LanShareResult = {
   address: string;
-  mdns_address: string | null;
+  hostname_address: string | null;
   ios_address: string | null;
 };
+
+type LanShareConfigPayload = {
+  enableHttp: boolean;
+  enableHttps: boolean;
+  httpPort: number | null;
+  httpsPort: number | null;
+  certPath: string | null;
+  keyPath: string | null;
+  customHostname: string | null;
+};
+
+function sanitizePort(port: number | null): number | null {
+  return Number.isInteger(port) && port! >= 1 && port! <= 65535 ? port : null;
+}
+
+function usesCertificateFile(settings: LanShareSettings): boolean {
+  return settings.protocol !== 'httpOnly' && settings.certificateSource === 'certificateFile';
+}
+
+function buildLanShareConfig(settings: LanShareSettings): LanShareConfigPayload {
+  const certPath = settings.certificatePath.trim();
+  const keyPath = settings.privateKeyPath.trim();
+  const customHostname = settings.customHostname.trim();
+
+  return {
+    enableHttp: settings.protocol !== 'httpsOnly',
+    enableHttps: settings.protocol !== 'httpOnly',
+    httpPort: sanitizePort(settings.httpPort),
+    httpsPort: sanitizePort(settings.httpsPort),
+    certPath: usesCertificateFile(settings) ? certPath : null,
+    keyPath: usesCertificateFile(settings) ? keyPath : null,
+    customHostname: customHostname || null,
+  };
+}
 
 type ResolveShareResult = {
   path: string;
@@ -88,6 +125,7 @@ async function buildLanShareQrDataUrl(address: string): Promise<string> {
 export function useLanShare() {
   const { t } = useI18n();
   const lanShareStore = useLanShareStore();
+  const userSettingsStore = useUserSettingsStore();
   const workspacesStore = useWorkspacesStore();
   const navigatorSelectionStore = useNavigatorSelectionStore();
 
@@ -145,11 +183,24 @@ export function useLanShare() {
     const hubPaths = options?.hubPaths;
     const hubPathsPayload = hubPaths && hubPaths.length >= 2 ? hubPaths : null;
 
+    const lanShareSettings = userSettingsStore.userSettings.lanShare;
+
+    // Surfaced here rather than left to the backend, whose "file not found" for an empty
+    // path would send the user hunting for a file that was never chosen.
+    if (
+      usesCertificateFile(lanShareSettings)
+      && (!lanShareSettings.certificatePath.trim() || !lanShareSettings.privateKeyPath.trim())
+    ) {
+      showErrorToast(t('lanShare.missingCertificateFiles'));
+      return;
+    }
+
     try {
       const result = await invoke<LanShareResult>('start_lan_share', {
         path: effectivePath,
         shareMode: mode,
         hubPaths: hubPathsPayload,
+        config: buildLanShareConfig(lanShareSettings),
       });
 
       lanShareStore.setQrDataUrl(null);
@@ -160,7 +211,7 @@ export function useLanShare() {
 
       lanShareStore.setActiveSession({
         address: result.address,
-        mdnsAddress: result.mdns_address ?? undefined,
+        hostnameAddress: result.hostname_address ?? undefined,
         iosAddress: result.ios_address ?? undefined,
         mode,
         sharedPath: sharedPathLabel,
@@ -170,9 +221,7 @@ export function useLanShare() {
       });
 
       try {
-        const qrAddress = result.mdns_address
-          ? `http://${result.mdns_address}`
-          : result.address;
+        const qrAddress = result.hostname_address ?? result.address;
         lanShareStore.setQrDataUrl(await buildLanShareQrDataUrl(qrAddress));
       }
       catch {
