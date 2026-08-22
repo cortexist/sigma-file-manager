@@ -186,6 +186,14 @@ export type LanShareCertificateSource
 
 export type LanShareSettings = {
   protocol: LanShareProtocol;
+  /**
+   * Fixed ports for the share address; the share fails rather than drift to another
+   * port, since a pinned port is what keeps bookmarks, QR codes, and DNS entries
+   * valid. `null` picks a port automatically (the protocol's default if free, else
+   * the first free one from the scan range).
+   */
+  httpPort: number | null;
+  httpsPort: number | null;
   certificateSource: LanShareCertificateSource;
   /** PEM, leaf first; may include the chain. Used when `certificateSource` is `certificateFile`. */
   certificatePath: string;

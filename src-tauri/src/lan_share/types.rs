@@ -42,6 +42,14 @@ pub struct LanShareConfig {
     pub enable_http: bool,
     #[serde(default = "default_true")]
     pub enable_https: bool,
+    /// Fixed port to bind; the share fails rather than drift to another one, since a
+    /// pinned port is what keeps bookmarks, QR codes, and DNS entries valid. `None`
+    /// keeps the historical behavior: the protocol's default port if free, else the
+    /// first free one from the scan range.
+    #[serde(default)]
+    pub http_port: Option<u16>,
+    #[serde(default)]
+    pub https_port: Option<u16>,
     /// PEM certificate for HTTPS, leaf first, chain allowed. Paired with `key_path`;
     /// when both are unset a self-signed certificate is generated instead.
     #[serde(default)]
@@ -63,6 +71,8 @@ impl Default for LanShareConfig {
         Self {
             enable_http: true,
             enable_https: true,
+            http_port: None,
+            https_port: None,
             cert_path: None,
             key_path: None,
             custom_hostname: None,

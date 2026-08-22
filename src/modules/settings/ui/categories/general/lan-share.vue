@@ -75,7 +75,23 @@ const selectedCertificateSource = computed({
   },
 });
 
+const httpEnabled = computed(() => lanShareSettings.value.protocol !== 'httpsOnly');
 const httpsEnabled = computed(() => lanShareSettings.value.protocol !== 'httpOnly');
+
+function parsePort(value: string | number | undefined): number | null {
+  const port = typeof value === 'number' ? value : parseInt(String(value ?? '').trim(), 10);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+}
+
+const httpPort = computed({
+  get: () => lanShareSettings.value.httpPort?.toString() ?? '',
+  set: value => userSettingsStore.set('lanShare.httpPort', parsePort(value)),
+});
+
+const httpsPort = computed({
+  get: () => lanShareSettings.value.httpsPort?.toString() ?? '',
+  set: value => userSettingsStore.set('lanShare.httpsPort', parsePort(value)),
+});
 
 const usesCertificateFile = computed(
   () => httpsEnabled.value && lanShareSettings.value.certificateSource === 'certificateFile',
@@ -147,6 +163,48 @@ async function browseForPemFile(setting: 'lanShare.certificatePath' | 'lanShare.
               </SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div
+          v-if="httpEnabled"
+          class="lan-share-settings__row"
+        >
+          <div class="lan-share-settings__copy">
+            <span class="lan-share-settings__label">
+              {{ t('settings.general.lanShare.httpPort.label') }}
+            </span>
+            <p class="lan-share-settings__description">
+              {{ t('settings.general.lanShare.portDescription') }}
+            </p>
+          </div>
+          <Input
+            v-model="httpPort"
+            class="lan-share-settings__port-input"
+            inputmode="numeric"
+            :placeholder="t('settings.general.lanShare.portAutomatic')"
+            spellcheck="false"
+          />
+        </div>
+
+        <div
+          v-if="httpsEnabled"
+          class="lan-share-settings__row"
+        >
+          <div class="lan-share-settings__copy">
+            <span class="lan-share-settings__label">
+              {{ t('settings.general.lanShare.httpsPort.label') }}
+            </span>
+            <p class="lan-share-settings__description">
+              {{ t('settings.general.lanShare.portDescription') }}
+            </p>
+          </div>
+          <Input
+            v-model="httpsPort"
+            class="lan-share-settings__port-input"
+            inputmode="numeric"
+            :placeholder="t('settings.general.lanShare.portAutomatic')"
+            spellcheck="false"
+          />
         </div>
 
         <div
@@ -302,5 +360,9 @@ async function browseForPemFile(setting: 'lanShare.certificatePath' | 'lanShare.
 
 .lan-share-settings__hostname-input {
   width: min(100%, 18rem);
+}
+
+.lan-share-settings__port-input {
+  width: min(100%, 8rem);
 }
 </style>

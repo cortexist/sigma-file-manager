@@ -8,9 +8,7 @@ use std::path::PathBuf;
 
 use super::handlers::{build_ftp_router, build_stream_dir_router, build_stream_router};
 use super::mdns::{register_mdns, unregister_mdns};
-use super::network::{
-    find_available_port, format_http_url, format_https_url, get_local_ipv4,
-};
+use super::network::{format_http_url, format_https_url, get_local_ipv4, resolve_port};
 use super::streaming::canonicalize_hub_paths;
 use super::tls::{generate_self_signed_tls, load_tls_from_files};
 use super::types::{
@@ -99,7 +97,14 @@ pub async fn start_lan_share(
     let https_router = router.clone();
 
     let (http_shutdown, http_task, http_port) = if config.enable_http {
-        let http_port = find_available_port(HTTP_DEFAULT_PORT, &[])?;
+        // A fixed HTTPS port is reserved before the HTTP scan so an automatic HTTP
+        // port cannot land on it and doom the HTTPS bind that follows.
+        let http_exclude: Vec<u16> = if config.enable_https {
+            config.https_port.into_iter().collect()
+        } else {
+            Vec::new()
+        };
+        let http_port = resolve_port(config.http_port, HTTP_DEFAULT_PORT, &http_exclude)?;
         let (http_shutdown_tx, mut http_shutdown_rx) = tokio::sync::watch::channel(false);
         let http_addr = SocketAddr::from(([0, 0, 0, 0], http_port));
         let http_listener = tokio::net::TcpListener::bind(http_addr)
@@ -128,7 +133,7 @@ pub async fn start_lan_share(
         let exclude: Vec<u16> = http_port.into_iter().collect();
 
         let setup = async {
-            let https_port = find_available_port(HTTPS_DEFAULT_PORT, &exclude)?;
+            let https_port = resolve_port(config.https_port, HTTPS_DEFAULT_PORT, &exclude)?;
 
             let tls_config = if let (Some(cert_path), Some(key_path)) = (cert_path, key_path) {
                 load_tls_from_files(cert_path, key_path).await?
@@ -175,12 +180,22 @@ pub async fn start_lan_share(
         .or(https_port)
         .ok_or_else(|| "No server started".to_string())?;
 
-    let mdns_daemon = match register_mdns(mdns_port, local_ip) {
-        Ok(daemon) => Some(daemon),
-        Err(err) => {
-            log::warn!("mDNS registration failed (sharing still works via IP): {err}");
-            None
+    // The mDNS name is only usable where following it works: always over HTTP, but over
+    // HTTPS only under the self-signed certificate, which names it in a SAN. A share no
+    // client could reach through the name does not broadcast it at all — a network kept
+    // on names of its own (a .lan domain, say) stays free of a stray .local one.
+    let mdns_name_usable = http_port.is_some() || !uses_custom_cert;
+
+    let mdns_daemon = if mdns_name_usable {
+        match register_mdns(mdns_port, local_ip) {
+            Ok(daemon) => Some(daemon),
+            Err(err) => {
+                log::warn!("mDNS registration failed (sharing still works via IP): {err}");
+                None
+            }
         }
+    } else {
+        None
     };
 
     let has_mdns = mdns_daemon.is_some();
@@ -193,14 +208,9 @@ pub async fn start_lan_share(
         None => format_https_url(host, https_port.unwrap_or(HTTPS_DEFAULT_PORT)),
     };
 
-    // The mDNS name is only advertised where following it works: always over HTTP, but
-    // over HTTPS only under the self-signed certificate, which names it in a SAN. A
-    // user-supplied certificate covers names of the user's own choosing instead.
-    let mdns_name_reachable = has_mdns && (http_port.is_some() || !uses_custom_cert);
-
     let hostname_address = custom_hostname
         .map(&primary_url)
-        .or_else(|| mdns_name_reachable.then(|| primary_url(MDNS_DOMAIN)));
+        .or_else(|| has_mdns.then(|| primary_url(MDNS_DOMAIN)));
 
     let ios_address = match (https_port, http_port) {
         (Some(https_port), Some(_)) => {
@@ -286,6 +296,8 @@ mod tests {
         let config = LanShareConfig {
             enable_http: false,
             enable_https: true,
+            http_port: None,
+            https_port: Some(55911),
             cert_path: Some(cert_path.to_string_lossy().into_owned()),
             key_path: Some(key_path.to_string_lossy().into_owned()),
             custom_hostname: Some("localhost".to_string()),
@@ -303,7 +315,7 @@ mod tests {
         assert!(result.address.starts_with("https://"), "{}", result.address);
         assert_eq!(result.ios_address, None);
         let hostname_address = result.hostname_address.unwrap();
-        assert!(hostname_address.starts_with("https://localhost:"), "{hostname_address}");
+        assert_eq!(hostname_address, "https://localhost:55911");
 
         // A client that trusts only the test CA must be able to fetch the share page.
         let client = reqwest::Client::builder()

@@ -291,6 +291,8 @@ describe('migrateUserSettingsStorage', () => {
     await migrateUserSettingsStorage(storage);
 
     expect(storage.values.get('lanShare.protocol')).toBe('httpAndHttps');
+    expect(storage.values.get('lanShare.httpPort')).toBe(null);
+    expect(storage.values.get('lanShare.httpsPort')).toBe(null);
     expect(storage.values.get('lanShare.certificateSource')).toBe('selfSigned');
     expect(storage.values.get('lanShare.certificatePath')).toBe('');
     expect(storage.values.get('lanShare.privateKeyPath')).toBe('');
@@ -302,6 +304,7 @@ describe('migrateUserSettingsStorage', () => {
     const storage = createStorageAdapter({
       [USER_SETTINGS_SCHEMA_VERSION_KEY]: 29,
       'lanShare.protocol': 'httpsOnly',
+      'lanShare.httpsPort': 55001,
       'lanShare.certificateSource': 'certificateFile',
       'lanShare.certificatePath': '/certs/share.crt',
     });
@@ -309,6 +312,7 @@ describe('migrateUserSettingsStorage', () => {
     await migrateUserSettingsStorage(storage);
 
     expect(storage.values.get('lanShare.protocol')).toBe('httpsOnly');
+    expect(storage.values.get('lanShare.httpsPort')).toBe(55001);
     expect(storage.values.get('lanShare.certificateSource')).toBe('certificateFile');
     expect(storage.values.get('lanShare.certificatePath')).toBe('/certs/share.crt');
     expect(storage.values.get(USER_SETTINGS_SCHEMA_VERSION_KEY)).toBe(USER_SETTINGS_SCHEMA_VERSION);

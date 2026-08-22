@@ -26,10 +26,16 @@ type LanShareResult = {
 type LanShareConfigPayload = {
   enableHttp: boolean;
   enableHttps: boolean;
+  httpPort: number | null;
+  httpsPort: number | null;
   certPath: string | null;
   keyPath: string | null;
   customHostname: string | null;
 };
+
+function sanitizePort(port: number | null): number | null {
+  return Number.isInteger(port) && port! >= 1 && port! <= 65535 ? port : null;
+}
 
 function usesCertificateFile(settings: LanShareSettings): boolean {
   return settings.protocol !== 'httpOnly' && settings.certificateSource === 'certificateFile';
@@ -43,6 +49,8 @@ function buildLanShareConfig(settings: LanShareSettings): LanShareConfigPayload 
   return {
     enableHttp: settings.protocol !== 'httpsOnly',
     enableHttps: settings.protocol !== 'httpOnly',
+    httpPort: sanitizePort(settings.httpPort),
+    httpsPort: sanitizePort(settings.httpsPort),
     certPath: usesCertificateFile(settings) ? certPath : null,
     keyPath: usesCertificateFile(settings) ? keyPath : null,
     customHostname: customHostname || null,

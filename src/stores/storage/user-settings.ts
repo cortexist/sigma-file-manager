@@ -201,6 +201,8 @@ export const useUserSettingsStore = defineStore('userSettings', () => {
     },
     lanShare: {
       protocol: 'httpAndHttps',
+      httpPort: null,
+      httpsPort: null,
       certificateSource: 'selfSigned',
       certificatePath: '',
       privateKeyPath: '',

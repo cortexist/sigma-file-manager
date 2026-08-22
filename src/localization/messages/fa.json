@@ -310,7 +310,15 @@
           "placeholder": "e.g. sfm.lan"
         },
         "browse": "Browse",
-        "browseDialogTitle": "Choose a PEM file"
+        "browseDialogTitle": "Choose a PEM file",
+        "httpPort": {
+          "label": "HTTP port"
+        },
+        "httpsPort": {
+          "label": "HTTPS port"
+        },
+        "portDescription": "Fixed port for the share address. If it is taken, the share fails instead of moving to another port.",
+        "portAutomatic": "Automatic"
       }
     },
     "actions": {

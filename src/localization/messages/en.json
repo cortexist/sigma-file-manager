@@ -336,6 +336,14 @@
           "httpsOnly": "HTTPS only",
           "httpOnly": "HTTP only"
         },
+        "httpPort": {
+          "label": "HTTP port"
+        },
+        "httpsPort": {
+          "label": "HTTPS port"
+        },
+        "portDescription": "Fixed port for the share address. If it is taken, the share fails instead of moving to another port.",
+        "portAutomatic": "Automatic",
         "certificate": {
           "label": "HTTPS certificate",
           "description": "Self-signed certificates are generated automatically but make browsers warn. A certificate file issued by your own certificate authority avoids the warning on devices that trust it.",

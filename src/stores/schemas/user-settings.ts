@@ -493,6 +493,14 @@ async function migrateUserSettingsStep(storage: StorageAdapter, fromVersion: num
       await storage.set('lanShare.certificateSource', 'selfSigned');
     }
 
+    for (const key of ['lanShare.httpPort', 'lanShare.httpsPort']) {
+      const value = await storage.get<unknown>(key);
+
+      if (typeof value !== 'number' && value !== null) {
+        await storage.set(key, null);
+      }
+    }
+
     for (const key of ['lanShare.certificatePath', 'lanShare.privateKeyPath', 'lanShare.customHostname']) {
       const value = await storage.get<unknown>(key);
 
