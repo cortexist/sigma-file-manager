@@ -74,16 +74,21 @@ import FilePickerInfusion from '@/modules/file-picker/components/file-picker-inf
 import {
   formatBytes,
   formatDate,
+  getImageSrc,
   isAudioFile,
   isImageFile,
   isVideoFile,
 } from '@/modules/navigator/components/file-browser/utils';
+import { resolveImageDisplaySrc } from '@/modules/navigator/utils/resolve-image-display-src';
 import { useAudioCovers } from '@/composables/use-audio-covers';
 import { sortFileBrowserEntries } from '@/modules/navigator/components/file-browser/utils/file-browser-sort';
 import { FILE_BROWSER_SORT_COLUMN_LABEL_KEYS } from '@/modules/navigator/components/file-browser/utils/file-browser-sort-columns';
 import { getGridColumnCount } from '@/modules/navigator/components/file-browser/utils/file-browser-virtual-rows';
 import { FILE_BROWSER_GRID_GAP_DEFAULT } from '@/modules/navigator/components/file-browser/utils/file-browser-layout-gaps';
-import { useImageThumbnails } from '@/modules/navigator/components/file-browser/composables/use-image-thumbnails';
+import {
+  normalizeImageThumbnailMaxDimension,
+  useImageThumbnails,
+} from '@/modules/navigator/components/file-browser/composables/use-image-thumbnails';
 import { useVideoThumbnails } from '@/modules/navigator/components/file-browser/composables/use-video-thumbnails';
 import { buildSectionedVirtualRows, useVerticalVirtualList } from '@/composables/use-vertical-virtual-list';
 import { usePlatformStore } from '@/stores/runtime/platform';
@@ -398,7 +403,17 @@ async function listDirectory(path: string, recordHistory = true) {
  */
 function getEntryThumbnail(entry: DirEntry): string | undefined {
   if (isImageFile(entry)) {
-    return getImageThumbnail(entry) ?? getImageThumbnailPlaceholder(entry);
+    // The navigator's resolver rather than a bare thumbnail lookup: images the raster
+    // pipeline refuses (SVG) are shown from the original file, exactly as the main view
+    // shows them — a vector needs no cached raster to begin with.
+    return resolveImageDisplaySrc({
+      entry,
+      preferOriginal: false,
+      originalSrc: getImageSrc(entry),
+      maxDimension: normalizeImageThumbnailMaxDimension(),
+      getThumbnail: (imageEntry, maxDimension) => getImageThumbnail(imageEntry, maxDimension)
+        ?? getImageThumbnailPlaceholder(imageEntry, maxDimension),
+    });
   }
 
   if (isVideoFile(entry)) {
