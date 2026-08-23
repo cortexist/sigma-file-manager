@@ -150,6 +150,25 @@ describe('MediaPlayer', () => {
     expect(wrapper.get('.media-player__time').text()).toContain('0:00');
   });
 
+  /**
+   * The regression this guards: unmounting used to only pause, and a paused element keeps
+   * its decode pipeline — audio server stream included — until garbage collection reaps the
+   * detached node, which it may never do. Every played file left another corked stream on
+   * the server. Detaching the source and reloading is what makes the engine tear the
+   * pipeline down at unmount rather than at some later collection.
+   */
+  it('releases the media source on unmount', () => {
+    const wrapper = mountPlayer();
+    const media = wrapper.get('video').element;
+    load.mockClear();
+
+    wrapper.unmount();
+
+    expect(media.pause).toHaveBeenCalled();
+    expect(media.getAttribute('src')).toBeNull();
+    expect(load).toHaveBeenCalled();
+  });
+
   describe('autoplay', () => {
     /**
      * The `autoplay` attribute only applies to an element's first load — the spec clears the

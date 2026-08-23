@@ -871,8 +871,20 @@ onBeforeUnmount(() => {
    * engine on its own, but that happens on a later task and not at all while the element is
    * in fullscreen — either way it is playback outliving the component that owns it, which is
    * the app's business to prevent rather than the engine's to be trusted with.
+   *
+   * Pausing is not releasing, though: the engine keeps a paused element's whole decode
+   * pipeline — audio server stream included — until garbage collection happens to reap the
+   * detached element, which it may never do. Left at that, every unmount parks another
+   * silent stream on the server, one corked mixer entry per played file. Detaching the
+   * source and reloading is the deterministic teardown the spec provides for this.
    */
-  mediaRef.value?.pause();
+  const media = mediaRef.value;
+
+  if (media) {
+    media.pause();
+    media.removeAttribute('src');
+    media.load();
+  }
 
   clearIdleTimer();
   clearTimeout(showIdleTimer);
