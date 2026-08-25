@@ -17,6 +17,13 @@ use walkdir::WalkDir;
 
 const CACHE_SIZE: usize = 2000;
 const CACHE_TTL_SECONDS: u64 = 300;
+/// How many walked entries are held at once while their metadata is read. Collecting the
+/// whole walk first meant a single size calculation kept every `DirEntry` — each owning a
+/// full path — resident until the walk finished, which costs hundreds of megabytes on a
+/// large tree and, because several calculations run in parallel, does so several times
+/// over. Reading metadata in batches keeps the parallelism that makes the walk fast while
+/// bounding what is resident to one batch per calculation.
+const SIZE_WALK_BATCH: usize = 4096;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SizeStatus {
@@ -161,37 +168,62 @@ fn calculate_dir_size_with_timeout(path: &Path, timeout: Duration) -> DirSizeRes
     }
 
     let start_time = Instant::now();
-    let cancelled = Arc::new(AtomicBool::new(false));
-    let total_size = Arc::new(AtomicU64::new(0));
-    let file_count = Arc::new(AtomicU64::new(0));
-    let dir_count = Arc::new(AtomicU64::new(0));
+    let mut was_cancelled = false;
+    let total_size = AtomicU64::new(0);
+    let file_count = AtomicU64::new(0);
+    let dir_count = AtomicU64::new(0);
 
-    let entries: Vec<_> = WalkDir::new(path)
+    let mut walker = WalkDir::new(path)
         .min_depth(1)
         .into_iter()
-        .filter_map(|entry| entry.ok())
-        .take_while(|_| {
-            if start_time.elapsed() > timeout {
-                cancelled.store(true, Ordering::SeqCst);
-                false
-            } else {
-                true
-            }
-        })
-        .collect();
+        .filter_map(|entry| entry.ok());
 
-    let was_cancelled = cancelled.load(Ordering::SeqCst);
+    let mut batch: Vec<walkdir::DirEntry> = Vec::with_capacity(SIZE_WALK_BATCH);
 
-    entries.par_iter().for_each(|entry| {
-        if let Ok(metadata) = entry.metadata() {
-            if metadata.is_file() {
-                total_size.fetch_add(metadata.len(), Ordering::Relaxed);
-                file_count.fetch_add(1, Ordering::Relaxed);
-            } else if metadata.is_dir() {
-                dir_count.fetch_add(1, Ordering::Relaxed);
+    loop {
+        batch.clear();
+        let mut walk_finished = false;
+
+        while batch.len() < SIZE_WALK_BATCH {
+            // The clock is read before pulling, but only counts as running out of time if
+            // there was in fact another entry to take — the same rule the previous
+            // `take_while` followed. A walk that ends just as the budget does has still
+            // covered everything, and calling that partial would discard a complete answer
+            // and recalculate it on the next look.
+            let timed_out = start_time.elapsed() > timeout;
+
+            match walker.next() {
+                Some(entry) => {
+                    if timed_out {
+                        was_cancelled = true;
+                        break;
+                    }
+                    batch.push(entry);
+                }
+                None => {
+                    walk_finished = true;
+                    break;
+                }
             }
         }
-    });
+
+        if !batch.is_empty() {
+            batch.par_iter().for_each(|entry| {
+                if let Ok(metadata) = entry.metadata() {
+                    if metadata.is_file() {
+                        total_size.fetch_add(metadata.len(), Ordering::Relaxed);
+                        file_count.fetch_add(1, Ordering::Relaxed);
+                    } else if metadata.is_dir() {
+                        dir_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            });
+        }
+
+        if was_cancelled || walk_finished {
+            break;
+        }
+    }
 
     let final_size = total_size.load(Ordering::SeqCst);
     let final_file_count = file_count.load(Ordering::SeqCst);
@@ -480,5 +512,91 @@ pub fn invalidate_dir_size_cache(paths: Vec<String>) {
 pub fn clear_dir_size_cache() {
     if let Ok(mut cache) = SIZE_CACHE.lock() {
         cache.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Writes `count` files of `size_each` bytes and returns what their total should be.
+    fn fill(dir: &Path, count: usize, size_each: usize) -> u64 {
+        for index in 0..count {
+            fs::write(dir.join(format!("file-{index}")), vec![b'x'; size_each]).unwrap();
+        }
+        (count as u64) * (size_each as u64)
+    }
+
+    fn generous_timeout() -> Duration {
+        Duration::from_secs(60)
+    }
+
+    #[test]
+    fn totals_a_tree_that_spans_several_batches() {
+        let temp = TempDir::new().unwrap();
+        let expected = fill(temp.path(), SIZE_WALK_BATCH * 2 + 7, 3);
+
+        let result = calculate_dir_size_with_timeout(temp.path(), generous_timeout());
+
+        assert_eq!(result.status, SizeStatus::Complete);
+        assert_eq!(result.size, expected);
+        assert_eq!(result.file_count as usize, SIZE_WALK_BATCH * 2 + 7);
+        assert_eq!(result.dir_count, 0);
+    }
+
+    /// A tree whose entry count is an exact multiple of the batch size leaves the walker
+    /// empty at a batch boundary. The loop has to notice that and stop rather than spin.
+    #[test]
+    fn terminates_when_the_walk_ends_on_a_batch_boundary() {
+        let temp = TempDir::new().unwrap();
+        let expected = fill(temp.path(), SIZE_WALK_BATCH, 1);
+
+        let result = calculate_dir_size_with_timeout(temp.path(), generous_timeout());
+
+        assert_eq!(result.status, SizeStatus::Complete);
+        assert_eq!(result.size, expected);
+        assert_eq!(result.file_count as usize, SIZE_WALK_BATCH);
+    }
+
+    #[test]
+    fn counts_nested_directories_and_their_files() {
+        let temp = TempDir::new().unwrap();
+        let nested = temp.path().join("a").join("b");
+        fs::create_dir_all(&nested).unwrap();
+        let expected = fill(&nested, 4, 10) + fill(temp.path(), 2, 5);
+
+        let result = calculate_dir_size_with_timeout(temp.path(), generous_timeout());
+
+        assert_eq!(result.status, SizeStatus::Complete);
+        assert_eq!(result.size, expected);
+        assert_eq!(result.file_count, 6);
+        assert_eq!(result.dir_count, 2);
+    }
+
+    /// An expired budget reports what was reached so far as partial, and a partial answer
+    /// must never reach the cache — a wrong size that sticks is worse than none.
+    #[test]
+    fn an_expired_timeout_reports_partial_and_is_not_cached() {
+        let temp = TempDir::new().unwrap();
+        fill(temp.path(), SIZE_WALK_BATCH + 1, 1);
+
+        let result = calculate_dir_size_with_timeout(temp.path(), Duration::from_secs(0));
+
+        assert_eq!(result.status, SizeStatus::Partial);
+        assert!(get_cached_size(&result.path).is_none());
+    }
+
+    #[test]
+    fn an_empty_directory_totals_zero() {
+        let temp = TempDir::new().unwrap();
+
+        let result = calculate_dir_size_with_timeout(temp.path(), generous_timeout());
+
+        assert_eq!(result.status, SizeStatus::Complete);
+        assert_eq!(result.size, 0);
+        assert_eq!(result.file_count, 0);
+        assert_eq!(result.dir_count, 0);
     }
 }
