@@ -140,7 +140,116 @@ pub fn get_system_drives() -> Result<Vec<DriveInfo>, String> {
     #[cfg(windows)]
     append_windows_wsl_drives(&mut drives, &mut seen_paths);
 
+    collapse_network_submounts(&mut drives);
+
     drives.sort_by(|first, second| first.path.cmp(&second.path));
 
     Ok(drives)
+}
+
+/// Drops network mounts that are nested inside another network mount of the
+/// same source. The kernel CIFS client automounts NTFS junctions and DFS
+/// referrals as separate filesystems the first time they are touched (a shared
+/// Windows profile folder yields one per legacy junction: `Application Data`,
+/// `Cookies`, `Local Settings`, ...). They are subfolders of the share, not
+/// shares of their own, so they must not become separate entries.
+fn collapse_network_submounts(drives: &mut Vec<DriveInfo>) {
+    let parents: Vec<(String, String)> = drives
+        .iter()
+        .filter(|drive| drive.drive_type == "Network")
+        .map(|drive| (drive.path.clone(), drive.device_path.clone()))
+        .collect();
+
+    drives.retain(|drive| {
+        if drive.drive_type != "Network" {
+            return true;
+        }
+        !parents.iter().any(|(parent_path, parent_source)| {
+            drive.path != *parent_path
+                && is_nested_path(&drive.path, parent_path)
+                && is_nested_source(&drive.device_path, parent_source)
+        })
+    });
+}
+
+fn is_nested_path(child: &str, parent: &str) -> bool {
+    let parent = parent.trim_end_matches(['/', '\\']);
+    if parent.is_empty() {
+        return false;
+    }
+    child.len() > parent.len()
+        && child.starts_with(parent)
+        && matches!(child.as_bytes()[parent.len()], b'/' | b'\\')
+}
+
+/// A submount's source is the parent's source plus a subpath
+/// (`//host/share/sub` under `//host/share`). Sources that are empty or
+/// identical (some FUSE backends report the same label for every mount) are
+/// not treated as nested, so unrelated mounts under a common prefix survive.
+fn is_nested_source(child: &str, parent: &str) -> bool {
+    if parent.is_empty() || child.is_empty() {
+        return false;
+    }
+    is_nested_path(child, parent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn drive(path: &str, source: &str, drive_type: &str) -> DriveInfo {
+        DriveInfo {
+            name: path.to_string(),
+            path: path.to_string(),
+            mount_point: path.to_string(),
+            file_system: "cifs".to_string(),
+            drive_type: drive_type.to_string(),
+            total_space: 1,
+            available_space: 1,
+            used_space: 0,
+            percent_used: 0.0,
+            is_removable: false,
+            is_read_only: false,
+            is_mounted: true,
+            device_path: source.to_string(),
+        }
+    }
+
+    #[test]
+    fn collapses_cifs_junction_submounts_into_the_share() {
+        let mut drives = vec![
+            drive("/mnt/somewhere", "//host/zero", "Network"),
+            drive("/mnt/somewhere/Cookies", "//host/zero/Cookies", "Network"),
+            drive(
+                "/mnt/somewhere/Documents/My Pictures",
+                "//host/zero/Documents/My Pictures",
+                "Network",
+            ),
+        ];
+        collapse_network_submounts(&mut drives);
+        let paths: Vec<&str> = drives.iter().map(|d| d.path.as_str()).collect();
+        assert_eq!(paths, vec!["/mnt/somewhere"]);
+    }
+
+    #[test]
+    fn keeps_distinct_shares_mounted_under_a_common_directory() {
+        let mut drives = vec![
+            drive("/mnt/nas", "//nas/media", "Network"),
+            drive("/mnt/nas/backup", "//nas/backup", "Network"),
+            drive("/mnt/nas2", "//nas/media2", "Network"),
+        ];
+        collapse_network_submounts(&mut drives);
+        assert_eq!(drives.len(), 3);
+    }
+
+    #[test]
+    fn never_collapses_local_disks() {
+        let mut drives = vec![
+            drive("/", "/dev/nvme0n1p2", "SSD"),
+            drive("/home", "/dev/nvme0n1p2", "SSD"),
+            drive("/mnt/share", "//host/share", "Network"),
+        ];
+        collapse_network_submounts(&mut drives);
+        assert_eq!(drives.len(), 3);
+    }
 }
