@@ -85,6 +85,12 @@ rand = "0.10"
 encoding_rs = "0.8"
 dunce = "1"
 arboard = "3.6.1"
+# The allocator the whole binary runs on. glibc gives every thread its own 64 MB heap and
+# keeps those heaps once they have grown, so the directory walks and index scans that fan
+# out across the thread pool ratchet resident memory up over a session and never give it
+# back — a long-running window can hold well over a gigabyte of memory it has already
+# freed. mimalloc returns pages to the OS instead. Installed in `main.rs`.
+mimalloc = "0.1"
 
 # TODO: Remove this patch once drag-rs ships a fix for network-path outbound drag on Windows.
 # Upstream: https://github.com/crabnebula-dev/drag-rs/issues/72
