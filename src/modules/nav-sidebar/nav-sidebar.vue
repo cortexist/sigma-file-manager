@@ -409,8 +409,8 @@ function getDriveIcon(drive: {
 }
 
 .nav-sidebar-drive--unresponsive .nav-sidebar-drive-icon {
-  opacity: 0.45;
   filter: grayscale(1);
+  opacity: 0.45;
 }
 
 </style>

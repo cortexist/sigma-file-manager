@@ -933,8 +933,11 @@ onBeforeUnmount(() => {
                 :style="{ height: `${row.size}px` }"
                 :class="{
                   'file-picker__entry--hidden': row.item.items[0].is_hidden,
+                  'file-picker__entry--unresponsive': row.item.items[0].mount_status === 'unresponsive',
                   'file-picker__entry--inert': !isSelectable(row.item.items[0]) && !row.item.items[0].is_dir,
                 }"
+                :title="row.item.items[0].mount_status === 'unresponsive' ? t('fileBrowser.storageNotResponding') : undefined"
+                :data-mount-status="row.item.items[0].mount_status || undefined"
                 :data-selected="selectedPaths.has(row.item.items[0].path) || undefined"
                 @click="toggleSelection(row.item.items[0], $event)"
                 @dblclick="activateEntry(row.item.items[0])"
@@ -1348,6 +1351,14 @@ onBeforeUnmount(() => {
 
 .file-picker__entry--hidden {
   opacity: 0.5;
+}
+
+.file-picker__entry--unresponsive {
+  opacity: 0.5;
+}
+
+.file-picker__entry--unresponsive .file-picker__entry-icon {
+  filter: grayscale(1);
 }
 
 .file-picker__entry--inert {

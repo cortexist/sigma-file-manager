@@ -17,12 +17,14 @@
 //! point synchronously: it takes the cached attributes and asks this registry how the mount
 //! is doing.
 //!
-//! The registry probes each remote mount with a `statvfs` on a detached thread. A probe
-//! that has not answered within [`PROBE_DEADLINE`] marks the mount unresponsive; the thread
-//! is left to finish on its own (it will, once the transport times out) and its late answer
-//! flips the mount back. At most one probe per mount is ever in flight, so a dead mount
-//! costs one parked thread, not one per poll. Every state change is broadcast to the
-//! webviews as a [`MOUNT_HEALTH_CHANGED_EVENT`].
+//! The registry probes each remote mount with a `statvfs` in a helper process (a thread
+//! would do the same work but could not be shed on exit; see [`PROBE_MOUNT_CLI_FLAG`]). A
+//! probe that has not answered within [`PROBE_DEADLINE`] marks the mount unresponsive; the
+//! helper is left to finish on its own (it will, once the transport times out) and its late
+//! answer flips the mount back. At most one probe per mount is ever in flight. Mounts the
+//! kernel automounted inside another share (CIFS junctions and DFS referrals) share their
+//! parent's probe: they are one transport. Every state change is broadcast to the webviews
+//! as a [`MOUNT_HEALTH_CHANGED_EVENT`].
 //!
 //! Only Linux reads the mount table today; elsewhere every query answers "not a remote
 //! mount" and behavior is unchanged.
@@ -39,8 +41,18 @@ use tauri::{AppHandle, Emitter};
 pub const PROBE_DEADLINE: Duration = Duration::from_millis(1500);
 /// A gate waits this long for a first verdict before letting the caller through or not.
 pub const GATE_WAIT: Duration = Duration::from_millis(1700);
-const RESPONSIVE_RECHECK: Duration = Duration::from_secs(5);
+/// Each probe is a short-lived helper process (see [`PROBE_MOUNT_CLI_FLAG`]), so rechecks are
+/// spaced to keep that cheap even with a dozen shares mounted.
+const RESPONSIVE_RECHECK: Duration = Duration::from_secs(15);
 const UNRESPONSIVE_RECHECK: Duration = Duration::from_secs(15);
+const OVERDUE_POLL_STEP: Duration = Duration::from_millis(200);
+/// Launches this executable as a mount probe: `sigma-file-manager --probe-mount <path>` runs
+/// one `statvfs` and exits. A probe must live in its own process. A thread parked in a
+/// request the FUSE daemon has already taken is uninterruptible, and a process cannot finish
+/// exiting while it owns such a thread: the picker took 30 s to close and the main window
+/// hung on quit for as long as a dead sshfs held a probe. A child process parked the same way
+/// holds nothing of its parent's.
+pub const PROBE_MOUNT_CLI_FLAG: &str = "--probe-mount";
 const MOUNT_TABLE_TTL: Duration = Duration::from_secs(1);
 const HEALTH_POLL_STEP: Duration = Duration::from_millis(25);
 pub const MOUNT_HEALTH_CHANGED_EVENT: &str = "mount-health-changed";
@@ -59,6 +71,9 @@ pub struct NetworkMount {
     pub mount_point: PathBuf,
     pub file_system: String,
     pub source: String,
+    /// The mount whose probe answers for this one: itself, or the share it was automounted
+    /// inside of.
+    pub probe_target: PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -149,7 +164,25 @@ pub fn is_network_filesystem(file_system: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 impl MountTable {
-    fn from_mounts(mounts: Vec<NetworkMount>) -> Self {
+    fn from_mounts(mut mounts: Vec<NetworkMount>) -> Self {
+        // Parents before children, so a child can take its parent's already-resolved target.
+        mounts.sort_by_key(|mount| mount.mount_point.as_os_str().len());
+
+        for index in 0..mounts.len() {
+            let (earlier, rest) = mounts.split_at_mut(index);
+            let mount = &mut rest[0];
+            let inherited = earlier
+                .iter()
+                .rev()
+                .find(|parent| {
+                    mount.mount_point != parent.mount_point
+                        && mount.mount_point.starts_with(&parent.mount_point)
+                        && is_nested_source(&mount.source, &parent.source)
+                })
+                .map(|parent| parent.probe_target.clone());
+            mount.probe_target = inherited.unwrap_or_else(|| mount.mount_point.clone());
+        }
+
         let by_mount_point = mounts
             .iter()
             .enumerate()
@@ -193,6 +226,17 @@ fn mount_table() -> Arc<MountTable> {
     table
 }
 
+/// A submount's source is its parent's source plus a subpath (`//host/share/sub` under
+/// `//host/share`); that is what marks it as a piece of the same share rather than another
+/// share mounted under a common directory.
+fn is_nested_source(child: &str, parent: &str) -> bool {
+    let parent = parent.trim_end_matches(['/', '\\']);
+    !parent.is_empty()
+        && child.len() > parent.len()
+        && child.starts_with(parent)
+        && matches!(child.as_bytes()[parent.len()], b'/' | b'\\')
+}
+
 /// One `/proc/self/mountinfo` line:
 /// `36 35 98:0 /mnt1 /mnt2 rw,noatime master:1 - ext3 /dev/root rw,errors=continue`.
 /// The mount point is the fifth field; the filesystem type and source follow the `-`
@@ -212,8 +256,10 @@ fn parse_mountinfo(contents: &str) -> Vec<NetworkMount> {
                 return None;
             }
 
+            let mount_point = PathBuf::from(unescape_mountinfo(mount_point));
             Some(NetworkMount {
-                mount_point: PathBuf::from(unescape_mountinfo(mount_point)),
+                probe_target: mount_point.clone(),
+                mount_point,
                 file_system: file_system.to_string(),
                 source: unescape_mountinfo(source),
             })
@@ -263,6 +309,16 @@ pub fn network_mount_containing(path: &Path) -> Option<NetworkMount> {
         .cloned()
 }
 
+/// For the mount point of a remote filesystem, what the kernel holds for it — never asking
+/// the server. `None` when `path` is not such a mount point.
+pub fn mount_point_attributes(path: &Path) -> Option<CachedAttributes> {
+    network_mount_at(path)?;
+    Some(cached_attributes(path).unwrap_or(CachedAttributes {
+        is_dir: true,
+        ..Default::default()
+    }))
+}
+
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
@@ -275,7 +331,7 @@ pub fn health_of(mount: &NetworkMount) -> MountHealth {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    let Some(record) = records.get(&mount.mount_point) else {
+    let Some(record) = records.get(&mount.probe_target) else {
         return MountHealth::Probing;
     };
 
@@ -310,7 +366,7 @@ pub fn storage_of(mount: &NetworkMount) -> Option<MountStorage> {
     records()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(&mount.mount_point)
+        .get(&mount.probe_target)
         .and_then(|record| record.storage)
 }
 
@@ -350,7 +406,7 @@ fn ensure_probe(mount: &NetworkMount) {
         let mut records = records()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let record = records.entry(mount.mount_point.clone()).or_default();
+        let record = records.entry(mount.probe_target.clone()).or_default();
 
         if record.probe_started.is_some() {
             return;
@@ -369,7 +425,57 @@ fn ensure_probe(mount: &NetworkMount) {
         record.probe_started = Some(Instant::now());
     }
 
-    spawn_probe(mount.mount_point.clone());
+    spawn_probe(mount.probe_target.clone());
+}
+
+/// Recognizes a probe launch; the caller runs [`run_probe_process`] and exits.
+pub fn probe_mount_arg(args: &[String]) -> Option<PathBuf> {
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if arg == PROBE_MOUNT_CLI_FLAG {
+            return args.next().map(PathBuf::from);
+        }
+    }
+    None
+}
+
+/// The whole of a probe process: one `statvfs`, its figures on stdout, exit status as the
+/// verdict.
+pub fn run_probe_process(mount_point: &Path) -> i32 {
+    match statvfs_storage(mount_point) {
+        Some(storage) => {
+            println!(
+                "{} {} {}",
+                storage.total_space,
+                storage.available_space,
+                u8::from(storage.is_read_only)
+            );
+            0
+        }
+        None => 1,
+    }
+}
+
+fn parse_probe_output(output: &str) -> Option<MountStorage> {
+    let mut fields = output.split_whitespace();
+    let total_space = fields.next()?.parse().ok()?;
+    let available_space = fields.next()?.parse().ok()?;
+    let is_read_only = fields.next()? == "1";
+    Some(MountStorage {
+        total_space,
+        available_space,
+        is_read_only,
+    })
+}
+
+fn spawn_probe_process(mount_point: &Path) -> std::io::Result<std::process::Child> {
+    std::process::Command::new(std::env::current_exe()?)
+        .arg(PROBE_MOUNT_CLI_FLAG)
+        .arg(mount_point)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
 }
 
 fn spawn_probe(mount_point: PathBuf) {
@@ -378,29 +484,11 @@ fn spawn_probe(mount_point: PathBuf) {
         .name("mount-probe".to_string())
         .spawn(move || {
             let mount_point = probed_mount_point;
-            let (sender, receiver) = std::sync::mpsc::channel();
-            let probe_path = mount_point.clone();
-            let worker = std::thread::Builder::new()
-                .name("mount-probe-statvfs".to_string())
-                .spawn(move || {
-                    let _ = sender.send(statvfs_storage(&probe_path));
-                });
-
-            if worker.is_err() {
-                settle(&mount_point, None);
-                return;
-            }
-
-            match receiver.recv_timeout(PROBE_DEADLINE) {
-                Ok(result) => settle(&mount_point, result),
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    report(&mount_point, MountHealth::Unresponsive);
-                    // The worker is parked in the kernel; it returns when the transport
-                    // gives up, and that late answer is still the truth about the mount.
-                    let late = receiver.recv().ok().flatten();
-                    settle(&mount_point, late);
-                }
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => settle(&mount_point, None),
+            match spawn_probe_process(&mount_point) {
+                Ok(child) => watch_probe_process(&mount_point, child),
+                // No helper could be started; the thread does the work itself and the
+                // process keeps the exit-time cost that entails.
+                Err(_) => probe_in_thread(&mount_point),
             }
         });
 
@@ -411,6 +499,71 @@ fn spawn_probe(mount_point: PathBuf) {
         if let Some(record) = records.get_mut(&mount_point) {
             record.probe_started = None;
         }
+    }
+}
+
+fn watch_probe_process(mount_point: &Path, mut child: std::process::Child) {
+    let started = Instant::now();
+    let mut reported_overdue = false;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let storage = if status.success() {
+                    let mut output = String::new();
+                    if let Some(mut stdout) = child.stdout.take() {
+                        use std::io::Read;
+                        let _ = stdout.read_to_string(&mut output);
+                    }
+                    parse_probe_output(&output)
+                } else {
+                    None
+                };
+                settle(mount_point, storage);
+                return;
+            }
+            Ok(None) => {}
+            Err(_) => {
+                settle(mount_point, None);
+                return;
+            }
+        }
+
+        if !reported_overdue && started.elapsed() >= PROBE_DEADLINE {
+            report(mount_point, MountHealth::Unresponsive);
+            reported_overdue = true;
+        }
+
+        std::thread::sleep(if reported_overdue {
+            OVERDUE_POLL_STEP
+        } else {
+            HEALTH_POLL_STEP
+        });
+    }
+}
+
+fn probe_in_thread(mount_point: &Path) {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let probe_path = mount_point.to_path_buf();
+    let worker = std::thread::Builder::new()
+        .name("mount-probe-statvfs".to_string())
+        .spawn(move || {
+            let _ = sender.send(statvfs_storage(&probe_path));
+        });
+
+    if worker.is_err() {
+        settle(mount_point, None);
+        return;
+    }
+
+    match receiver.recv_timeout(PROBE_DEADLINE) {
+        Ok(result) => settle(mount_point, result),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            report(mount_point, MountHealth::Unresponsive);
+            let late = receiver.recv().ok().flatten();
+            settle(mount_point, late);
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => settle(mount_point, None),
     }
 }
 
@@ -436,12 +589,12 @@ fn settle(mount_point: &Path, storage: Option<MountStorage>) {
     report(mount_point, health);
 }
 
-fn report(mount_point: &Path, health: MountHealth) {
+fn report(probe_target: &Path, health: MountHealth) {
     let changed = {
         let mut records = records()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let record = records.entry(mount_point.to_path_buf()).or_default();
+        let record = records.entry(probe_target.to_path_buf()).or_default();
         if record.reported == Some(health) {
             false
         } else {
@@ -454,9 +607,20 @@ fn report(mount_point: &Path, health: MountHealth) {
         return;
     }
 
-    if let Some(app_handle) = APP_HANDLE.get() {
+    let Some(app_handle) = APP_HANDLE.get() else {
+        return;
+    };
+
+    // One event per mount the probe speaks for, so a listing showing a junction submount
+    // hears about its share going down.
+    let table = mount_table();
+    for mount in table
+        .mounts
+        .iter()
+        .filter(|mount| mount.probe_target == probe_target)
+    {
         let payload = MountHealthChangedPayload {
-            mount_point: crate::utils::normalize_path(&mount_point.to_string_lossy()),
+            mount_point: crate::utils::normalize_path(&mount.mount_point.to_string_lossy()),
             health,
         };
         if let Err(error) = app_handle.emit(MOUNT_HEALTH_CHANGED_EVENT, payload) {
@@ -610,6 +774,64 @@ mod tests {
             .by_mount_point
             .contains_key(Path::new("/home/zero/phone")));
         assert!(!table.by_mount_point.contains_key(Path::new("/home/zero")));
+    }
+
+    #[test]
+    fn junction_submounts_share_their_share_probe() {
+        let table = MountTable::from_mounts(parse_mountinfo(MOUNTINFO));
+        let target = |mount_point: &str| {
+            table.mounts[table.by_mount_point[Path::new(mount_point)]]
+                .probe_target
+                .clone()
+        };
+        assert_eq!(
+            target("/mnt/somewhere/My Documents"),
+            Path::new("/mnt/somewhere")
+        );
+        assert_eq!(target("/mnt/somewhere"), Path::new("/mnt/somewhere"));
+        assert_eq!(target("/home/zero/phone"), Path::new("/home/zero/phone"));
+    }
+
+    #[test]
+    fn distinct_shares_under_one_directory_keep_their_own_probe() {
+        let mounts = vec![
+            NetworkMount {
+                mount_point: PathBuf::from("/mnt/nas"),
+                file_system: "cifs".into(),
+                source: "//nas/media".into(),
+                probe_target: PathBuf::from("/mnt/nas"),
+            },
+            NetworkMount {
+                mount_point: PathBuf::from("/mnt/nas/backup"),
+                file_system: "cifs".into(),
+                source: "//nas/backup".into(),
+                probe_target: PathBuf::from("/mnt/nas/backup"),
+            },
+        ];
+        let table = MountTable::from_mounts(mounts);
+        assert!(table
+            .mounts
+            .iter()
+            .all(|mount| mount.probe_target == mount.mount_point));
+    }
+
+    #[test]
+    fn probe_launch_is_recognized_and_answers_in_a_fixed_shape() {
+        let args: Vec<String> = ["sigma", "--probe-mount", "/"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(probe_mount_arg(&args), Some(PathBuf::from("/")));
+        assert_eq!(probe_mount_arg(&args[..1]), None);
+        assert_eq!(
+            parse_probe_output("1000 250 1\n"),
+            Some(MountStorage {
+                total_space: 1000,
+                available_space: 250,
+                is_read_only: true
+            })
+        );
+        assert_eq!(parse_probe_output("garbage"), None);
     }
 
     #[test]

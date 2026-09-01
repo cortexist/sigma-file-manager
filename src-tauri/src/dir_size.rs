@@ -2,6 +2,7 @@
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
+use crate::guarded_walk::{GuardedWalk, WalkEntry};
 use crate::utils::normalize_path;
 use lru::LruCache;
 use once_cell::sync::Lazy;
@@ -13,7 +14,6 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use walkdir::WalkDir;
 
 const CACHE_SIZE: usize = 2000;
 const CACHE_TTL_SECONDS: u64 = 300;
@@ -142,11 +142,23 @@ fn set_cached_size(path: &str, entry: CacheEntry) {
     }
 }
 
-/// A walk must not descend into the mount point of a remote filesystem that is not
-/// answering: every entry read there blocks until the transport gives up.
-fn descends_into_answering_storage(entry: &walkdir::DirEntry) -> bool {
-    entry.depth() == 0
-        || !crate::dir_reader::mount_health::is_unresponsive_mount_point(entry.path())
+/// A walk must not enter the mount point of a remote filesystem that is not answering:
+/// even opening it blocks until the transport gives up.
+fn admits_answering_storage(path: &Path, _depth: usize, is_dir: bool) -> bool {
+    !is_dir || !crate::dir_reader::mount_health::is_unresponsive_mount_point(path)
+}
+
+/// What one walked entry adds to the running totals. Directories count by their type alone;
+/// only a regular file needs its metadata, for the size.
+fn tally(entry: &WalkEntry, total_size: &AtomicU64, file_count: &AtomicU64, dir_count: &AtomicU64) {
+    if entry.file_type.is_dir() {
+        dir_count.fetch_add(1, Ordering::Relaxed);
+    } else if entry.file_type.is_file() {
+        if let Ok(metadata) = std::fs::symlink_metadata(&entry.path) {
+            total_size.fetch_add(metadata.len(), Ordering::Relaxed);
+            file_count.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 fn unresponsive_storage_result(path_str: String, error: String) -> DirSizeResult {
@@ -195,13 +207,9 @@ fn calculate_dir_size_with_timeout(path: &Path, timeout: Duration) -> DirSizeRes
     let file_count = AtomicU64::new(0);
     let dir_count = AtomicU64::new(0);
 
-    let mut walker = WalkDir::new(path)
-        .min_depth(1)
-        .into_iter()
-        .filter_entry(descends_into_answering_storage)
-        .filter_map(|entry| entry.ok());
+    let mut walker = GuardedWalk::new(path, usize::MAX, admits_answering_storage);
 
-    let mut batch: Vec<walkdir::DirEntry> = Vec::with_capacity(SIZE_WALK_BATCH);
+    let mut batch: Vec<WalkEntry> = Vec::with_capacity(SIZE_WALK_BATCH);
 
     loop {
         batch.clear();
@@ -231,16 +239,9 @@ fn calculate_dir_size_with_timeout(path: &Path, timeout: Duration) -> DirSizeRes
         }
 
         if !batch.is_empty() {
-            batch.par_iter().for_each(|entry| {
-                if let Ok(metadata) = entry.metadata() {
-                    if metadata.is_file() {
-                        total_size.fetch_add(metadata.len(), Ordering::Relaxed);
-                        file_count.fetch_add(1, Ordering::Relaxed);
-                    } else if metadata.is_dir() {
-                        dir_count.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-            });
+            batch
+                .par_iter()
+                .for_each(|entry| tally(entry, &total_size, &file_count, &dir_count));
         }
 
         if was_cancelled || walk_finished {
@@ -331,26 +332,19 @@ fn calculate_dir_size_no_timeout(
     let dir_count_clone = dir_count.clone();
 
     // Process entries one by one, updating progress as we go
-    for entry in WalkDir::new(path)
-        .min_depth(1)
-        .into_iter()
-        .filter_entry(descends_into_answering_storage)
-        .filter_map(|entry| entry.ok())
-    {
+    for entry in GuardedWalk::new(path, usize::MAX, admits_answering_storage) {
         // Check cancellation
         if cancel_token_clone.load(Ordering::SeqCst) {
             was_cancelled_clone.store(true, Ordering::SeqCst);
             break;
         }
 
-        if let Ok(metadata) = entry.metadata() {
-            if metadata.is_file() {
-                total_size_clone.fetch_add(metadata.len(), Ordering::Relaxed);
-                file_count_clone.fetch_add(1, Ordering::Relaxed);
-            } else if metadata.is_dir() {
-                dir_count_clone.fetch_add(1, Ordering::Relaxed);
-            }
-        }
+        tally(
+            &entry,
+            &total_size_clone,
+            &file_count_clone,
+            &dir_count_clone,
+        );
     }
 
     // Check if cancelled

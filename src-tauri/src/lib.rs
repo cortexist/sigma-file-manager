@@ -21,6 +21,7 @@ mod file_manager1;
 mod file_operations;
 mod file_picker;
 mod global_search;
+mod guarded_walk;
 mod image_thumbnails;
 mod input_simulation;
 mod lan_share;
@@ -741,6 +742,12 @@ pub fn run() {
     std::env::set_var("GTK_USE_PORTAL", "0");
 
     let raw_args: Vec<String> = std::env::args().collect();
+
+    // A mount probe is a helper that answers one `statvfs` for the process that spawned it
+    // and exits — before Tauri, GTK or anything else comes up. See `mount_health`.
+    if let Some(mount_point) = dir_reader::mount_health::probe_mount_arg(&raw_args) {
+        std::process::exit(dir_reader::mount_health::run_probe_process(&mount_point));
+    }
 
     // The portal-service launch serves file dialogs and nothing else: claim the backend name,
     // spawn a picker process per request — no Tauri, no GTK, no windows, no webviews. An

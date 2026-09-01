@@ -139,15 +139,7 @@ pub async fn path_exists_with_timeout(path: String, timeout_ms: Option<u64>) -> 
 
 #[tauri::command]
 pub fn paths_are_directories(paths: Vec<String>) -> Vec<bool> {
-    paths
-        .into_iter()
-        .map(|path| {
-            std::path::Path::new(&path)
-                .symlink_metadata()
-                .map(|meta| meta.is_dir())
-                .unwrap_or(false)
-        })
-        .collect()
+    path_helpers::paths_are_directories(paths)
 }
 
 #[tauri::command]

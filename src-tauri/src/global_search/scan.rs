@@ -2,13 +2,13 @@
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
+use crate::guarded_walk::GuardedWalk;
 use crate::utils::{metadata_modified_time_unix_ms, normalize_path};
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tantivy::{doc, Index, IndexReader, IndexWriter, Term};
 use tauri::Manager;
-use walkdir::WalkDir;
 
 use super::ignore::{builtin_ignored_paths, normalize_case, IgnoredPathMatcher};
 use super::index::{
@@ -92,6 +92,22 @@ fn maybe_set_current_scan_path(path: String, update_counter: &AtomicU64) {
     }
 }
 
+/// An existing directory the scan may enter. The mount point of a remote filesystem is
+/// answered from the kernel's cache, and one that is not answering is left out: asking it
+/// would park the scan for the transport's timeout, and there is nothing to index there.
+fn is_scannable_directory(path: &Path) -> bool {
+    use crate::dir_reader::mount_health;
+
+    if let Some(attributes) = mount_health::mount_point_attributes(path) {
+        return attributes.is_dir && !mount_health::is_unresponsive_path(path);
+    }
+    if mount_health::is_unresponsive_path(path) {
+        return false;
+    }
+
+    path.exists() && path.is_dir()
+}
+
 fn should_scan_walk_entry(
     path: &Path,
     ignored_matcher: &IgnoredPathMatcher,
@@ -106,8 +122,8 @@ fn should_scan_walk_entry(
         return false;
     }
 
-    // Descending into a remote mount whose server is gone would park the scan for as long
-    // as the transport takes to give up, per entry.
+    // Entering a remote mount whose server is gone would park the scan for as long as the
+    // transport takes to give up; asked here, before the walker opens the directory.
     if crate::dir_reader::mount_health::is_unresponsive_mount_point(path) {
         return false;
     }
@@ -306,34 +322,22 @@ fn scan_drive(
 
     let mut items_since_last_update: u64 = 0;
 
-    for entry_result in WalkDir::new(&root_path)
-        .follow_links(false)
-        .max_depth(scan_depth.max(1))
-        .into_iter()
-        .filter_entry(|entry| {
-            should_scan_walk_entry(entry.path(), ignored_matcher, path_update_counter)
-        })
-    {
+    let walker = GuardedWalk::new(&root_path, scan_depth.max(1), |path, _depth, _is_dir| {
+        should_scan_walk_entry(path, ignored_matcher, path_update_counter)
+    });
+
+    for entry in walker {
         if cancel_flag.load(Ordering::SeqCst) {
             break;
         }
 
-        let entry = match entry_result {
-            Ok(entry) => entry,
-            Err(_) => continue,
-        };
-
-        let path = entry.path();
+        let path = entry.path.as_path();
         let path_string = match path.to_str() {
             Some(path_str) => normalize_path(path_str),
             None => continue,
         };
 
         if ignored_matcher.is_ignored(&path_string) {
-            continue;
-        }
-
-        if entry.depth() == 0 {
             continue;
         }
 
@@ -426,10 +430,7 @@ pub async fn global_search_start_scan(
                 let valid_drive_roots: Vec<String> = settings
                     .drive_roots
                     .iter()
-                    .filter(|root| {
-                        let path = std::path::Path::new(root);
-                        path.exists() && path.is_dir()
-                    })
+                    .filter(|root| is_scannable_directory(std::path::Path::new(root)))
                     .cloned()
                     .collect();
 
@@ -726,7 +727,7 @@ fn global_search_index_paths_blocking(
     for dir_path in &settings.paths {
         let path = Path::new(dir_path);
 
-        if !path.exists() || !path.is_dir() {
+        if !is_scannable_directory(path) {
             continue;
         }
 
@@ -743,24 +744,12 @@ fn global_search_index_paths_blocking(
         writer.delete_term(exact_term);
         did_mutate_index = true;
 
-        for entry_result in WalkDir::new(path)
-            .follow_links(false)
-            .max_depth(scan_depth)
-            .into_iter()
-            .filter_entry(|entry| {
-                should_scan_walk_entry(entry.path(), &ignored_matcher, &path_update_counter)
-            })
-        {
-            let entry = match entry_result {
-                Ok(entry) => entry,
-                Err(_) => continue,
-            };
+        let walker = GuardedWalk::new(path, scan_depth, |entry_path, _depth, _is_dir| {
+            should_scan_walk_entry(entry_path, &ignored_matcher, &path_update_counter)
+        });
 
-            if entry.depth() == 0 {
-                continue;
-            }
-
-            let entry_path = entry.path();
+        for entry in walker {
+            let entry_path = entry.path.as_path();
             let path_string = match entry_path.to_str() {
                 Some(path_str) => normalize_path(path_str),
                 None => continue,

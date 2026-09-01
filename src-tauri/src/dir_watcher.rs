@@ -85,6 +85,10 @@ pub async fn watch_directory(app: AppHandle, path: String) -> Result<(), String>
         active_watcher_paths(),
     );
 
+    // Checked before `exists`, which would otherwise wait out the transport of a remote
+    // mount that stopped answering.
+    crate::dir_reader::mount_health::ensure_responsive(&watch_path)?;
+
     if !watch_path.exists() {
         log::warn!(
             "[dir-watcher-diag] watch_directory rejected missing path={} normalized={}",

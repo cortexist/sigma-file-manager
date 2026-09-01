@@ -47,9 +47,15 @@ fn existence_check_candidate_limit(limit: usize) -> usize {
 fn partition_existing_entries(
     entries: Vec<GlobalSearchResultEntry>,
 ) -> (Vec<GlobalSearchResultEntry>, Vec<String>) {
-    let (existing, missing): (Vec<GlobalSearchResultEntry>, Vec<GlobalSearchResultEntry>) = entries
-        .into_par_iter()
-        .partition(|entry| std::fs::symlink_metadata(&entry.path).is_ok());
+    let (existing, missing): (Vec<GlobalSearchResultEntry>, Vec<GlobalSearchResultEntry>) =
+        entries.into_par_iter().partition(|entry| {
+            // A result on a remote mount that stopped answering is kept as-is: its absence
+            // cannot be told from its silence, and asking would wait out the transport.
+            let path = Path::new(&entry.path);
+            crate::dir_reader::mount_health::mount_point_attributes(path).is_some()
+                || crate::dir_reader::mount_health::is_unresponsive_path(path)
+                || std::fs::symlink_metadata(path).is_ok()
+        });
 
     (
         existing,
@@ -487,7 +493,10 @@ fn global_search_query_paths_blocking(
     let match_mode = select_match_mode(&query, &options);
     let name_pattern = match match_mode {
         MatchMode::Pattern => Some(compile_search_pattern(&query)?),
-        MatchMode::Wildcard => Some(compile_wildcard_search_pattern(&query, options.exact_match)?),
+        MatchMode::Wildcard => Some(compile_wildcard_search_pattern(
+            &query,
+            options.exact_match,
+        )?),
         MatchMode::Fuzzy => None,
     };
 
@@ -496,6 +505,10 @@ fn global_search_query_paths_blocking(
         .flat_map(|path_string| {
             let path = Path::new(path_string);
             let mut collected_paths = Vec::new();
+
+            if crate::dir_reader::mount_health::is_unresponsive_path(path) {
+                return collected_paths;
+            }
 
             if let Ok(metadata) = std::fs::metadata(path) {
                 if metadata.is_dir() {
@@ -544,6 +557,10 @@ fn global_search_query_paths_blocking(
 
                 similarity_score
             };
+
+            if crate::dir_reader::mount_health::is_unresponsive_path(path) {
+                return None;
+            }
 
             let metadata = std::fs::metadata(path).ok()?;
 
@@ -756,8 +773,14 @@ mod tests {
     #[test]
     fn a_wildcard_query_is_anchored_to_the_whole_name() {
         // `exile*` reaches from the start of the name, so it takes both Exile and Exiled.
-        assert_eq!(search_names_with_options("exile*", &create_regex_options()).len(), 2);
-        assert_eq!(search_names_with_options("*hoffman*", &create_regex_options()).len(), 2);
+        assert_eq!(
+            search_names_with_options("exile*", &create_regex_options()).len(),
+            2
+        );
+        assert_eq!(
+            search_names_with_options("*hoffman*", &create_regex_options()).len(),
+            2
+        );
         // Anchored: no name begins with "hoffman", however many contain it.
         assert!(search_names_with_options("hoffman*", &create_regex_options()).is_empty());
     }
@@ -799,8 +822,14 @@ mod tests {
         };
 
         assert_eq!(select_match_mode("exile", &options), MatchMode::Fuzzy);
-        assert_eq!(select_match_mode("exile", &create_plain_options()), MatchMode::Wildcard);
-        assert_eq!(select_match_mode("exile", &create_regex_options()), MatchMode::Pattern);
+        assert_eq!(
+            select_match_mode("exile", &create_plain_options()),
+            MatchMode::Wildcard
+        );
+        assert_eq!(
+            select_match_mode("exile", &create_regex_options()),
+            MatchMode::Pattern
+        );
     }
 
     #[test]
@@ -968,4 +997,3 @@ mod tests {
         ));
     }
 }
-
