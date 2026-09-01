@@ -744,8 +744,11 @@ pub fn run() {
     let raw_args: Vec<String> = std::env::args().collect();
 
     // A mount probe is a helper that answers one `statvfs` for the process that spawned it
-    // and exits — before Tauri, GTK or anything else comes up. See `mount_health`.
+    // and exits — before Tauri, GTK or anything else comes up. See `mount_health`. It takes
+    // its own process name first: a probe parked on a dead mount can outlive the picker
+    // that asked, and a process monitor must not read it as the file manager running.
     if let Some(mount_point) = dir_reader::mount_health::probe_mount_arg(&raw_args) {
+        standalone_viewer::adopt_process_identity("sigma-mount-probe");
         std::process::exit(dir_reader::mount_health::run_probe_process(&mount_point));
     }
 
