@@ -14,7 +14,13 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
 import { openPathDefault } from '@/utils/open-path-default';
 import { determineFileType, useQuickViewStore } from '@/stores/runtime/quick-view';
-import type { DirEntry, DirContents, ReadDirOptions } from '@/types/dir-entry';
+import {
+  MOUNT_HEALTH_CHANGED_EVENT,
+  type DirEntry,
+  type DirContents,
+  type MountHealthChangedPayload,
+  type ReadDirOptions,
+} from '@/types/dir-entry';
 import type { Tab } from '@/types/workspaces';
 import { useWorkspacesStore } from '@/stores/storage/workspaces';
 import { useUserStatsStore } from '@/stores/storage/user-stats';
@@ -159,6 +165,7 @@ export function useFileBrowserNavigation(
 
   let watchedPath: string | null = null;
   let dirChangeUnlisten: UnlistenFn | null = null;
+  let mountHealthUnlisten: UnlistenFn | null = null;
   let watcherRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let watcherValidationTimer: ReturnType<typeof setTimeout> | null = null;
   let iconPrefetchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -385,6 +392,39 @@ export function useFileBrowserNavigation(
       dirChangeUnlisten();
       dirChangeUnlisten = null;
     }
+
+    if (mountHealthUnlisten) {
+      mountHealthUnlisten();
+      mountHealthUnlisten = null;
+    }
+  });
+
+  // A remote mount that stopped answering (or came back) changes what the current listing
+  // should look like: the grayed mount point in its parent, or the error page shown in
+  // place of its contents. The backend reports the flip the moment it sees it.
+  void listen<MountHealthChangedPayload>(MOUNT_HEALTH_CHANGED_EVENT, (event) => {
+    if (!currentPath.value) {
+      return;
+    }
+
+    const mountPoint = event.payload.mount_point.replace(/\/+$/, '');
+    const normalizedCurrentPath = normalizePath(currentPath.value);
+    const listingShowsMount = dirContents.value?.entries.some(
+      entry => entry.mount_status != null && normalizePath(entry.path) === mountPoint,
+    ) ?? false;
+    const currentPathIsOnMount = normalizedCurrentPath === mountPoint
+      || normalizedCurrentPath.startsWith(`${mountPoint}/`);
+
+    if (listingShowsMount || currentPathIsOnMount || error.value) {
+      void silentRefresh();
+    }
+  }).then((unlisten) => {
+    if (isDisposed) {
+      unlisten();
+      return;
+    }
+
+    mountHealthUnlisten = unlisten;
   });
 
   const canGoBack = computed(() => historyIndex.value > 0);

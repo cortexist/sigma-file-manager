@@ -1099,7 +1099,9 @@
     "linkMetadataPerformanceWarning": "Pode aumentar o uso de memória e reduzir o desempenho.",
     "fillColumnWidth": "Fill available width",
     "setMinimumColumnWidths": "Definir larguras mínimas",
-    "items": "Itens"
+    "items": "Itens",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "Carregando programas...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }

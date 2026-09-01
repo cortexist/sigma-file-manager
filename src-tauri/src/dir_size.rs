@@ -142,8 +142,30 @@ fn set_cached_size(path: &str, entry: CacheEntry) {
     }
 }
 
+/// A walk must not descend into the mount point of a remote filesystem that is not
+/// answering: every entry read there blocks until the transport gives up.
+fn descends_into_answering_storage(entry: &walkdir::DirEntry) -> bool {
+    entry.depth() == 0
+        || !crate::dir_reader::mount_health::is_unresponsive_mount_point(entry.path())
+}
+
+fn unresponsive_storage_result(path_str: String, error: String) -> DirSizeResult {
+    DirSizeResult {
+        path: path_str,
+        size: 0,
+        status: SizeStatus::Error,
+        file_count: 0,
+        dir_count: 0,
+        error: Some(error),
+    }
+}
+
 fn calculate_dir_size_with_timeout(path: &Path, timeout: Duration) -> DirSizeResult {
     let path_str = normalize_path(&path.to_string_lossy());
+
+    if let Err(error) = crate::dir_reader::mount_health::ensure_responsive(path) {
+        return unresponsive_storage_result(path_str, error);
+    }
 
     if !path.exists() {
         return DirSizeResult {
@@ -176,6 +198,7 @@ fn calculate_dir_size_with_timeout(path: &Path, timeout: Duration) -> DirSizeRes
     let mut walker = WalkDir::new(path)
         .min_depth(1)
         .into_iter()
+        .filter_entry(descends_into_answering_storage)
         .filter_map(|entry| entry.ok());
 
     let mut batch: Vec<walkdir::DirEntry> = Vec::with_capacity(SIZE_WALK_BATCH);
@@ -268,6 +291,10 @@ fn calculate_dir_size_no_timeout(
 ) -> DirSizeResult {
     let path_str = normalize_path(&path.to_string_lossy());
 
+    if let Err(error) = crate::dir_reader::mount_health::ensure_responsive(path) {
+        return unresponsive_storage_result(path_str, error);
+    }
+
     if !path.exists() {
         return DirSizeResult {
             path: path_str,
@@ -307,6 +334,7 @@ fn calculate_dir_size_no_timeout(
     for entry in WalkDir::new(path)
         .min_depth(1)
         .into_iter()
+        .filter_entry(descends_into_answering_storage)
         .filter_map(|entry| entry.ok())
     {
         // Check cancellation

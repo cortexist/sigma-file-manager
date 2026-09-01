@@ -263,6 +263,7 @@ function getDriveIcon(drive: {
         <TooltipTrigger as-child>
           <Button
             class="nav-sidebar-drive"
+            :class="{ 'nav-sidebar-drive--unresponsive': !drive.is_responsive }"
             size="icon"
             @click="openDrive(drive.path)"
           >
@@ -405,6 +406,11 @@ function getDriveIcon(drive: {
 .nav-sidebar-drive:hover .nav-sidebar-drive-icon {
   color: hsl(var(--foreground));
   stroke: hsl(var(--foreground));
+}
+
+.nav-sidebar-drive--unresponsive .nav-sidebar-drive-icon {
+  opacity: 0.45;
+  filter: grayscale(1);
 }
 
 </style>

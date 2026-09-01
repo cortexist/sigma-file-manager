@@ -13,11 +13,42 @@ use super::drives_platform::{
 use super::drives_platform::{append_windows_network_drives, append_windows_wsl_drives};
 #[cfg(target_os = "linux")]
 use super::drives_platform::{mount_point_last_component, should_skip_linux_mount};
+use super::mount_health;
 use super::types::DriveInfo;
 use sysinfo::Disks;
 
+/// The disk list with sizes filled in for every mount that can be asked safely.
+///
+/// sysinfo's default refresh runs `statvfs` on every mount in the table, and on a remote
+/// mount whose server stopped answering that call blocks for as long as the transport takes
+/// to give up. So on Linux the list is built without sizes, local filesystems are then
+/// measured directly (microseconds), and remote ones get whatever their last probe
+/// reported through the mount-health registry.
+fn refreshed_disks() -> Disks {
+    #[cfg(target_os = "linux")]
+    {
+        use sysinfo::DiskRefreshKind;
+
+        let mut disks =
+            Disks::new_with_refreshed_list_specifics(DiskRefreshKind::nothing().with_kind());
+
+        for disk in disks.list_mut() {
+            if !mount_health::is_network_filesystem(&disk.file_system().to_string_lossy()) {
+                disk.refresh_specifics(DiskRefreshKind::nothing().with_storage());
+            }
+        }
+
+        disks
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        Disks::new_with_refreshed_list()
+    }
+}
+
 pub fn get_system_drives() -> Result<Vec<DriveInfo>, String> {
-    let disks = Disks::new_with_refreshed_list();
+    let disks = refreshed_disks();
     let mut drives: Vec<DriveInfo> = Vec::new();
     let mut seen_paths: HashSet<String> = HashSet::new();
 
@@ -25,11 +56,45 @@ pub fn get_system_drives() -> Result<Vec<DriveInfo>, String> {
         let mount_point = disk.mount_point().to_string_lossy().to_string();
         let path = normalize_path(&mount_point);
 
-        let total_space = disk.total_space();
-        let available_space = disk.available_space();
+        let file_system_str = disk.file_system().to_string_lossy().to_lowercase();
+        let is_network_fs = mount_health::is_network_filesystem(&file_system_str);
+
+        let network_mount = if is_network_fs {
+            mount_health::network_mount_at(disk.mount_point())
+        } else {
+            None
+        };
+        // Waiting rather than reading the current verdict costs time only the first time a
+        // mount is seen; after that the registry answers at once. It keeps a healthy share
+        // from missing the first poll and popping in a second later.
+        let network_health = network_mount
+            .as_ref()
+            .map(|mount| mount_health::wait_for_health(mount, mount_health::PROBE_DEADLINE));
+        let is_responsive = network_health != Some(mount_health::MountHealth::Unresponsive);
+
+        let (total_space, available_space, is_read_only) = match network_mount.as_ref() {
+            Some(mount) => {
+                let storage = mount_health::storage_of(mount).unwrap_or_default();
+                (
+                    storage.total_space,
+                    storage.available_space,
+                    storage.is_read_only,
+                )
+            }
+            None => (
+                disk.total_space(),
+                disk.available_space(),
+                disk.is_read_only(),
+            ),
+        };
+
+        // A mount reporting no size is noise (pseudo filesystems, an empty FUSE bridge) and
+        // stays hidden, except a remote one that is not answering: it has no size to report
+        // precisely because it is down, and the point is to show that.
+        let is_sizeless_and_ignorable = total_space == 0 && is_responsive;
 
         #[cfg(target_os = "linux")]
-        if total_space == 0
+        if is_sizeless_and_ignorable
             || should_skip_linux_mount(
                 &disk.file_system().to_string_lossy(),
                 &disk.name().to_string_lossy(),
@@ -40,12 +105,12 @@ pub fn get_system_drives() -> Result<Vec<DriveInfo>, String> {
         }
 
         #[cfg(target_os = "macos")]
-        if total_space == 0 || should_skip_macos_mount(&mount_point) {
+        if is_sizeless_and_ignorable || should_skip_macos_mount(&mount_point) {
             continue;
         }
 
         #[cfg(windows)]
-        if total_space == 0 {
+        if is_sizeless_and_ignorable {
             continue;
         }
 
@@ -59,19 +124,6 @@ pub fn get_system_drives() -> Result<Vec<DriveInfo>, String> {
         } else {
             0.0
         };
-
-        let file_system_str = disk.file_system().to_string_lossy().to_lowercase();
-        let is_network_fs = matches!(
-            file_system_str.as_str(),
-            "nfs"
-                | "nfs4"
-                | "cifs"
-                | "smbfs"
-                | "fuse.sshfs"
-                | "fuse.rclone"
-                | "fuse.gvfsd-fuse"
-                | "afpfs"
-        );
 
         let drive_type = if is_network_fs {
             "Network".to_string()
@@ -125,9 +177,10 @@ pub fn get_system_drives() -> Result<Vec<DriveInfo>, String> {
             used_space,
             percent_used,
             is_removable: disk.is_removable(),
-            is_read_only: disk.is_read_only(),
+            is_read_only,
             is_mounted: true,
             device_path,
+            is_responsive,
         });
     }
 
@@ -212,6 +265,7 @@ mod tests {
             is_read_only: false,
             is_mounted: true,
             device_path: source.to_string(),
+            is_responsive: true,
         }
     }
 

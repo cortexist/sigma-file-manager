@@ -24,6 +24,7 @@ describe('getDriveEntryVolumeSizeBytes', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '\\\\.\\D:',
+      is_responsive: true,
     };
 
     const driveEntry = driveInfoToDirEntry(drivePayload);
@@ -67,6 +68,7 @@ describe('getDriveEntryVolumeSizeBytes', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '',
+      is_responsive: true,
     });
 
     expect(getDriveEntryVolumeSizeBytes(regularDirectory)).toBeNull();

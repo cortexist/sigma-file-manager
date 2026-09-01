@@ -35,13 +35,19 @@ const LOW_SPACE_THRESHOLD = 15;
 
 const showIndicator = computed(() => userSettingsStore.userSettings.driveCard.showSpaceIndicator);
 const indicatorStyle = computed(() => userSettingsStore.userSettings.driveCard.spaceIndicatorStyle);
-const hasSpaceData = computed(() => props.drive.total_space > 0);
+// Figures from a mount that stopped answering are the last ones it gave; a usage ring
+// drawn from them would look live, so the card shows its state instead.
+const hasSpaceData = computed(() => props.drive.total_space > 0 && props.drive.is_responsive);
 
 const isLowSpace = computed(() => hasSpaceData.value && props.drive.percent_used >= (100 - LOW_SPACE_THRESHOLD));
 
 const formattedSpaceInfo = computed(() => {
   if (!props.drive.is_mounted) {
     return t('driveNotMounted');
+  }
+
+  if (!props.drive.is_responsive) {
+    return t('driveNotResponding');
   }
 
   if (!hasSpaceData.value) {
@@ -126,7 +132,9 @@ async function handleUnmount(clickEvent: MouseEvent) {
     :class="{
       'drive-card--circular': isCircular && showIndicator && hasSpaceData && drive.is_mounted,
       'drive-card--unmounted': !drive.is_mounted,
+      'drive-card--unresponsive': !drive.is_responsive,
     }"
+    :title="!drive.is_responsive ? t('driveNotResponding') : undefined"
     @click="handleClick"
   >
     <EdgeIndicator
@@ -247,6 +255,14 @@ async function handleUnmount(clickEvent: MouseEvent) {
 .drive-card--unmounted:hover {
   opacity: 1;
   transition: background-color var(--hover-transition-duration-in), opacity var(--hover-transition-duration-in);
+}
+
+.drive-card--unresponsive {
+  opacity: 0.6;
+}
+
+.drive-card--unresponsive .drive-card__icon {
+  filter: grayscale(1);
 }
 
 .drive-card__preview {

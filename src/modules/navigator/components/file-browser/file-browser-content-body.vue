@@ -35,6 +35,7 @@ const { t } = useI18n();
       v-else-if="ctx.error.value"
       :error="ctx.error.value"
       @go-home="ctx.navigateToHome"
+      @retry="ctx.refresh"
     />
 
     <ContextMenu

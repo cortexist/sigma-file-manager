@@ -2,6 +2,7 @@
 // License: GNU GPLv3 or later. See the license file in the project root for more information.
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
+use super::mount_health::MountHealth;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,9 @@ pub struct DirEntry {
     pub link_target: Option<String>,
     pub link_status: Option<DirEntryLinkStatus>,
     pub hard_link_count: Option<u64>,
+    /// Set only for the mount point of a remote filesystem: whether it currently answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mount_status: Option<MountHealth>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,6 +94,13 @@ pub struct DriveInfo {
     pub is_read_only: bool,
     pub is_mounted: bool,
     pub device_path: String,
+    /// False for a remote mount whose server has stopped answering.
+    #[serde(default = "default_true")]
+    pub is_responsive: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1096,7 +1096,9 @@
     "linkMetadataPerformanceWarning": "ممکن است مصرف حافظه را افزایش دهد و عملکرد را کاهش دهد.",
     "fillColumnWidth": "پر کردن عرض موجود",
     "setMinimumColumnWidths": "تنظیم حداقل عرض‌ها",
-    "items": "موارد"
+    "items": "موارد",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "در حال بارگذاری برنامه‌ها...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }

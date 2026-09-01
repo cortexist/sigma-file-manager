@@ -1130,7 +1130,9 @@
       "unsupported": "לא נתמך"
     },
     "linkMetadataPerformanceWarning": "עלול להגדיל את צריכת הזיכרון ולפגוע בביצועים.",
-    "items": "פריטים"
+    "items": "פריטים",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "טוען תוכניות...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }

@@ -7,6 +7,7 @@ mod commands;
 mod drives;
 mod drives_platform;
 mod mount;
+pub mod mount_health;
 mod mountable;
 mod network_shares;
 mod path_helpers;

@@ -106,6 +106,12 @@ fn should_scan_walk_entry(
         return false;
     }
 
+    // Descending into a remote mount whose server is gone would park the scan for as long
+    // as the transport takes to give up, per entry.
+    if crate::dir_reader::mount_health::is_unresponsive_mount_point(path) {
+        return false;
+    }
+
     match std::fs::symlink_metadata(path) {
         Ok(metadata) => !should_skip_link_metadata(&metadata),
         Err(_) => false,
@@ -283,6 +289,13 @@ fn scan_drive(
 ) -> Result<(), GlobalSearchDriveScanError> {
     let root_path = PathBuf::from(root);
     let root_string = normalize_path(root);
+
+    if let Err(message) = crate::dir_reader::mount_health::ensure_responsive(&root_path) {
+        return Err(GlobalSearchDriveScanError {
+            drive_root: root_string,
+            message,
+        });
+    }
 
     if let Err(error) = std::fs::read_dir(&root_path) {
         return Err(GlobalSearchDriveScanError {

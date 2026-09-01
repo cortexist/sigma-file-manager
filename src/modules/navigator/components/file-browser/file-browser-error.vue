@@ -15,6 +15,7 @@ defineProps<{
 
 defineEmits<{
   goHome: [];
+  retry: [];
 }>();
 
 const { t } = useI18n();
@@ -32,14 +33,30 @@ const { t } = useI18n();
       :bordered="false"
     >
       <template #footer>
-        <Button
-          variant="secondary"
-          size="sm"
-          @click="$emit('goHome')"
-        >
-          {{ t('fileBrowser.goHome') }}
-        </Button>
+        <div class="file-browser-error__actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            @click="$emit('retry')"
+          >
+            {{ t('fileBrowser.retry') }}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            @click="$emit('goHome')"
+          >
+            {{ t('fileBrowser.goHome') }}
+          </Button>
+        </div>
       </template>
     </EmptyState>
   </div>
 </template>
+
+<style scoped>
+.file-browser-error__actions {
+  display: flex;
+  gap: 8px;
+}
+</style>

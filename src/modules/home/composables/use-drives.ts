@@ -4,7 +4,9 @@
 
 import { ref, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { MOUNT_HEALTH_CHANGED_EVENT } from '@/types/dir-entry';
 import type { DriveInfo } from '@/types/drive-info';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 
@@ -25,7 +27,28 @@ let isFetchInFlight = false;
 let hasPendingTrailingRefresh = false;
 let pollIntervalMs = DRIVE_POLL_FAST_INTERVAL_MS;
 let consecutiveHealthyFetchCount = 0;
+let mountHealthUnlisten: UnlistenFn | null = null;
 let userSettingsStoreRef: ReturnType<typeof useUserSettingsStore> | null = null;
+
+// A remote mount flipping between answering and not is reported by the backend the moment
+// it happens; waiting for the next poll would leave a dead drive looking alive for seconds.
+function startMountHealthListener() {
+  void listen(MOUNT_HEALTH_CHANGED_EVENT, () => {
+    void refresh();
+  }).then((unlisten) => {
+    if (activeSubscribers === 0) {
+      unlisten();
+      return;
+    }
+
+    mountHealthUnlisten = unlisten;
+  });
+}
+
+function stopMountHealthListener() {
+  mountHealthUnlisten?.();
+  mountHealthUnlisten = null;
+}
 
 function resetDrivePollingState() {
   pollIntervalMs = DRIVE_POLL_FAST_INTERVAL_MS;
@@ -174,6 +197,7 @@ export function useDrives() {
     activeSubscribers++;
 
     if (activeSubscribers === 1) {
+      startMountHealthListener();
       void initialFetch().finally(() => {
         startPolling();
       });
@@ -185,6 +209,7 @@ export function useDrives() {
 
     if (activeSubscribers === 0) {
       stopPolling();
+      stopMountHealthListener();
       resetDrivePollingState();
     }
   });

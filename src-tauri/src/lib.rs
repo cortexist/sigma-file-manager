@@ -1115,6 +1115,10 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         system_icons::set_icon_probe_dir(&app_data_dir);
     }
 
+    // Likewise every role lists directories, and a remote mount that stops answering has to
+    // reach whichever webview is showing it.
+    dir_reader::mount_health::install_app_handle(app.handle().clone());
+
     // A picker process is one dialog answering one request: its window, its own identity, and
     // none of the app's furniture — no tray, no storage preload, no media-arg interpretation.
     if app.state::<file_picker::PickerSession>().0.is_some() {

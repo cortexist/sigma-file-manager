@@ -155,6 +155,7 @@ pub(super) fn append_macos_network_volumes(
             is_read_only: false,
             is_mounted: true,
             device_path: String::new(),
+            is_responsive: true,
         });
     }
 }
@@ -276,6 +277,7 @@ pub(super) fn append_windows_network_drives(
             is_read_only,
             is_mounted: true,
             device_path: mount_point,
+            is_responsive: true,
         });
     }
 }
@@ -414,6 +416,7 @@ pub(super) fn create_windows_wsl_drive_info(distribution_name: &str) -> DriveInf
         is_read_only: false,
         is_mounted: true,
         device_path: normalized_mount_point,
+        is_responsive: true,
     }
 }
 
