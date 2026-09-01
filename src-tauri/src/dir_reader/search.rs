@@ -182,7 +182,7 @@ pub fn search_dir_recursive(
     // remote mount that stopped answering is not entered either — even opening it would
     // hold the search for the transport's timeout.
     let walker = GuardedWalk::new(root, usize::MAX, |entry_path, _depth, is_dir| {
-        if is_dir && mount_health::is_unresponsive_mount_point(entry_path) {
+        if is_dir && mount_health::must_not_enter_mount_point(entry_path) {
             return false;
         }
         options.include_hidden || !walk_entry_is_hidden(entry_path)

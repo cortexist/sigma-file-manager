@@ -672,7 +672,12 @@ fn network_mount_entry(path: &Path, mount: &NetworkMount) -> Option<DirEntry> {
         link_target: None,
         link_status: None,
         hard_link_count: None,
-        mount_status: Some(mount_health::health_of(mount)),
+        // A trigger has no health to report: nothing is mounted, nothing is wrong. It
+        // renders as the plain directory it will become the moment it is entered.
+        mount_status: match mount.kind {
+            mount_health::MountKind::Remote => Some(mount_health::health_of(mount)),
+            mount_health::MountKind::OnDemand => None,
+        },
     })
 }
 
@@ -706,7 +711,10 @@ fn count_listable_dir_entries(path: &Path, options: ReadEntryOptions) -> Option<
 }
 
 fn read_dir_item_count(path: &Path, include_hidden: bool) -> Option<DirEntryItemCount> {
-    if should_skip_path(path) || mount_health::is_unresponsive_path(path) {
+    if should_skip_path(path)
+        || mount_health::is_unresponsive_path(path)
+        || mount_health::must_not_enter_mount_point(path)
+    {
         return None;
     }
 
