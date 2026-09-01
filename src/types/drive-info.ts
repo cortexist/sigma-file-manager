@@ -16,6 +16,8 @@ export type DriveInfo = {
   is_read_only: boolean;
   is_mounted: boolean;
   device_path: string;
+  /** False for a remote mount whose server has stopped answering. */
+  is_responsive: boolean;
 };
 
 export type DriveEntryMetadata = {

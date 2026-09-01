@@ -357,6 +357,7 @@ describe('address bar editor utils', () => {
         is_read_only: false,
         is_mounted: true,
         device_path: '',
+        is_responsive: true,
       },
       {
         name: 'Ubuntu',
@@ -372,6 +373,7 @@ describe('address bar editor utils', () => {
         is_read_only: false,
         is_mounted: true,
         device_path: '',
+        is_responsive: true,
       },
     ];
 

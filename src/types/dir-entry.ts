@@ -51,7 +51,18 @@ export type DirEntry = {
   link_target?: string | null;
   link_status?: DirEntryLinkStatus | null;
   hard_link_count?: number | null;
+  /** Present only on the mount point of a remote filesystem: whether it currently answers. */
+  mount_status?: MountHealth | null;
 };
+
+export type MountHealth = 'responsive' | 'unresponsive' | 'probing';
+
+export type MountHealthChangedPayload = {
+  mount_point: string;
+  health: MountHealth;
+};
+
+export const MOUNT_HEALTH_CHANGED_EVENT = 'mount-health-changed';
 
 export type DirEntryLinkMetadata = {
   path: string;

@@ -1100,7 +1100,9 @@
       "unsupported": "No compatible"
     },
     "linkMetadataPerformanceWarning": "Puede aumentar el uso de memoria y reducir el rendimiento.",
-    "items": "Elementos"
+    "items": "Elementos",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "Cargando programas...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }

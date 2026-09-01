@@ -1100,7 +1100,9 @@
     "linkMetadataPerformanceWarning": "Có thể tăng mức sử dụng bộ nhớ và giảm hiệu năng.",
     "fillColumnWidth": "Fill available width",
     "setMinimumColumnWidths": "Đặt độ rộng tối thiểu",
-    "items": "Mục"
+    "items": "Mục",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "Đang tải chương trình...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }

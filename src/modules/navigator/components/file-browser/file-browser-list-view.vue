@@ -361,6 +361,7 @@ function createDisplayRow(row: FileBrowserListVirtualRow): FileBrowserListDispla
     entry.path,
     entry.is_dir ? 'dir' : 'file',
     entry.is_hidden ? 'hidden' : '',
+    entry.mount_status ?? '',
     entry.link_target ?? '',
     linkTargetKindLabel,
     entry.link_status ?? '',
@@ -394,12 +395,15 @@ function createDisplayRow(row: FileBrowserListVirtualRow): FileBrowserListDispla
       'file-browser-list-view__entry--dir': entry.is_dir,
       'file-browser-list-view__entry--file': entry.is_file,
       'file-browser-list-view__entry--hidden': entry.is_hidden,
+      'file-browser-list-view__entry--unresponsive': entry.mount_status === 'unresponsive',
     },
     rowStyle: getEntryStyle(row),
     rowAttrs: {
       'role': 'button',
       'tabindex': 0,
+      'title': entry.mount_status === 'unresponsive' ? t('fileBrowser.storageNotResponding') : undefined,
       'data-entry-path': entry.path,
+      'data-mount-status': entry.mount_status || undefined,
       'data-selected': isSelected || undefined,
       'data-in-clipboard': clipboardPathType !== undefined || undefined,
       'data-clipboard-type': clipboardPathType,
@@ -687,6 +691,14 @@ function handleRowKeydown(row: FileBrowserListRow, event: KeyboardEvent) {
 
 .file-browser-list-view__entry--hidden {
   opacity: 0.5;
+}
+
+.file-browser-list-view__entry--unresponsive {
+  opacity: 0.5;
+}
+
+.file-browser-list-view__entry--unresponsive .file-browser-list-view__entry-icon {
+  filter: grayscale(1);
 }
 
 .file-browser-list-view__entry[data-link-status="broken"] .file-browser-list-view__entry-icon,

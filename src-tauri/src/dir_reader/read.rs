@@ -3,6 +3,7 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 use super::blocking_timeout::{with_blocking_timeout, BlockingTimeoutError};
+use super::mount_health::{self, NetworkMount};
 use crate::utils::{
     is_hidden_from_metadata, metadata_times_unix_ms, normalize_path, path_extension_lowercase,
 };
@@ -568,6 +569,10 @@ pub(super) fn read_entry(path: &Path, options: ReadEntryOptions) -> Option<DirEn
         return None;
     }
 
+    if let Some(mount) = mount_health::network_mount_at(path) {
+        return network_mount_entry(path, &mount);
+    }
+
     let symlink_metadata = fs::symlink_metadata(path).ok()?;
     let is_symlink = symlink_metadata.is_symlink();
     let reparse_tag = windows_reparse_tag(path, &symlink_metadata);
@@ -631,6 +636,43 @@ pub(super) fn read_entry(path: &Path, options: ReadEntryOptions) -> Option<DirEn
         link_target,
         link_status,
         hard_link_count,
+        mount_status: None,
+    })
+}
+
+/// The entry for the mount point of a remote filesystem. A plain `stat` here goes to the
+/// server and blocks for as long as the transport takes to give up when the server is
+/// gone, so the attributes come from the kernel's cache and the entry carries the mount's
+/// health instead of item counts or link metadata that would need the server.
+fn network_mount_entry(path: &Path, mount: &NetworkMount) -> Option<DirEntry> {
+    let attributes =
+        mount_health::cached_attributes(path).unwrap_or(mount_health::CachedAttributes {
+            is_dir: true,
+            ..Default::default()
+        });
+    let path_string = normalize_path(path.to_str()?);
+    let name = entry_name(path, &path_string)?;
+    let is_hidden = name.starts_with('.');
+
+    Some(DirEntry {
+        name,
+        ext: path_extension_lowercase(path),
+        path: path_string,
+        size: 0,
+        item_count: None,
+        modified_time: attributes.modified_time,
+        accessed_time: attributes.accessed_time,
+        created_time: attributes.created_time,
+        mime: None,
+        is_file: !attributes.is_dir,
+        is_dir: attributes.is_dir,
+        is_symlink: false,
+        is_hidden,
+        link_type: None,
+        link_target: None,
+        link_status: None,
+        hard_link_count: None,
+        mount_status: Some(mount_health::health_of(mount)),
     })
 }
 
@@ -664,7 +706,7 @@ fn count_listable_dir_entries(path: &Path, options: ReadEntryOptions) -> Option<
 }
 
 fn read_dir_item_count(path: &Path, include_hidden: bool) -> Option<DirEntryItemCount> {
-    if should_skip_path(path) {
+    if should_skip_path(path) || mount_health::is_unresponsive_path(path) {
         return None;
     }
 
@@ -690,6 +732,21 @@ fn read_dir_item_count(path: &Path, include_hidden: bool) -> Option<DirEntryItem
 
 fn read_link_metadata(path: &Path, options: ReadEntryOptions) -> Option<DirEntryLinkMetadata> {
     if should_skip_path(path) {
+        return None;
+    }
+
+    // A remote mount point is never a link of any kind, and asking would go to the server.
+    if mount_health::network_mount_at(path).is_some() {
+        return Some(DirEntryLinkMetadata {
+            path: normalize_path(path.to_str()?),
+            link_type: None,
+            link_target: None,
+            link_status: None,
+            hard_link_count: None,
+        });
+    }
+
+    if mount_health::is_unresponsive_path(path) {
         return None;
     }
 
@@ -812,6 +869,14 @@ pub fn resolve_windows_directory_shortcut(path: String) -> Result<Option<String>
 pub fn get_dir_entry(path: String) -> Result<DirEntry, String> {
     let entry_path = Path::new(&path);
 
+    // The mount point itself is always answerable from the kernel's cache; anything below
+    // it needs the server, so a dead mount fails here instead of hanging in `try_exists`.
+    if mount_health::network_mount_at(entry_path).is_some() {
+        return read_entry(entry_path, ReadEntryOptions::full())
+            .ok_or_else(|| format!("Failed to read path: {}", path));
+    }
+    mount_health::ensure_responsive(entry_path)?;
+
     match entry_path.try_exists() {
         Ok(true) => {}
         Ok(false) => {
@@ -898,6 +963,8 @@ pub async fn get_dir_entry_with_timeout(path: String, timeout_ms: u64) -> Result
 pub fn read_dir(path: String, options: Option<ReadDirOptions>) -> Result<DirContents, String> {
     let directory = Path::new(&path);
     let read_entry_options = ReadEntryOptions::from(options);
+
+    mount_health::ensure_responsive(directory)?;
 
     let self_metadata = match fs::metadata(directory) {
         Ok(metadata) => metadata,

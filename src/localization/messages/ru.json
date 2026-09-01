@@ -1130,7 +1130,9 @@
     "linkMetadataPerformanceWarning": "Может увеличить использование памяти и снизить производительность.",
     "fillColumnWidth": "Fill available width",
     "setMinimumColumnWidths": "Установить минимальную ширину",
-    "items": "Элементы"
+    "items": "Элементы",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "Загрузка программ...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }

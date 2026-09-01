@@ -1100,7 +1100,9 @@
     "linkMetadataPerformanceWarning": "Bellek kullanımını artırabilir ve performansı düşürebilir.",
     "fillColumnWidth": "Fill available width",
     "setMinimumColumnWidths": "Minimum genişlikleri ayarla",
-    "items": "Öğeler"
+    "items": "Öğeler",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "Programlar yükleniyor...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }

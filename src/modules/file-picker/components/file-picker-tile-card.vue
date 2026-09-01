@@ -11,6 +11,7 @@ Copyright © 2026 Cortexist, LLC. All rights reserved.
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import FileBrowserEntryIcon from '@/modules/navigator/components/file-browser/file-browser-entry-icon.vue';
 import { formatBytes } from '@/modules/navigator/components/file-browser/utils';
 import type { DirEntry } from '@/types/dir-entry';
@@ -25,6 +26,8 @@ const props = defineProps<{
 
 // Any non-directory card with artwork goes full-bleed — the navigator's rule, which is how
 // an audio file's embedded cover renders on an 'other' card there.
+const { t } = useI18n();
+
 const showsArtwork = computed(() => !!props.thumbnailSrc && props.variant !== 'dir');
 
 const metaText = computed(() => {
@@ -46,8 +49,11 @@ const metaText = computed(() => {
       [`file-picker-tile-card--${variant}`]: true,
       'file-picker-tile-card--artwork': showsArtwork,
       'file-picker-tile-card--hidden': entry.is_hidden,
+      'file-picker-tile-card--unresponsive': entry.mount_status === 'unresponsive',
       'file-picker-tile-card--inert': inert,
     }"
+    :title="entry.mount_status === 'unresponsive' ? t('fileBrowser.storageNotResponding') : undefined"
+    :data-mount-status="entry.mount_status || undefined"
     :data-selected="selected || undefined"
   >
     <template v-if="variant === 'dir'">
@@ -159,6 +165,14 @@ const metaText = computed(() => {
 
 .file-picker-tile-card--hidden {
   opacity: 0.5;
+}
+
+.file-picker-tile-card--unresponsive {
+  opacity: 0.5;
+}
+
+.file-picker-tile-card--unresponsive .file-picker-tile-card__dir-icon {
+  filter: grayscale(1);
 }
 
 .file-picker-tile-card--inert {

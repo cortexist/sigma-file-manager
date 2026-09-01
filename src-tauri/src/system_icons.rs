@@ -362,6 +362,18 @@ pub fn get_system_icon(
     let icon_size = size.unwrap_or(32).clamp(8, 256);
     let cache_key = file_icon_cache_key(&path, is_dir, &extension, icon_size);
 
+    // Resolving an icon looks at the path itself. For the mount point of a remote
+    // filesystem that means a round trip to its server — and one that stopped answering
+    // would hold this thread for the transport's timeout. The stock folder icon serves.
+    {
+        let icon_target = Path::new(&path);
+        if crate::dir_reader::mount_health::mount_point_attributes(icon_target).is_some()
+            || crate::dir_reader::mount_health::is_unresponsive_path(icon_target)
+        {
+            return Ok(None);
+        }
+    }
+
     if let Ok(mut cache) = ICON_DATA_URL_CACHE.lock() {
         if let Some(cached_value) = cache.get(&cache_key) {
             return Ok(Some(cached_value.to_string()));

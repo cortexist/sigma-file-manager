@@ -90,24 +90,35 @@ impl PickerProcess {
     /// a dialog that could not be completed has chosen nothing, which is what a caller
     /// already knows how to handle.
     pub async fn wait_for_uris(self) -> Vec<String> {
-        let child = self.child;
-        let output = tauri::async_runtime::spawn_blocking(move || child.wait_with_output()).await;
-
-        let stdout = match output {
-            Ok(Ok(output)) => output.stdout,
-            _ => return Vec::new(),
-        };
-
-        parse_picker_reply(&stdout)
+        tauri::async_runtime::spawn_blocking(move || self.wait_for_uris_blocking())
+            .await
+            .unwrap_or_default()
     }
 
     /// The same wait for callers that already have a thread to spare and no async runtime
     /// to reach — the GTK main loop's helper being the one that does.
-    pub fn wait_for_uris_blocking(self) -> Vec<String> {
-        match self.child.wait_with_output() {
-            Ok(output) => parse_picker_reply(&output.stdout),
-            Err(_) => Vec::new(),
+    ///
+    /// The answer is the first line the picker writes, and the wait ends there rather than
+    /// at the process's death: a picker whose listing touched a remote mount that stopped
+    /// answering can take the transport's full timeout to finish exiting, and the
+    /// application that asked for the dialog must not sit through that. The process is
+    /// reaped in the background whenever it gets there.
+    pub fn wait_for_uris_blocking(mut self) -> Vec<String> {
+        use std::io::BufRead;
+
+        let mut reply = Vec::new();
+        if let Some(stdout) = self.child.stdout.take() {
+            let _ = std::io::BufReader::new(stdout).read_until(b'\n', &mut reply);
         }
+
+        let mut child = self.child;
+        let _ = std::thread::Builder::new()
+            .name("picker-reaper".to_string())
+            .spawn(move || {
+                let _ = child.wait();
+            });
+
+        parse_picker_reply(&reply)
     }
 }
 

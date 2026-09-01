@@ -29,6 +29,7 @@ import {
   computed, markRaw, onBeforeUnmount, onMounted, ref, watch,
 } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { homeDir } from '@tauri-apps/api/path';
 import { useI18n } from 'vue-i18n';
@@ -105,7 +106,11 @@ import {
   entryPassesTypeFilter,
   type PickerTypeFilter,
 } from '@/modules/file-picker/utils/picker-type-filter';
-import type { DirEntry } from '@/types/dir-entry';
+import {
+  MOUNT_HEALTH_CHANGED_EVENT,
+  type DirEntry,
+  type MountHealthChangedPayload,
+} from '@/types/dir-entry';
 import type { ListSortColumn, ListSortDirection } from '@/types/user-settings';
 
 interface PickerRequest {
@@ -180,6 +185,7 @@ const currentPath = ref('');
 const entries = ref<DirEntry[]>([]);
 const selectedPaths = ref<Set<string>>(new Set());
 const listingError = ref(false);
+let mountHealthUnlisten: UnlistenFn | null = null;
 const fileName = ref('');
 /**
  * Saving over an existing file takes two activations: the first arms the button as
@@ -706,17 +712,53 @@ onMounted(async () => {
     : filters[0]?.name ?? null;
 
   const startingFolder = request.value.currentFolder || await homeDir();
-  await listDirectory(startingFolder);
 
+  // The window goes up before the first listing lands, not after: a slow starting folder
+  // (a remote mount in it that stopped answering, a huge directory) must show a dialog
+  // that is loading, never an application that appears to have ignored the click.
   const currentWindow = getCurrentWindow();
   await currentWindow.setTitle(title.value);
   await currentWindow.show();
   await currentWindow.setFocus();
+
+  await listDirectory(startingFolder);
+
+  mountHealthUnlisten = await listen<MountHealthChangedPayload>(MOUNT_HEALTH_CHANGED_EVENT, (event) => {
+    applyMountHealthChange(event.payload);
+  });
 });
+
+/**
+ * A remote mount point in the current listing changes its state in place: re-listing
+ * would reset the scroll position and the selection for a single icon turning gray.
+ * A listing that failed because its folder is on that mount is worth another try.
+ */
+function applyMountHealthChange(payload: MountHealthChangedPayload) {
+  const mountPoint = payload.mount_point.replace(/\/+$/, '');
+  let didChangeEntry = false;
+
+  entries.value = entries.value.map((entry) => {
+    if (entry.mount_status == null || entry.path.replace(/\/+$/, '') !== mountPoint) {
+      return entry;
+    }
+
+    didChangeEntry = true;
+    return {
+      ...entry,
+      mount_status: payload.health,
+    };
+  });
+
+  if (!didChangeEntry && listingError.value && currentPath.value) {
+    void listDirectory(currentPath.value, false);
+  }
+}
 
 onBeforeUnmount(() => {
   viewportResizeObserver?.disconnect();
   viewportResizeObserver = null;
+  mountHealthUnlisten?.();
+  mountHealthUnlisten = null;
 });
 </script>
 
@@ -891,8 +933,11 @@ onBeforeUnmount(() => {
                 :style="{ height: `${row.size}px` }"
                 :class="{
                   'file-picker__entry--hidden': row.item.items[0].is_hidden,
+                  'file-picker__entry--unresponsive': row.item.items[0].mount_status === 'unresponsive',
                   'file-picker__entry--inert': !isSelectable(row.item.items[0]) && !row.item.items[0].is_dir,
                 }"
+                :title="row.item.items[0].mount_status === 'unresponsive' ? t('fileBrowser.storageNotResponding') : undefined"
+                :data-mount-status="row.item.items[0].mount_status || undefined"
                 :data-selected="selectedPaths.has(row.item.items[0].path) || undefined"
                 @click="toggleSelection(row.item.items[0], $event)"
                 @dblclick="activateEntry(row.item.items[0])"
@@ -1306,6 +1351,14 @@ onBeforeUnmount(() => {
 
 .file-picker__entry--hidden {
   opacity: 0.5;
+}
+
+.file-picker__entry--unresponsive {
+  opacity: 0.5;
+}
+
+.file-picker__entry--unresponsive .file-picker__entry-icon {
+  filter: grayscale(1);
 }
 
 .file-picker__entry--inert {

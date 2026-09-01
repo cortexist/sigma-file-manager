@@ -64,6 +64,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '\\\\.\\C:',
+      is_responsive: true,
     };
 
     const driveEntry = driveInfoToDirEntry(drivePayload);
@@ -96,6 +97,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '\\\\.\\C:',
+      is_responsive: true,
     };
 
     const contents = buildLocationsDirectoryFromDrives([drivePayload]);
@@ -120,6 +122,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '\\\\.\\C:',
+      is_responsive: true,
     };
     const wslDrive: DriveInfo = {
       name: 'Ubuntu-24.04',
@@ -135,6 +138,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '//wsl.localhost/Ubuntu-24.04/',
+      is_responsive: true,
     };
 
     const contents = buildLocationsDirectoryFromDrives([localDrive, wslDrive]);
@@ -161,6 +165,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '\\\\.\\C:',
+      is_responsive: true,
     };
     const wslDrive: DriveInfo = {
       name: 'Ubuntu-24.04',
@@ -176,6 +181,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '//wsl.localhost/Ubuntu-24.04/',
+      is_responsive: true,
     };
     const contents = buildWslHostDirectoryFromDrives([localDrive, wslDrive]);
 
@@ -199,6 +205,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '//wsl.localhost/Ubuntu-24.04/',
+      is_responsive: true,
     };
 
     const locationsContents = buildVirtualDirectoryFromDrives(LOCATIONS_VIRTUAL_PATH, [wslDrive]);
@@ -225,6 +232,7 @@ describe('virtual-locations', () => {
       is_read_only: false,
       is_mounted: true,
       device_path: '\\\\.\\C:',
+      is_responsive: true,
     };
 
     const renamedDrive = {

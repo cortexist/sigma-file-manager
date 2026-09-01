@@ -21,6 +21,7 @@ mod file_manager1;
 mod file_operations;
 mod file_picker;
 mod global_search;
+mod guarded_walk;
 mod image_thumbnails;
 mod input_simulation;
 mod lan_share;
@@ -742,6 +743,15 @@ pub fn run() {
 
     let raw_args: Vec<String> = std::env::args().collect();
 
+    // A mount probe is a helper that answers one `statvfs` for the process that spawned it
+    // and exits — before Tauri, GTK or anything else comes up. See `mount_health`. It takes
+    // its own process name first: a probe parked on a dead mount can outlive the picker
+    // that asked, and a process monitor must not read it as the file manager running.
+    if let Some(mount_point) = dir_reader::mount_health::probe_mount_arg(&raw_args) {
+        standalone_viewer::adopt_process_identity("sigma-mount-probe");
+        std::process::exit(dir_reader::mount_health::run_probe_process(&mount_point));
+    }
+
     // The portal-service launch serves file dialogs and nothing else: claim the backend name,
     // spawn a picker process per request — no Tauri, no GTK, no windows, no webviews. An
     // application asking for a file dialog must never boot a file-manager session; this is
@@ -1114,6 +1124,10 @@ fn setup_handler(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     if let Ok(app_data_dir) = app.path().app_data_dir() {
         system_icons::set_icon_probe_dir(&app_data_dir);
     }
+
+    // Likewise every role lists directories, and a remote mount that stops answering has to
+    // reach whichever webview is showing it.
+    dir_reader::mount_health::install_app_handle(app.handle().clone());
 
     // A picker process is one dialog answering one request: its window, its own identity, and
     // none of the app's furniture — no tray, no storage preload, no media-arg interpretation.

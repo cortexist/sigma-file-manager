@@ -9,7 +9,11 @@
 //! directory is unbounded, so the walk lives here, matches names as it goes, and returns
 //! only the hits.
 
-use crate::search_pattern::{compile_search_pattern, compile_wildcard_search_pattern, looks_like_wildcard};
+use super::mount_health;
+use crate::guarded_walk::GuardedWalk;
+use crate::search_pattern::{
+    compile_search_pattern, compile_wildcard_search_pattern, looks_like_wildcard,
+};
 use crate::utils::is_hidden_path;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -18,7 +22,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use walkdir::{DirEntry as WalkDirEntry, WalkDir};
 
 use super::read::{read_entry, ReadEntryOptions};
 use super::types::DirEntry;
@@ -140,20 +143,16 @@ pub fn cancel_recursive_search(search_key: &str) {
     }
 }
 
-fn walk_entry_is_hidden(entry: &WalkDirEntry) -> bool {
-    if entry.depth() == 0 {
-        return false;
-    }
-
-    if entry
+fn walk_entry_is_hidden(path: &Path) -> bool {
+    if path
         .file_name()
-        .to_str()
+        .and_then(|name| name.to_str())
         .is_some_and(|name| name.starts_with('.'))
     {
         return true;
     }
 
-    is_hidden_path(entry.path())
+    is_hidden_path(path)
 }
 
 pub fn search_dir_recursive(
@@ -179,13 +178,17 @@ pub fn search_dir_recursive(
     let mut superseded = false;
 
     // Symlinked directories are not followed: a link back up the tree would otherwise turn
-    // the walk into a loop, and the same file would be reported under several paths.
-    let walker = WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|entry| options.include_hidden || !walk_entry_is_hidden(entry));
+    // the walk into a loop, and the same file would be reported under several paths. A
+    // remote mount that stopped answering is not entered either — even opening it would
+    // hold the search for the transport's timeout.
+    let walker = GuardedWalk::new(root, usize::MAX, |entry_path, _depth, is_dir| {
+        if is_dir && mount_health::is_unresponsive_mount_point(entry_path) {
+            return false;
+        }
+        options.include_hidden || !walk_entry_is_hidden(entry_path)
+    });
 
-    for walk_result in walker {
+    for walk_entry in walker {
         scanned_count += 1;
 
         if scanned_count % CANCELLATION_CHECK_STRIDE == 0
@@ -200,15 +203,7 @@ pub fn search_dir_recursive(
             break;
         }
 
-        let Ok(walk_entry) = walk_result else {
-            continue;
-        };
-
-        if walk_entry.depth() == 0 {
-            continue;
-        }
-
-        let Some(name) = walk_entry.file_name().to_str() else {
+        let Some(name) = walk_entry.path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
 
@@ -216,7 +211,7 @@ pub fn search_dir_recursive(
             continue;
         }
 
-        let Some(entry) = read_entry(walk_entry.path(), read_options) else {
+        let Some(entry) = read_entry(&walk_entry.path, read_options) else {
             continue;
         };
 
@@ -320,7 +315,10 @@ mod tests {
         let temp = create_tree();
 
         // `regex: false`, the way the quick search sends a query with the toggle off.
-        assert_eq!(names(&search(&temp, "*.md", false, false)), vec!["nested-report.md"]);
+        assert_eq!(
+            names(&search(&temp, "*.md", false, false)),
+            vec!["nested-report.md"]
+        );
         assert!(names(&search(&temp, "*report*", false, false)).len() == 2);
         // Anchored, so a name merely containing ".md" is not a match.
         assert!(names(&search(&temp, "*.md", false, false))
@@ -413,5 +411,3 @@ mod tests {
         drop(temp);
     }
 }
-
-

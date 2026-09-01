@@ -324,6 +324,7 @@ watch(imagePreviewPlaceholderSrc, () => {
       `file-browser-grid-card--${props.variant}`,
       {
         'file-browser-grid-card--hidden': props.entry.is_hidden,
+        'file-browser-grid-card--unresponsive': props.entry.mount_status === 'unresponsive',
         'file-browser-grid-card--image': (props.variant === 'video' && videoThumbnail)
           || (props.variant === 'other' && audioCover),
         'file-browser-grid-card--icon-full': (props.variant === 'other' && !audioCover)
@@ -331,7 +332,9 @@ watch(imagePreviewPlaceholderSrc, () => {
           || (props.variant === 'video' && !videoThumbnail),
       },
     ]"
+    :title="props.entry.mount_status === 'unresponsive' ? t('fileBrowser.storageNotResponding') : undefined"
     :data-entry-path="props.entry.path"
+    :data-mount-status="props.entry.mount_status || undefined"
     :data-selected="ctx.isEntrySelected(props.entry) || undefined"
     :data-in-clipboard="clipboardPathsMap.has(props.entry.path) || undefined"
     :data-clipboard-type="clipboardPathsMap.get(props.entry.path) || undefined"
@@ -483,6 +486,14 @@ watch(imagePreviewPlaceholderSrc, () => {
 
 .file-browser-grid-card--hidden {
   opacity: 0.5;
+}
+
+.file-browser-grid-card--unresponsive {
+  opacity: 0.5;
+}
+
+.file-browser-grid-card--unresponsive .file-browser-grid-card__icon {
+  filter: grayscale(1);
 }
 
 .file-browser-grid-card--dir {

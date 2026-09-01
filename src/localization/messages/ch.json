@@ -1100,7 +1100,9 @@
     "linkMetadataPerformanceWarning": "可能会增加内存使用量并降低性能。",
     "fillColumnWidth": "填充可用宽度",
     "setMinimumColumnWidths": "设置最小宽度",
-    "items": "项目"
+    "items": "项目",
+    "storageNotResponding": "Storage is not responding",
+    "retry": "Retry"
   },
   "openWith": {
     "loadingPrograms": "正在加载程序...",
@@ -1436,5 +1438,6 @@
     "replaceWarning": "A file with this name exists",
     "fileNamePlaceholder": "File name",
     "fileType": "File type"
-  }
+  },
+  "driveNotResponding": "Not responding"
 }
