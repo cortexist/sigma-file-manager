@@ -10,6 +10,7 @@
   ],
   "permissions": [
     "core:default",
+    "os:allow-hostname",
     "core:window:allow-close",
     "core:window:allow-destroy",
     "core:window:allow-minimize",

@@ -12,6 +12,7 @@ import {
   UserDirectoriesSection,
 } from '@/modules/home/components';
 import { PageHomeLayout } from '@/layouts';
+import { useHostname } from '@/modules/home/composables';
 import { usePageDropZone } from '@/composables/use-page-drop-zone';
 import { useFileDropOperation } from '@/composables/use-file-drop-operation';
 import FileBrowserConflictDialog from '@/modules/navigator/components/file-browser/file-browser-conflict-dialog.vue';
@@ -23,6 +24,11 @@ const dropContainerRef = ref<HTMLElement | null>(null);
 const { t } = useI18n();
 const userSettingsStore = useUserSettingsStore();
 const showHomeBanner = computed(() => userSettingsStore.userSettings.showHomeBanner);
+
+// The heading names the machine being browsed. Falls back to the generic page
+// title until the hostname resolves, and permanently if it never does.
+const { hostname } = useHostname();
+const pageTitle = computed(() => hostname.value ?? t('pages.home'));
 
 const {
   conflictDialogState,
@@ -57,7 +63,7 @@ usePageDropZone({
         class="home-page__header"
       >
         <h1 class="home-page__title">
-          {{ t('pages.home') }}
+          {{ pageTitle }}
         </h1>
       </header>
 

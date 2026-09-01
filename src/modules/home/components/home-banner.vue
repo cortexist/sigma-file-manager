@@ -17,6 +17,7 @@ import {
 } from '@lucide/vue';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import { useBackgroundMedia } from '@/modules/home/composables/use-background-media';
+import { useHostname } from '@/modules/home/composables/use-hostname';
 
 const BackgroundManagerDialog = defineAsyncComponent(
   () => import('@/components/ui/background-manager/background-manager-dialog.vue'),
@@ -46,6 +47,11 @@ import { homeBannerStorageKeys } from '../background-storage-keys';
 
 const dropOverlayStore = useDropOverlayStore();
 const { t } = useI18n();
+
+// Matches the bannerless heading in home.vue — both name the machine, and fall
+// back to the generic page title while (or if) the hostname does not resolve.
+const { hostname } = useHostname();
+const bannerTitle = computed(() => hostname.value ?? t('pages.home'));
 const userSettingsStore = useUserSettingsStore();
 const appStateStore = useAppStateStore();
 const appWindowStore = useAppWindowStore();
@@ -294,7 +300,7 @@ function preventPopoverClose(event: Event) {
 
     <div class="home-banner__actions">
       <span class="home-banner__title">
-        {{ t('pages.home') }}
+        {{ bannerTitle }}
       </span>
 
       <Tooltip>

@@ -15,6 +15,7 @@ import {
 import type { Component } from 'vue';
 import normalizePath from '@/utils/normalize-path';
 import * as LucideIcons from '@lucide/vue';
+import GithubFillIcon from '@/components/icons/github-fill-icon.vue';
 import { useUserSettingsStore } from '@/stores/storage/user-settings';
 import type { UserDirectoryCustomization, UserDirectoriesCustomizations } from '@/types/user-settings';
 import uniqueId from '@/utils/unique-id';
@@ -61,6 +62,7 @@ export const userDirectoryIconNames = [
   'FilmIcon',
   'GamepadIcon',
   'GiftIcon',
+  'GithubFillIcon',
   'GlobeIcon',
   'HeartIcon',
   'InboxIcon',
@@ -97,9 +99,18 @@ export const userDirectoryIconNames = [
 
 export type UserDirectoryIconName = typeof userDirectoryIconNames[number];
 
+/**
+ * Icons that ship with the app rather than coming from Lucide. Checked before
+ * Lucide, so a local icon can also override a Lucide name of the same spelling.
+ * Each must accept the `size` prop the call sites pass, exactly as Lucide's do.
+ */
+const customIcons: Record<string, Component> = {
+  GithubFillIcon,
+};
+
 export function getIconComponent(iconName: string): Component {
   const icons = LucideIcons as unknown as Record<string, Component>;
-  return icons[iconName] || LucideIcons.FolderIcon;
+  return customIcons[iconName] || icons[iconName] || LucideIcons.FolderIcon;
 }
 
 function isBuiltInDirectoryId(directoryId: string): boolean {
