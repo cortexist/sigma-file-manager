@@ -3,7 +3,7 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 use crate::open_with::types::AssociatedProgram;
-use crate::open_with::utils::{get_program_icon, load_png_as_base64};
+use crate::open_with::utils::{get_program_icon, load_icon_as_data_url};
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -493,45 +493,86 @@ fn resolve_executable_path(command: &str) -> Option<String> {
     None
 }
 
+/// Theme subdirectories to search, best first.
+///
+/// `scalable` leads because the icon ends up in an `<img>` that can render an
+/// SVG at any density — picking a 32x32 PNG ahead of it is a downgrade on a
+/// HiDPI panel, not a safer default.
+const ICON_THEME_DIRS: [&str; 7] = [
+    "scalable", "32x32", "48x48", "24x24", "16x16", "64x64", "128x128",
+];
+
+/// Extensions tried in each directory, best first. Both are tried everywhere
+/// rather than assuming `scalable` means SVG and pixel-size directories mean
+/// PNG: themes are not disciplined about that, and SVGs legitimately appear
+/// under sized directories (nemo ships several under `22x22`).
+const ICON_EXTENSIONS: [&str; 2] = ["svg", "png"];
+
+/// Strip an extension the `.desktop` file should not have carried in the first
+/// place. Only the two known ones are removed, and only once — `file_stem`
+/// would truncate a reverse-DNS icon name like `org.gnome.Foo` to `org.gnome`.
+fn icon_base_name(icon_value: &str) -> &str {
+    for extension in ICON_EXTENSIONS {
+        let Some(split) = icon_value.len().checked_sub(extension.len() + 1) else {
+            continue;
+        };
+        if !icon_value.is_char_boundary(split) {
+            continue;
+        }
+        let (stem, suffix) = icon_value.split_at(split);
+        if let Some(found) = suffix.strip_prefix('.') {
+            if found.eq_ignore_ascii_case(extension) {
+                return stem;
+            }
+        }
+    }
+    icon_value
+}
+
 fn resolve_icon_path(icon_value: &str, desktop_file: Option<&PathBuf>) -> Option<String> {
     let icon_path = Path::new(icon_value);
     if icon_path.is_absolute() && icon_path.exists() {
-        return load_png_as_base64(icon_path);
+        return load_icon_as_data_url(icon_path);
     }
 
-    let icon_name = icon_value.trim_end_matches(".png");
+    let icon_name = icon_base_name(icon_value);
 
     if let Some(desktop_path) = desktop_file {
         if let Some(parent) = desktop_path.parent() {
-            let local_icon = parent.join(format!("{}.png", icon_name));
-            if local_icon.exists() {
-                if let Some(value) = load_png_as_base64(&local_icon) {
-                    return Some(value);
+            for extension in ICON_EXTENSIONS {
+                let local_icon = parent.join(format!("{icon_name}.{extension}"));
+                if local_icon.exists() {
+                    if let Some(value) = load_icon_as_data_url(&local_icon) {
+                        return Some(value);
+                    }
                 }
             }
         }
     }
 
-    let search_sizes = ["32x32", "48x48", "24x24", "16x16", "64x64", "128x128"];
     for base in get_icon_dirs() {
-        for size in &search_sizes {
-            let candidate = base
-                .join("icons")
-                .join("hicolor")
-                .join(size)
-                .join("apps")
-                .join(format!("{}.png", icon_name));
-            if candidate.exists() {
-                if let Some(value) = load_png_as_base64(&candidate) {
-                    return Some(value);
+        for theme_dir in ICON_THEME_DIRS {
+            for extension in ICON_EXTENSIONS {
+                let candidate = base
+                    .join("icons")
+                    .join("hicolor")
+                    .join(theme_dir)
+                    .join("apps")
+                    .join(format!("{icon_name}.{extension}"));
+                if candidate.exists() {
+                    if let Some(value) = load_icon_as_data_url(&candidate) {
+                        return Some(value);
+                    }
                 }
             }
         }
 
-        let pixmap_candidate = base.join("pixmaps").join(format!("{}.png", icon_name));
-        if pixmap_candidate.exists() {
-            if let Some(value) = load_png_as_base64(&pixmap_candidate) {
-                return Some(value);
+        for extension in ICON_EXTENSIONS {
+            let pixmap_candidate = base.join("pixmaps").join(format!("{icon_name}.{extension}"));
+            if pixmap_candidate.exists() {
+                if let Some(value) = load_icon_as_data_url(&pixmap_candidate) {
+                    return Some(value);
+                }
             }
         }
     }
@@ -602,7 +643,97 @@ pub(super) fn find_desktop_file(desktop_id: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_gio_mime_output;
+    use super::{icon_base_name, parse_gio_mime_output, resolve_icon_path};
+
+
+    const SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"/>"#;
+    const PNG: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+    /// `Icon=` should carry a bare name, but entries in the wild append an
+    /// extension. Strip the two we search for — and nothing else.
+    #[test]
+    fn icon_base_name_strips_only_known_extensions() {
+        assert_eq!(icon_base_name("id3tag-editor-tui.svg"), "id3tag-editor-tui");
+        assert_eq!(icon_base_name("sigma-file-manager.png"), "sigma-file-manager");
+        assert_eq!(icon_base_name("id3tag-editor-tui"), "id3tag-editor-tui");
+        assert_eq!(icon_base_name("icon.PNG"), "icon");
+    }
+
+    /// A reverse-DNS icon name is all dots and no extension. `file_stem` would
+    /// eat the last component; this must leave it alone.
+    #[test]
+    fn icon_base_name_keeps_reverse_dns_names_intact() {
+        assert_eq!(icon_base_name("org.gnome.Nautilus"), "org.gnome.Nautilus");
+        assert_eq!(icon_base_name("org.gnome.Nautilus.png"), "org.gnome.Nautilus");
+    }
+
+    /// The reported bug: an app whose theme entry is SVG-only resolved to
+    /// nothing, so the context menu fell back to a generic glyph.
+    #[test]
+    fn resolves_an_svg_only_icon() {
+        let dir = tempfile::tempdir().unwrap();
+        let icon = dir.path().join("id3tag-editor-tui.svg");
+        std::fs::write(&icon, SVG).unwrap();
+
+        let resolved = resolve_icon_path(icon.to_str().unwrap(), None)
+            .expect("an SVG icon should resolve");
+        assert!(
+            resolved.starts_with("data:image/svg+xml;base64,"),
+            "expected an SVG data URL, got: {}",
+            &resolved[..resolved.len().min(40)]
+        );
+    }
+
+    /// Both formats present: the scalable one wins, because the consumer is an
+    /// `<img>` that can render it at the display's density.
+    #[test]
+    fn prefers_the_scalable_icon_over_the_raster_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let desktop_file = dir.path().join("app.desktop");
+        std::fs::write(&desktop_file, "[Desktop Entry]\n").unwrap();
+        std::fs::write(dir.path().join("app-icon.svg"), SVG).unwrap();
+        std::fs::write(dir.path().join("app-icon.png"), PNG).unwrap();
+
+        let resolved = resolve_icon_path("app-icon", Some(&desktop_file))
+            .expect("icon beside the desktop file should resolve");
+        assert!(
+            resolved.starts_with("data:image/svg+xml;base64,"),
+            "scalable should win, got: {}",
+            &resolved[..resolved.len().min(40)]
+        );
+    }
+
+    /// A raster file wearing an `.svg` extension must not be handed to the
+    /// webview labelled `image/svg+xml` — it would render as a broken image.
+    /// Falling through to the real PNG is the useful outcome.
+    #[test]
+    fn rejects_a_raster_file_misnamed_as_svg() {
+        let dir = tempfile::tempdir().unwrap();
+        let desktop_file = dir.path().join("app.desktop");
+        std::fs::write(&desktop_file, "[Desktop Entry]\n").unwrap();
+        std::fs::write(dir.path().join("app-icon.svg"), PNG).unwrap();
+        std::fs::write(dir.path().join("app-icon.png"), PNG).unwrap();
+
+        let resolved = resolve_icon_path("app-icon", Some(&desktop_file))
+            .expect("should fall through to the real PNG");
+        assert!(
+            resolved.starts_with("data:image/png;base64,"),
+            "expected the PNG fallback, got: {}",
+            &resolved[..resolved.len().min(40)]
+        );
+    }
+
+    /// PNG handling is what already worked; adding SVG must not disturb it.
+    #[test]
+    fn still_resolves_a_png_only_icon() {
+        let dir = tempfile::tempdir().unwrap();
+        let icon = dir.path().join("sigma-file-manager.png");
+        std::fs::write(&icon, PNG).unwrap();
+
+        let resolved = resolve_icon_path(icon.to_str().unwrap(), None)
+            .expect("a PNG icon should still resolve");
+        assert!(resolved.starts_with("data:image/png;base64,"));
+    }
 
     #[test]
     fn parse_gio_mime_output_reads_default_recommended_and_registered() {

@@ -3,5 +3,6 @@
 // Copyright © 2021 - present Aleksey Hoffman. All rights reserved.
 
 export { useDrives } from './use-drives';
+export { useHostname } from './use-hostname';
 export { useUserDirectories } from './use-user-directories';
 export type { UserDirectory } from './use-user-directories';

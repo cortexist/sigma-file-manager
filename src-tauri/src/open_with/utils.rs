@@ -138,6 +138,58 @@ pub fn load_png_as_base64(path: &std::path::Path) -> Option<String> {
     None
 }
 
+/// Load an icon as a data URL, accepting both formats a freedesktop icon theme
+/// actually ships: raster PNG and scalable SVG.
+///
+/// SVG is passed through rather than rasterised because the only consumer is an
+/// `<img>` in the webview, which renders it at whatever density the display
+/// asks for — sharper than the fixed-size PNG it replaces, and no new
+/// dependency. `<img>` is also what makes this safe: it renders SVG in a
+/// restricted mode with no script execution and no external fetches, so a
+/// third-party `.desktop` pointing at a hostile SVG has nothing to reach.
+#[cfg(target_os = "linux")]
+pub fn load_icon_as_data_url(path: &std::path::Path) -> Option<String> {
+    if let Some(png) = load_png_as_base64(path) {
+        return Some(png);
+    }
+    load_svg_as_data_url(path)
+}
+
+#[cfg(target_os = "linux")]
+fn load_svg_as_data_url(path: &std::path::Path) -> Option<String> {
+    if !path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+    {
+        return None;
+    }
+
+    let data = std::fs::read(path).ok()?;
+
+    // The PNG branch above proves its format from magic bytes; SVG has none, so
+    // confirm the file actually opens as XML before trusting the extension. A
+    // raster file misnamed `.svg` would otherwise be handed to the webview
+    // labelled `image/svg+xml` and render as a broken image.
+    if !looks_like_svg(&data) {
+        return None;
+    }
+
+    let base64_svg = BASE64_STANDARD.encode(&data);
+    Some(format!("data:image/svg+xml;base64,{base64_svg}"))
+}
+
+/// True when the bytes open like an SVG document: an `<svg` root, possibly
+/// behind a BOM, an XML declaration, a doctype or comments. Only the head of
+/// the file is examined — enough to cover the preamble without walking a large
+/// icon.
+#[cfg(target_os = "linux")]
+fn looks_like_svg(data: &[u8]) -> bool {
+    let head = &data[..data.len().min(1024)];
+    let text = String::from_utf8_lossy(head);
+    let text = text.trim_start_matches('\u{feff}');
+    text.contains("<svg") || (text.contains("<?xml") && text.contains("svg"))
+}
+
 #[cfg(all(test, windows))]
 mod shell_path_tests {
     use super::{path_for_selection, prepare_shell_path, strip_extended_path_prefix};
