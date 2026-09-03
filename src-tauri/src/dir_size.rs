@@ -142,10 +142,11 @@ fn set_cached_size(path: &str, entry: CacheEntry) {
     }
 }
 
-/// A walk must not enter the mount point of a remote filesystem that is not answering:
-/// even opening it blocks until the transport gives up.
+/// A walk must not enter the mount point of a remote filesystem that is not answering —
+/// even opening it blocks until the transport gives up — nor an automount trigger, where
+/// the open itself would mount something nobody asked to size.
 fn admits_answering_storage(path: &Path, _depth: usize, is_dir: bool) -> bool {
-    !is_dir || !crate::dir_reader::mount_health::is_unresponsive_mount_point(path)
+    !is_dir || !crate::dir_reader::mount_health::must_not_enter_mount_point(path)
 }
 
 /// What one walked entry adds to the running totals. Directories count by their type alone;

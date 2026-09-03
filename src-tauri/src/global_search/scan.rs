@@ -98,11 +98,11 @@ fn maybe_set_current_scan_path(path: String, update_counter: &AtomicU64) {
 fn is_scannable_directory(path: &Path) -> bool {
     use crate::dir_reader::mount_health;
 
-    if let Some(attributes) = mount_health::mount_point_attributes(path) {
-        return attributes.is_dir && !mount_health::is_unresponsive_path(path);
-    }
-    if mount_health::is_unresponsive_path(path) {
+    if mount_health::must_not_enter_mount_point(path) || mount_health::is_unresponsive_path(path) {
         return false;
+    }
+    if let Some(attributes) = mount_health::mount_point_attributes(path) {
+        return attributes.is_dir;
     }
 
     path.exists() && path.is_dir()
@@ -123,8 +123,9 @@ fn should_scan_walk_entry(
     }
 
     // Entering a remote mount whose server is gone would park the scan for as long as the
-    // transport takes to give up; asked here, before the walker opens the directory.
-    if crate::dir_reader::mount_health::is_unresponsive_mount_point(path) {
+    // transport takes to give up, and entering an automount trigger would mount it; asked
+    // here, before the walker opens the directory.
+    if crate::dir_reader::mount_health::must_not_enter_mount_point(path) {
         return false;
     }
 

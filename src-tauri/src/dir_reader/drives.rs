@@ -33,7 +33,11 @@ fn refreshed_disks() -> Disks {
             Disks::new_with_refreshed_list_specifics(DiskRefreshKind::nothing().with_kind());
 
         for disk in disks.list_mut() {
-            if !mount_health::is_network_filesystem(&disk.file_system().to_string_lossy()) {
+            let file_system = disk.file_system().to_string_lossy().to_string();
+            // Not for remote filesystems — their numbers come from the health registry —
+            // and not for automount triggers: statfs(2) is the one stat-family call that
+            // triggers an automount, and this loop runs on every drive poll.
+            if !mount_health::is_network_filesystem(&file_system) && file_system != "autofs" {
                 disk.refresh_specifics(DiskRefreshKind::nothing().with_storage());
             }
         }

@@ -66,11 +66,25 @@ pub enum MountHealth {
     Probing,
 }
 
+/// What kind of caution a mount point calls for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MountKind {
+    /// A mounted remote filesystem: probed, health-tracked, grayed when it stops answering.
+    Remote,
+    /// An automount trigger (autofs): nothing is mounted behind it yet, and merely opening
+    /// the directory dials whatever it is configured to mount. Never probed — a probe is a
+    /// `statvfs`, and `statfs(2)` is the one stat-family call that triggers automounts —
+    /// and never entered implicitly; an explicit navigation into it is the user asking to
+    /// mount.
+    OnDemand,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkMount {
     pub mount_point: PathBuf,
     pub file_system: String,
     pub source: String,
+    pub kind: MountKind,
     /// The mount whose probe answers for this one: itself, or the share it was automounted
     /// inside of.
     pub probe_target: PathBuf,
@@ -252,9 +266,13 @@ fn parse_mountinfo(contents: &str) -> Vec<NetworkMount> {
             let file_system = after_separator.next()?;
             let source = after_separator.next().unwrap_or_default();
 
-            if !is_network_filesystem(file_system) {
+            let kind = if file_system == "autofs" {
+                MountKind::OnDemand
+            } else if is_network_filesystem(file_system) {
+                MountKind::Remote
+            } else {
                 return None;
-            }
+            };
 
             let mount_point = PathBuf::from(unescape_mountinfo(mount_point));
             Some(NetworkMount {
@@ -262,6 +280,7 @@ fn parse_mountinfo(contents: &str) -> Vec<NetworkMount> {
                 mount_point,
                 file_system: file_system.to_string(),
                 source: unescape_mountinfo(source),
+                kind,
             })
         })
         .collect()
@@ -305,7 +324,14 @@ pub fn network_mount_containing(path: &Path) -> Option<NetworkMount> {
         .mounts
         .iter()
         .filter(|mount| path.starts_with(&mount.mount_point))
-        .max_by_key(|mount| mount.mount_point.as_os_str().len())
+        // A mounted filesystem sits over its own automount trigger at the same path; the
+        // mounted one is the truth about what an access would touch.
+        .max_by_key(|mount| {
+            (
+                mount.mount_point.as_os_str().len(),
+                mount.kind == MountKind::Remote,
+            )
+        })
         .cloned()
 }
 
@@ -325,6 +351,11 @@ pub fn mount_point_attributes(path: &Path) -> Option<CachedAttributes> {
 
 /// Current verdict for a mount, never blocking. Kicks off a probe when one is due.
 pub fn health_of(mount: &NetworkMount) -> MountHealth {
+    // A trigger has no server to be sick; probing it would mount it.
+    if mount.kind == MountKind::OnDemand {
+        return MountHealth::Responsive;
+    }
+
     ensure_probe(mount);
 
     let records = records()
@@ -373,15 +404,25 @@ pub fn storage_of(mount: &NetworkMount) -> Option<MountStorage> {
 /// True when `path` lives on a remote mount that is known not to answer.
 pub fn is_unresponsive_path(path: &Path) -> bool {
     network_mount_containing(path)
-        .map(|mount| wait_for_health(&mount, GATE_WAIT) == MountHealth::Unresponsive)
+        .map(|mount| {
+            mount.kind == MountKind::Remote
+                && wait_for_health(&mount, GATE_WAIT) == MountHealth::Unresponsive
+        })
         .unwrap_or(false)
 }
 
-/// True when `path` is itself the mount point of a remote mount that does not answer.
-pub fn is_unresponsive_mount_point(path: &Path) -> bool {
-    network_mount_at(path)
-        .map(|mount| wait_for_health(&mount, GATE_WAIT) == MountHealth::Unresponsive)
-        .unwrap_or(false)
+/// True when a walk or any other implicit enumeration must not open this directory: the
+/// mount point of a remote filesystem that stopped answering — the open would park until
+/// the transport gives up — or an automount trigger, where the open itself dials out and
+/// mounts something nobody asked for.
+pub fn must_not_enter_mount_point(path: &Path) -> bool {
+    match network_mount_at(path) {
+        Some(mount) => match mount.kind {
+            MountKind::OnDemand => true,
+            MountKind::Remote => wait_for_health(&mount, GATE_WAIT) == MountHealth::Unresponsive,
+        },
+        None => false,
+    }
 }
 
 /// The check every blocking operation on user-supplied paths runs first.
@@ -725,6 +766,9 @@ mod tests {
 103 25 0:59 / /home/zero/phone rw,nosuid,nodev,noatime shared:62 - fuse.sshfs everywhere:/storage/emulated/0 rw,user_id=1000
 104 25 0:60 / /run/user/1000/doc rw,nosuid,nodev,relatime shared:63 - fuse.portal portal rw
 105 25 0:61 / /tmp rw,nosuid,nodev shared:64 - tmpfs tmpfs rw
+106 25 0:62 / /mnt/tape rw,relatime shared:65 - autofs systemd-1 rw,fd=97,direct
+107 25 0:63 / /mnt/tape rw,relatime shared:66 - fuse.sshfs user@host:/data rw,user_id=0
+108 25 0:64 / /mnt/cold rw,relatime shared:67 - autofs systemd-1 rw,fd=98,direct
 ";
 
     #[test]
@@ -740,7 +784,10 @@ mod tests {
             vec![
                 "/mnt/somewhere",
                 "/mnt/somewhere/My Documents",
-                "/home/zero/phone"
+                "/home/zero/phone",
+                "/mnt/tape",
+                "/mnt/tape",
+                "/mnt/cold"
             ]
         );
         assert_eq!(mounts[1].source, "//somewhere/zero/My Documents");
@@ -799,12 +846,14 @@ mod tests {
                 mount_point: PathBuf::from("/mnt/nas"),
                 file_system: "cifs".into(),
                 source: "//nas/media".into(),
+                kind: MountKind::Remote,
                 probe_target: PathBuf::from("/mnt/nas"),
             },
             NetworkMount {
                 mount_point: PathBuf::from("/mnt/nas/backup"),
                 file_system: "cifs".into(),
                 source: "//nas/backup".into(),
+                kind: MountKind::Remote,
                 probe_target: PathBuf::from("/mnt/nas/backup"),
             },
         ];
@@ -835,6 +884,15 @@ mod tests {
     }
 
     #[test]
+    fn a_mounted_filesystem_wins_over_its_own_trigger_and_a_bare_trigger_is_on_demand() {
+        let table = MountTable::from_mounts(parse_mountinfo(MOUNTINFO));
+        let at =
+            |mount_point: &str| table.mounts[table.by_mount_point[Path::new(mount_point)]].clone();
+        assert_eq!(at("/mnt/tape").kind, MountKind::Remote);
+        assert_eq!(at("/mnt/cold").kind, MountKind::OnDemand);
+    }
+
+    #[test]
     fn network_filesystem_list_matches_case_insensitively() {
         assert!(is_network_filesystem("CIFS"));
         assert!(is_network_filesystem("fuse.sshfs"));
@@ -845,7 +903,7 @@ mod tests {
     #[test]
     fn a_local_path_is_never_gated() {
         assert!(!is_unresponsive_path(Path::new("/")));
-        assert!(!is_unresponsive_mount_point(Path::new("/")));
+        assert!(!must_not_enter_mount_point(Path::new("/")));
         assert!(ensure_responsive(Path::new("/")).is_ok());
     }
 }
