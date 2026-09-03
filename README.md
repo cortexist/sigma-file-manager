@@ -17,6 +17,8 @@ exercised.
 
 The fork has diverged far enough that it is not intended to be merged back.
 
+![Screenshot](docs/screenshot.png)
+
 For the feature list, screenshots and community links, see the upstream README.
 
 ## Requirements
