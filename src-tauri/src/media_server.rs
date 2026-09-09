@@ -17,6 +17,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::mp4_bitrate;
 use axum::body::Body;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
@@ -26,9 +27,8 @@ use axum::Router;
 use once_cell::sync::Lazy;
 use rand::RngExt;
 use serde::Deserialize;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::AsyncSeekExt;
 use tokio::sync::Mutex;
-use tokio_util::io::ReaderStream;
 
 /// Cached origin of the running server, e.g. `http://127.0.0.1:45321/media/<token>`.
 static MEDIA_SERVER_ORIGIN: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
@@ -181,6 +181,15 @@ async fn serve_media(
             .into_response();
     }
 
+    let patches = if matches!(
+        content_type.as_str(),
+        "video/mp4" | "video/quicktime" | "video/x-m4v"
+    ) {
+        mp4_bitrate::read_patches(&mut file, total_size).await
+    } else {
+        Vec::new()
+    };
+
     match range {
         Some(Ok((start, end))) => {
             if file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
@@ -188,7 +197,7 @@ async fn serve_media(
             }
 
             let length = end - start + 1;
-            let stream = ReaderStream::new(file.take(length));
+            let stream = mp4_bitrate::stream(file, start, length, patches);
 
             (
                 StatusCode::PARTIAL_CONTENT,
@@ -207,7 +216,10 @@ async fn serve_media(
                 .into_response()
         }
         _ => {
-            let stream = ReaderStream::new(file);
+            if file.seek(std::io::SeekFrom::Start(0)).await.is_err() {
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            let stream = mp4_bitrate::stream(file, 0, total_size, patches);
 
             (
                 StatusCode::OK,
