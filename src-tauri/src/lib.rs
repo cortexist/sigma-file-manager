@@ -28,6 +28,7 @@ mod lan_share;
 mod link_operations;
 mod media_info;
 mod media_server;
+mod mp4_bitrate;
 mod media_viewer_registration;
 mod open_with;
 #[cfg(target_os = "linux")]
